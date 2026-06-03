@@ -128,6 +128,7 @@
     $("#field-uren").value = entry?.uren ?? "";
     $("#field-tarief").value = entry?.tarief ?? "";
     onComboChange();
+    updateInvoerStats();
   }
 
   function onComboChange() {
@@ -193,14 +194,38 @@
     else $("#field-uren")?.focus();
   }
 
-  function applySelectedHistory() {
-    const row = state.selectedHistoryRow;
-    const entry = row != null ? state.entries.find((x) => x.row_index === row) : null;
-    if (entry) applyHistoryToForm(entry, true);
-    else showToast("Selecteer eerst een regel in de historie", true);
+  function isoWeekInfo(d) {
+    const date = dateOnly(d);
+    const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+    return { year: tmp.getUTCFullYear(), week };
   }
 
-  function renderHistory() {
+  function updateInvoerStats() {
+    const dayEl = $("#invoer-day-stats");
+    const weekEl = $("#invoer-week-stats");
+    if (!dayEl || !weekEl) return;
+    const datumStr = $("#field-datum")?.value;
+    if (!datumStr || !state.entries?.length) {
+      dayEl.textContent = "—";
+      weekEl.textContent = "—";
+      return;
+    }
+    const sel = new Date(datumStr + "T12:00:00");
+    const { year: weekYear, week: weekNo } = isoWeekInfo(sel);
+    let dayH = 0;
+    let weekH = 0;
+    for (const e of state.entries) {
+      const ed = e.datum instanceof Date ? e.datum : new Date(e.datum);
+      if (UrenExcel.formatDateIso(ed) === datumStr) dayH += e.uren;
+      const iw = isoWeekInfo(ed);
+      if (iw.year === weekYear && iw.week === weekNo) weekH += e.uren;
+    }
+    dayEl.textContent = `${dayH.toFixed(1)} u`;
+    weekEl.textContent = `${weekH.toFixed(1)} u (week ${weekNo})`;
+  }
     const list = $("#history-list");
     if (!list || !state.intel) return;
     list.innerHTML = "";
@@ -248,13 +273,6 @@
       });
       list.appendChild(li);
     }
-    const status = $("#history-status");
-    if (status) {
-      if (!totalMatched) status.textContent = "Geen historie gevonden.";
-      else if (totalMatched > items.length)
-        status.textContent = `${items.length} van ${totalMatched} — dubbeltik of Overnemen voor vandaag.`;
-      else status.textContent = `${totalMatched} regels — dubbeltik of Overnemen voor vandaag.`;
-    }
     list.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
@@ -282,6 +300,7 @@
 
   function renderInvoer() {
     renderHistory();
+    updateInvoerStats();
     if (!state.editRow) {
       fillForm(null);
       const og = $("#field-og")?.value;
@@ -343,6 +362,7 @@
     if (!state.entries.length) {
       $("#analyse-summary").textContent = "Geen data — ververs uit OneDrive.";
       $("#analyse-list").innerHTML = "";
+      $("#analyse-loc-list").innerHTML = "";
       return;
     }
     const f = state.analyseFilters;
@@ -367,7 +387,9 @@
     });
     const filtered = UrenAnalyse.filterRows(state.entries, f);
     const sum = UrenAnalyse.summarize(filtered);
-    $("#analyse-summary").textContent = `${sum.count} regels · ${sum.totU.toFixed(2)} u · €${sum.totE.toFixed(2)}`;
+    const uniqueDays = UrenAnalyse.countUniqueDays(filtered);
+    $("#analyse-summary").textContent =
+      `Totaal uren: ${sum.totU.toFixed(2)} | Totaal € (excl. BTW): ${sum.totE.toFixed(2)} | Dagen: ${uniqueDays} | Regels: ${sum.count}`;
     const grouped = UrenAnalyse.groupRows(filtered, f.groupMode);
     const list = $("#analyse-list");
     list.innerHTML = "";
@@ -384,6 +406,16 @@
           <div class="ar-num">${item.uren.toFixed(2)} u · €${item.bedrag.toFixed(2)} (${item.count} regels)</div>`;
       }
       list.appendChild(li);
+    }
+
+    const locBody = $("#analyse-loc-list");
+    if (locBody) {
+      locBody.innerHTML = "";
+      for (const row of UrenAnalyse.aggregateLocations(filtered)) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${row.loc}</td><td class="num">${row.days}</td><td class="num">${row.uren.toFixed(2)}</td><td class="num">${row.bedrag.toFixed(2)}</td>`;
+        locBody.appendChild(tr);
+      }
     }
   }
 
@@ -437,6 +469,7 @@
     const d = new Date(el.value + "T12:00:00");
     d.setDate(d.getDate() + deltaDays);
     el.value = UrenExcel.formatDateIso(d);
+    updateInvoerStats();
   }
 
   function bindEvents() {
@@ -452,7 +485,8 @@
     });
     $("#btn-date-prev")?.addEventListener("click", () => adjustDate(-1));
     $("#btn-date-next")?.addEventListener("click", () => adjustDate(1));
-    $("#btn-history-apply")?.addEventListener("click", applySelectedHistory);
+    $("#field-datum")?.addEventListener("change", updateInvoerStats);
+    $("#btn-refresh")?.addEventListener("click", () => refreshFromCloud().catch(() => {}));
     $("#btn-uren-min")?.addEventListener("click", () => adjustHours(-0.5));
     $("#btn-uren-plus")?.addEventListener("click", () => adjustHours(0.5));
     $("#field-uren")?.addEventListener("keydown", (e) => {
@@ -465,7 +499,6 @@
         adjustHours(-0.5);
       }
     });
-    $("#btn-refresh")?.addEventListener("click", () => refreshFromCloud().catch(() => {}));
     $("#history-search")?.addEventListener("input", renderHistory);
     $("#field-og")?.addEventListener("change", onComboChange);
     $("#field-project")?.addEventListener("change", onComboChange);

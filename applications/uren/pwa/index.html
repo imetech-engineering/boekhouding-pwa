@@ -32,13 +32,22 @@
 
     <main>
       <section id="panel-invoer" class="tab-panel">
-        <div class="card">
-          <h2>Nieuwe registratie</h2>
+        <div class="card card-invoer">
           <label for="field-datum">Datum</label>
           <div class="date-row">
             <button type="button" id="btn-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
             <input id="field-datum" type="date" autocomplete="off" />
             <button type="button" id="btn-date-next" class="btn-secondary btn-compact" aria-label="Volgende dag">▶</button>
+          </div>
+          <div class="invoer-stats row-2">
+            <div>
+              <span class="stat-label">Uren op deze dag</span>
+              <span id="invoer-day-stats" class="stat-value">—</span>
+            </div>
+            <div>
+              <span class="stat-label">Uren deze week</span>
+              <span id="invoer-week-stats" class="stat-value">—</span>
+            </div>
           </div>
 
           <label for="field-og">Opdrachtgever</label>
@@ -76,11 +85,7 @@
 
         <div class="card">
           <h2>Historie</h2>
-          <div class="hist-toolbar">
-            <input id="history-search" type="search" placeholder="Filter historie…" />
-            <button type="button" id="btn-history-apply" class="btn-secondary btn-compact">↩ Overnemen</button>
-          </div>
-          <p id="history-status" class="sub hist-hint">Tik een regel of dubbeltik om over te nemen naar vandaag.</p>
+          <input id="history-search" type="search" placeholder="Filter historie…" class="hist-search" />
           <ul id="history-list"></ul>
         </div>
       </section>
@@ -112,6 +117,22 @@
           <p id="analyse-summary" class="sub"></p>
         </div>
         <ul id="analyse-list"></ul>
+        <div class="card card-locatie">
+          <h2>Locatie overzicht (unieke dagen)</h2>
+          <div class="loc-table-wrap">
+            <table class="loc-table" aria-label="Locatie overzicht">
+              <thead>
+                <tr>
+                  <th>Locatie</th>
+                  <th>Dagen</th>
+                  <th>Uren</th>
+                  <th>Bedrag €</th>
+                </tr>
+              </thead>
+              <tbody id="analyse-loc-list"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <section id="panel-instellingen" class="tab-panel hidden">

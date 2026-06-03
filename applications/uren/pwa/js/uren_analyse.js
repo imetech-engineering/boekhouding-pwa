@@ -152,11 +152,42 @@
     return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
   }
 
+  function countUniqueDays(rows) {
+    const days = new Set();
+    for (const r of rows) {
+      const d = dateOnly(r.datum);
+      days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    }
+    return days.size;
+  }
+
+  function aggregateLocations(rows) {
+    const stats = {};
+    for (const r of rows) {
+      const loc = (r.locatie || "").trim() || "(geen locatie)";
+      if (!stats[loc]) stats[loc] = { days: new Set(), uren: 0, bedrag: 0 };
+      const d = dateOnly(r.datum);
+      stats[loc].days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+      stats[loc].uren += r.uren;
+      stats[loc].bedrag += r.bedrag;
+    }
+    return Object.keys(stats)
+      .sort((a, b) => a.localeCompare(b))
+      .map((loc) => ({
+        loc,
+        days: stats[loc].days.size,
+        uren: stats[loc].uren,
+        bedrag: stats[loc].bedrag,
+      }));
+  }
+
   global.UrenAnalyse = {
     filterRows,
     sortFilterValues,
     summarize,
     groupRows,
     periodBounds,
+    countUniqueDays,
+    aggregateLocations,
   };
 })(window);

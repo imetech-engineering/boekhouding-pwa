@@ -25,6 +25,10 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
 html,
 body {
   margin: 0;
@@ -36,9 +40,18 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 .app-header {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
+  position: relative;
   z-index: 10;
   padding: calc(12px + var(--safe-top)) 16px 12px;
   background: var(--bg-primary);
@@ -62,8 +75,15 @@ body {
 }
 
 main {
-  padding: 12px 16px calc(var(--nav-h) + var(--safe-bottom) + 16px);
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 12px 16px 16px;
   max-width: 640px;
+  width: 100%;
   margin: 0 auto;
 }
 
@@ -367,17 +387,79 @@ button {
   margin-top: 4px;
 }
 
+.invoer-stats {
+  margin-top: 12px;
+  gap: 12px;
+}
+
+.invoer-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-label {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.stat-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.hist-search {
+  margin-bottom: 8px;
+}
+
+.loc-table-wrap {
+  overflow-x: auto;
+  margin: 0 -4px;
+}
+
+.loc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.loc-table th,
+.loc-table td {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.loc-table th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.loc-table td.num {
+  text-align: right;
+  white-space: nowrap;
+  color: var(--accent);
+}
+
+.card-locatie h2 {
+  margin-bottom: 8px;
+}
+
 .bottom-nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex-shrink: 0;
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
   display: flex;
   background: var(--bg-primary);
   border-top: 1px solid var(--border);
   padding-bottom: var(--safe-bottom);
-  height: calc(var(--nav-h) + var(--safe-bottom));
-  z-index: 20;
+  min-height: calc(var(--nav-h) + var(--safe-bottom));
+  z-index: 30;
+  transform: translateZ(0);
 }
 
 .bottom-nav button {

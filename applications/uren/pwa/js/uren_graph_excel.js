@@ -371,10 +371,11 @@
     if (tableIndex < 0) {
       throw new Error("Regel niet meer gevonden in Excel (ververs lijsten).");
     }
+    // /rows/{index} returns ApiNotFound on OneDrive — itemAt is required.
     await excelFetch(
       drivePath,
       token,
-      `/tables('${encodeSheet(TABLE)}')/rows/${tableIndex}`,
+      `/tables('${encodeSheet(TABLE)}')/rows/$/itemAt(index=${tableIndex})`,
       { method: "DELETE" },
       sessionId
     );

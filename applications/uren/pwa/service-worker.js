@@ -1,4 +1,4 @@
-const CACHE = "imtech-uren-pwa-v4";
+const CACHE = "imtech-uren-pwa-v5";
 const ASSETS = [
   "./",
   "./index.html",

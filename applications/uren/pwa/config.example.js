@@ -10,16 +10,11 @@ window.UREN_CONFIG = {
      */
     tenantId: "TENANT_ID",
     authority: "https://login.microsoftonline.com/TENANT_ID",
-    /**
-     * Default: current page URL (works for localhost and GitHub Pages).
-     * GitHub Pages (project site) — register in Azure e.g. imetech-engineering/uren-pwa:
-     *   https://imetech-engineering.github.io/uren-pwa/
-     *   https://imetech-engineering.github.io/uren-pwa/index.html
-     * Local dev: http://localhost:8080/
-     * Override only if you need a fixed URI:
-     * redirectUri: "https://imetech-engineering.github.io/uren-pwa/",
-     */
-    redirectUri: window.location.origin + window.location.pathname,
+    redirectUri:
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+        ? `${window.location.origin}/`
+        : "https://imetech-engineering.github.io/uren-pwa/",
   },
   graph: {
     scopes: ["User.Read", "Files.ReadWrite"],

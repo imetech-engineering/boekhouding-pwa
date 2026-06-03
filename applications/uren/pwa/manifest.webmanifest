@@ -2,7 +2,7 @@
   "name": "IMeTech Uren",
   "short_name": "Uren",
   "description": "Urenadministratie via OneDrive Excel (Microsoft Graph)",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

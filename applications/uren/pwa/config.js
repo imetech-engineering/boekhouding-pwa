@@ -12,11 +12,14 @@ window.UREN_CONFIG = {
     tenantId: "50f49575-354b-41c2-b187-df1a6c2e92d3",
     authority: "https://login.microsoftonline.com/50f49575-354b-41c2-b187-df1a6c2e92d3",
     /**
-     * Must match exactly a SPA redirect URI registered in Azure.
-     * Dynamic: works on GitHub Pages and localhost without editing.
-     * Production site: https://imetech-engineering.github.io/uren-pwa/
+     * Vaste redirect URI — moet exact overeenkomen met Azure SPA-registratie.
+     * Geïnstalleerde PWA opent vaak /index.html; daarom niet dynamisch via pathname.
      */
-    redirectUri: window.location.origin + window.location.pathname,
+    redirectUri:
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+        ? `${window.location.origin}/`
+        : "https://imetech-engineering.github.io/uren-pwa/",
   },
   graph: {
     scopes: ["User.Read", "Files.ReadWrite"],

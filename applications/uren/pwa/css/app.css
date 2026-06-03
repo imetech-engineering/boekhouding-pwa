@@ -593,6 +593,14 @@ a.link {
   position: relative;
 }
 
+.chart-wrap-grafieken {
+  height: 280px;
+}
+
+.card-grafieken .row-2 {
+  margin-bottom: 8px;
+}
+
 .chart-wrap canvas {
   width: 100% !important;
   height: 100% !important;

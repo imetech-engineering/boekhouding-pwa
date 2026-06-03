@@ -24,8 +24,11 @@
       customMonth: new Date().getMonth() + 1,
       customWeekYear: new Date().getFullYear(),
       customWeek: 1,
-      chartMode: "none",
-      chartYear: new Date().getFullYear(),
+    },
+    chartFilters: {
+      year: new Date().getFullYear(),
+      chartMode: "week_year",
+      cumulativeEuro: false,
     },
     chartInstance: null,
     darkMode: false,
@@ -71,7 +74,7 @@
     try {
       localStorage.setItem("imtech-uren-dark", on ? "1" : "0");
     } catch (_) {}
-    if (state.chartInstance) renderAnalyseChart(state.entries);
+    if (state.chartInstance) renderGrafiekenChart(state.entries);
   }
 
   function loadDarkPreference() {
@@ -84,11 +87,145 @@
     const mode = state.analyseFilters.periodMode;
     $("#filter-custom-week")?.classList.toggle("hidden", mode !== "custom_week");
     $("#filter-custom-month")?.classList.toggle("hidden", mode !== "custom_month");
-    const chartMode = state.analyseFilters.chartMode;
-    const needsYear = chartMode === "week_year" || chartMode === "month_year";
-    $("#filter-chart-year")?.classList.toggle("hidden", !needsYear);
-    document.querySelector(".chart-year-label")?.classList.toggle("hidden", !needsYear);
-    $("#chart-wrap")?.classList.toggle("hidden", chartMode === "none");
+  }
+
+  function updateGrafiekControlsVisibility() {
+    const mode = state.chartFilters.chartMode;
+    $("#grafiek-euro-row")?.classList.toggle("hidden", mode !== "cumulative");
+  }
+
+  const MONTH_LABELS = ["Jan", "Feb", "Mrt", "Apr", "Mei", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"];
+  const PIE_COLORS = ["#2563eb", "#16a34a", "#dc2626", "#ca8a04", "#9333ea", "#0891b2", "#ea580c", "#64748b"];
+
+  function renderGrafiekenChart(allEntries) {
+    const cf = state.chartFilters;
+    const canvas = $("#grafiek-chart");
+    if (!canvas || typeof Chart === "undefined") return;
+    const base = UrenAnalyse.filterRowsForCharts(allEntries, state.analyseFilters);
+    const year = cf.year || UrenAnalyse.chartYearFromRows(base);
+    const yearRows = UrenAnalyse.rowsForChartYear(base, year);
+    let labels = [];
+    let data = [];
+    let data2 = [];
+    let chartType = "bar";
+    let title = "";
+    const mode = cf.chartMode;
+
+    if (mode === "week_year") {
+      const weeks = UrenAnalyse.aggregateHoursPerIsoWeek(yearRows, year);
+      labels = weeks.map((w) => `W${w.week}`);
+      data = weeks.map((w) => w.uren);
+      title = `Uren per ISO-week ${year}`;
+    } else if (mode === "month_year") {
+      const months = UrenAnalyse.aggregateHoursPerMonth(yearRows, year);
+      labels = months.map((m) => MONTH_LABELS[m.month - 1]);
+      data = months.map((m) => m.uren);
+      title = `Uren per maand ${year}`;
+    } else if (mode === "og_bar" || mode === "og_pie") {
+      const ogs = UrenAnalyse.aggregateHoursPerOg(yearRows, 10);
+      labels = ogs.map((o) => o.og);
+      data = ogs.map((o) => o.uren);
+      title = `Uren per opdrachtgever ${year}`;
+      chartType = mode === "og_pie" ? "pie" : "bar";
+    } else if (mode === "revenue_month") {
+      const months = UrenAnalyse.aggregateRevenuePerMonth(yearRows, year);
+      labels = months.map((m) => MONTH_LABELS[m.month - 1]);
+      data = months.map((m) => m.bedrag);
+      title = `Omzet (€) per maand ${year}`;
+    } else if (mode === "locatie") {
+      const locs = UrenAnalyse.aggregateHoursPerLocatie(yearRows, 12);
+      labels = locs.map((l) => l.loc);
+      data = locs.map((l) => l.uren);
+      title = `Uren per locatie ${year}`;
+    } else if (mode === "cumulative") {
+      const cum = UrenAnalyse.aggregateCumulativeForYear(yearRows, year);
+      labels = cum.map((c) => c.label.slice(5));
+      data = cum.map((c) => c.uren);
+      if (cf.cumulativeEuro) data2 = cum.map((c) => c.bedrag);
+      chartType = "line";
+      title = cf.cumulativeEuro
+        ? `Cumulatief uren en omzet ${year}`
+        : `Cumulatief uren ${year}`;
+    }
+
+    const grid = getComputedStyle(document.documentElement).getPropertyValue("--chart-grid").trim();
+    const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    const text = getComputedStyle(document.documentElement).getPropertyValue("--text-secondary").trim();
+    const datasets =
+      chartType === "line" && data2.length
+        ? [
+            {
+              label: "Uren",
+              data,
+              backgroundColor: "transparent",
+              borderColor: accent,
+              borderWidth: 2,
+              fill: false,
+              tension: 0.2,
+              yAxisID: "y",
+            },
+            {
+              label: "Omzet €",
+              data: data2,
+              backgroundColor: "transparent",
+              borderColor: "#16a34a",
+              borderWidth: 2,
+              fill: false,
+              tension: 0.2,
+              yAxisID: "y1",
+            },
+          ]
+        : [
+            {
+              label: title,
+              data,
+              backgroundColor: chartType === "pie" ? PIE_COLORS : accent,
+              borderColor: chartType === "pie" ? "#ffffff" : accent,
+              borderWidth: chartType === "pie" ? 1 : 0,
+            },
+          ];
+
+    if (state.chartInstance) state.chartInstance.destroy();
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: chartType === "pie" || data2.length > 0, labels: { color: text } }, title: { display: !!title, text: title, color: text } },
+    };
+    if (chartType !== "pie") {
+      options.scales = {
+        x: { ticks: { color: text, maxRotation: 45 }, grid: { color: grid } },
+        y: { ticks: { color: text }, grid: { color: grid }, position: "left" },
+      };
+      if (data2.length) {
+        options.scales.y1 = {
+          ticks: { color: text },
+          grid: { drawOnChartArea: false },
+          position: "right",
+        };
+      }
+    }
+    state.chartInstance = new Chart(canvas, { type: chartType, data: { labels, datasets }, options });
+  }
+
+  function renderGrafieken() {
+    updateGrafiekControlsVisibility();
+    const summary = $("#grafiek-summary");
+    if (!state.entries.length) {
+      if (summary) summary.textContent = "Geen data — ververs uit OneDrive.";
+      if (state.chartInstance) {
+        state.chartInstance.destroy();
+        state.chartInstance = null;
+      }
+      return;
+    }
+    const base = UrenAnalyse.filterRowsForCharts(state.entries, state.analyseFilters);
+    const year = state.chartFilters.year || UrenAnalyse.chartYearFromRows(base);
+    const yearRows = UrenAnalyse.rowsForChartYear(base, year);
+    const sum = UrenAnalyse.summarize(yearRows);
+    if (summary) {
+      summary.textContent = `${year}: ${sum.totU.toFixed(1)} u · €${sum.totE.toFixed(2)} · ${sum.count} regels`;
+    }
+    renderGrafiekenChart(state.entries);
   }
 
   async function ensureLoggedIn() {
@@ -117,6 +254,7 @@
       setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
       renderInvoer();
       renderAnalyse();
+      renderGrafieken();
       renderAccount();
     } catch (e) {
       setStatus(e.message || String(e), true);
@@ -432,81 +570,6 @@
     );
   }
 
-  function renderAnalyseChart(allEntries) {
-    const f = state.analyseFilters;
-    const mode = f.chartMode;
-    const wrap = $("#chart-wrap");
-    const canvas = $("#analyse-chart");
-    if (!wrap || !canvas || typeof Chart === "undefined") return;
-    if (mode === "none") {
-      if (state.chartInstance) {
-        state.chartInstance.destroy();
-        state.chartInstance = null;
-      }
-      wrap.classList.add("hidden");
-      return;
-    }
-    wrap.classList.remove("hidden");
-    const filtered = UrenAnalyse.filterRows(allEntries, f);
-    const year = f.chartYear || UrenAnalyse.chartYearFromRows(filtered);
-    let labels = [];
-    let data = [];
-    let chartType = "bar";
-    let title = "";
-    if (mode === "week_year") {
-      const weeks = UrenAnalyse.aggregateHoursPerIsoWeek(filtered, year);
-      labels = weeks.map((w) => `W${w.week}`);
-      data = weeks.map((w) => w.uren);
-      title = `Uren per ISO-week ${year}`;
-    } else if (mode === "month_year") {
-      const months = UrenAnalyse.aggregateHoursPerMonth(filtered, year);
-      labels = months.map((m) => String(m.month));
-      data = months.map((m) => m.uren);
-      title = `Uren per maand ${year}`;
-    } else if (mode === "og_top") {
-      const ogs = UrenAnalyse.aggregateHoursPerOg(filtered, 10);
-      labels = ogs.map((o) => o.og);
-      data = ogs.map((o) => o.uren);
-      title = "Uren per opdrachtgever";
-    } else if (mode === "cumulative") {
-      const cum = UrenAnalyse.aggregateCumulativeHours(filtered);
-      labels = cum.map((c) => c.label.slice(5));
-      data = cum.map((c) => c.uren);
-      chartType = "line";
-      title = "Cumulatief uren";
-    }
-    const grid = getComputedStyle(document.documentElement).getPropertyValue("--chart-grid").trim();
-    const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-    const text = getComputedStyle(document.documentElement).getPropertyValue("--text-secondary").trim();
-    if (state.chartInstance) state.chartInstance.destroy();
-    state.chartInstance = new Chart(canvas, {
-      type: chartType,
-      data: {
-        labels,
-        datasets: [
-          {
-            label: title,
-            data,
-            backgroundColor: chartType === "bar" ? accent : "transparent",
-            borderColor: accent,
-            borderWidth: chartType === "line" ? 2 : 0,
-            fill: chartType === "line",
-            tension: 0.2,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false }, title: { display: !!title, text: title, color: text } },
-        scales: {
-          x: { ticks: { color: text, maxRotation: 45 }, grid: { color: grid } },
-          y: { ticks: { color: text }, grid: { color: grid } },
-        },
-      },
-    });
-  }
-
   function renderAnalyse() {
     if (!state.entries.length) {
       $("#analyse-summary").textContent = "Geen data — ververs uit OneDrive.";
@@ -613,7 +676,7 @@
       }
     }
     updatePeriodCustomVisibility();
-    renderAnalyseChart(state.entries);
+    renderGrafieken();
   }
 
   function renderAccount() {
@@ -635,6 +698,7 @@
     const panel = document.getElementById(`panel-${tab}`);
     if (panel) panel.classList.remove("hidden");
     if (tab === "analyse") renderAnalyse();
+    if (tab === "grafieken") renderGrafieken();
   }
 
   async function onSave() {
@@ -736,9 +800,9 @@
     state.analyseFilters.customWeek = iso.week;
     state.analyseFilters.customYear = now.getFullYear();
     state.analyseFilters.customMonth = now.getMonth() + 1;
-    state.analyseFilters.chartYear = now.getFullYear();
-    const cy = $("#filter-chart-year");
-    if (cy) cy.value = now.getFullYear();
+    state.chartFilters.year = now.getFullYear();
+    const gy = $("#grafiek-year");
+    if (gy) gy.value = now.getFullYear();
 
     $("#filter-period")?.addEventListener("change", (e) => {
       state.analyseFilters.periodMode = e.target.value;
@@ -760,14 +824,18 @@
       if (e.target.checked) state.analyseFilters.selectedTarieven = [];
       renderAnalyse();
     });
-    $("#filter-chart")?.addEventListener("change", (e) => {
-      state.analyseFilters.chartMode = e.target.value;
-      updatePeriodCustomVisibility();
-      renderAnalyse();
+    $("#grafiek-type")?.addEventListener("change", (e) => {
+      state.chartFilters.chartMode = e.target.value;
+      updateGrafiekControlsVisibility();
+      renderGrafieken();
     });
-    $("#filter-chart-year")?.addEventListener("change", (e) => {
-      state.analyseFilters.chartYear = Number(e.target.value) || now.getFullYear();
-      renderAnalyse();
+    $("#grafiek-year")?.addEventListener("change", (e) => {
+      state.chartFilters.year = Number(e.target.value) || now.getFullYear();
+      renderGrafieken();
+    });
+    $("#grafiek-cumulative-euro")?.addEventListener("change", (e) => {
+      state.chartFilters.cumulativeEuro = e.target.checked;
+      renderGrafieken();
     });
     $("#toggle-dark-mode")?.addEventListener("change", (e) => applyDarkMode(e.target.checked));
     $("#filter-keyword")?.addEventListener("input", (e) => {

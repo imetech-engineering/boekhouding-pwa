@@ -149,19 +149,6 @@
             <input type="checkbox" id="filter-tarief-nonzero" />
             Alleen tarief ≠ 0
           </label>
-          <label for="filter-chart">Visualisatie</label>
-          <select id="filter-chart">
-            <option value="none" selected>Geen</option>
-            <option value="week_year">Uren per ISO-week (jaar)</option>
-            <option value="month_year">Uren per maand (jaar)</option>
-            <option value="og_top">Uren per opdrachtgever (top)</option>
-            <option value="cumulative">Cumulatief uren</option>
-          </select>
-          <label for="filter-chart-year" class="chart-year-label hidden">Jaar grafiek</label>
-          <input id="filter-chart-year" type="number" min="2018" max="2035" class="chart-year-input hidden" />
-          <div id="chart-wrap" class="chart-wrap hidden">
-            <canvas id="analyse-chart" aria-label="Analyse grafiek"></canvas>
-          </div>
           <p id="analyse-summary" class="sub"></p>
         </div>
         <ul id="analyse-list"></ul>
@@ -180,6 +167,39 @@
               <tbody id="analyse-loc-list"></tbody>
             </table>
           </div>
+        </div>
+      </section>
+
+      <section id="panel-grafieken" class="tab-panel hidden">
+        <div class="card card-grafieken">
+          <h2>Grafieken</h2>
+          <p class="sub">Jaaroverzicht — gebruikt opdrachtgever/project-filters uit Analyse (niet de periode-filter).</p>
+          <div class="row-2">
+            <div>
+              <label for="grafiek-year">Jaar</label>
+              <input id="grafiek-year" type="number" min="2018" max="2035" />
+            </div>
+            <div>
+              <label for="grafiek-type">Visualisatie</label>
+              <select id="grafiek-type">
+                <option value="week_year">Uren per ISO-week</option>
+                <option value="month_year">Uren per maand</option>
+                <option value="og_bar">Uren per opdrachtgever (staaf)</option>
+                <option value="og_pie">Uren per opdrachtgever (taart)</option>
+                <option value="revenue_month">Omzet (€) per maand</option>
+                <option value="locatie">Uren per locatie</option>
+                <option value="cumulative">Cumulatief uren (jaar)</option>
+              </select>
+            </div>
+          </div>
+          <label class="check-row" id="grafiek-euro-row">
+            <input type="checkbox" id="grafiek-cumulative-euro" />
+            Toon ook cumulatief omzet (€)
+          </label>
+          <div id="grafiek-wrap" class="chart-wrap chart-wrap-grafieken">
+            <canvas id="grafiek-chart" aria-label="Grafiek"></canvas>
+          </div>
+          <p id="grafiek-summary" class="sub"></p>
         </div>
       </section>
 
@@ -228,6 +248,7 @@
     <nav class="bottom-nav" aria-label="Hoofdnavigatie">
       <button type="button" data-tab="invoer" class="active">Invoer</button>
       <button type="button" data-tab="analyse">Analyse</button>
+      <button type="button" data-tab="grafieken">Grafieken</button>
       <button type="button" data-tab="instellingen">Instellingen</button>
     </nav>
 

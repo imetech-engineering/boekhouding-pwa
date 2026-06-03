@@ -69,17 +69,25 @@
     return maxY;
   }
 
+  function isoWeekNumber(d) {
+    const date = dateOnly(d);
+    const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+    return { year: tmp.getUTCFullYear(), week };
+  }
+
+  function rowsForChartYear(rows, year) {
+    return rows.filter((r) => dateOnly(r.datum).getFullYear() === year);
+  }
+
   function aggregateHoursPerIsoWeek(rows, year) {
     const buckets = {};
     for (const r of rows) {
-      const d = dateOnly(r.datum);
-      const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-      tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
-      const isoYear = tmp.getUTCFullYear();
-      const yearStart = new Date(Date.UTC(isoYear, 0, 1));
-      const wk = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+      const { year: isoYear, week } = isoWeekNumber(r.datum);
       if (isoYear !== year) continue;
-      buckets[wk] = (buckets[wk] || 0) + r.uren;
+      buckets[week] = (buckets[week] || 0) + r.uren;
     }
     const out = [];
     for (let w = 1; w <= 53; w++) {
@@ -114,6 +122,59 @@
       .map(([og, uren]) => ({ og, uren: Math.round(uren * 100) / 100 }));
   }
 
+  function aggregateRevenuePerMonth(rows, year) {
+    const buckets = {};
+    for (let m = 1; m <= 12; m++) buckets[m] = 0;
+    for (const r of rows) {
+      const d = dateOnly(r.datum);
+      if (d.getFullYear() !== year) continue;
+      buckets[d.getMonth() + 1] += r.bedrag || 0;
+    }
+    return Object.keys(buckets).map((m) => ({
+      month: Number(m),
+      bedrag: Math.round(buckets[m] * 100) / 100,
+    }));
+  }
+
+  function aggregateHoursPerLocatie(rows, topN = 12) {
+    const buckets = {};
+    for (const r of rows) {
+      const loc = (r.locatie || "").trim() || "(geen locatie)";
+      buckets[loc] = (buckets[loc] || 0) + r.uren;
+    }
+    return Object.entries(buckets)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, topN)
+      .map(([loc, uren]) => ({ loc, uren: Math.round(uren * 100) / 100 }));
+  }
+
+  function aggregateCumulativeForYear(rows, year) {
+    const dailyU = {};
+    const dailyE = {};
+    for (const r of rows) {
+      const d = dateOnly(r.datum);
+      if (d.getFullYear() !== year) continue;
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      dailyU[k] = (dailyU[k] || 0) + r.uren;
+      dailyE[k] = (dailyE[k] || 0) + (r.bedrag || 0);
+    }
+    const keys = Object.keys(dailyU)
+      .concat(Object.keys(dailyE))
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .sort();
+    let totalU = 0;
+    let totalE = 0;
+    return keys.map((k) => {
+      totalU += dailyU[k] || 0;
+      totalE += dailyE[k] || 0;
+      return {
+        label: k,
+        uren: Math.round(totalU * 100) / 100,
+        bedrag: Math.round(totalE * 100) / 100,
+      };
+    });
+  }
+
   function aggregateCumulativeHours(rows) {
     const daily = {};
     for (const r of rows) {
@@ -128,6 +189,25 @@
       const parts = k.split("-").map(Number);
       const label = `${parts[0]}-${String(parts[1] + 1).padStart(2, "0")}-${String(parts[2]).padStart(2, "0")}`;
       return { label, uren: Math.round(total * 100) / 100 };
+    });
+  }
+
+  /** OG/project/tarief/keyword filters — no analyse period (week/month) limit. */
+  function filterRowsForCharts(rows, filters) {
+    const kw = (filters.keyword || "").trim().toLowerCase();
+    const ogs = filters.selectedOgs || [];
+    const projs = filters.selectedProjs || [];
+    const tarieven = filters.selectedTarieven || [];
+    const tariefNonZero = filters.tariefNonZero;
+
+    return rows.filter((r) => {
+      if (ogs.length && !ogs.includes(r.opdrachtgever)) return false;
+      if (projs.length && !projs.includes(r.project)) return false;
+      const tr = Math.round((r.tarief || 0) * 10000) / 10000;
+      if (tariefNonZero && tr === 0) return false;
+      if (tarieven.length && !tarieven.includes(tr)) return false;
+      if (kw && !(r.werkzaamheden || "").toLowerCase().includes(kw)) return false;
+      return true;
     });
   }
 
@@ -272,6 +352,7 @@
 
   global.UrenAnalyse = {
     filterRows,
+    filterRowsForCharts,
     sortFilterValues,
     summarize,
     groupRows,
@@ -279,10 +360,15 @@
     countUniqueDays,
     aggregateLocations,
     isoWeekStart,
+    isoWeekNumber,
     chartYearFromRows,
+    rowsForChartYear,
     aggregateHoursPerIsoWeek,
     aggregateHoursPerMonth,
     aggregateHoursPerOg,
+    aggregateRevenuePerMonth,
+    aggregateHoursPerLocatie,
+    aggregateCumulativeForYear,
     aggregateCumulativeHours,
   };
 })(window);

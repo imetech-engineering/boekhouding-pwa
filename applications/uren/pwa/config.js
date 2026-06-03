@@ -9,8 +9,8 @@ window.UREN_CONFIG = {
      * Single tenant (IMeTech only). Fill TENANT_ID from Azure Portal →
      * Microsoft Entra ID → Overview → Tenant ID (Directory ID).
      */
-    tenantId: "TENANT_ID",
-    authority: "https://login.microsoftonline.com/TENANT_ID",
+    tenantId: "50f49575-354b-41c2-b187-df1a6c2e92d3",
+    authority: "https://login.microsoftonline.com/50f49575-354b-41c2-b187-df1a6c2e92d3",
     /**
      * Must match exactly a SPA redirect URI registered in Azure.
      * Dynamic: works on GitHub Pages and localhost without editing.

@@ -213,6 +213,84 @@ button {
   margin: 0 0 8px;
 }
 
+.uren-stepper {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.uren-stepper input {
+  text-align: center;
+}
+
+.combo-wrap {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.combo-wrap input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-combo {
+  flex: 0 0 auto;
+  min-width: 72px;
+  padding: 8px 10px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.combo-popup {
+  position: absolute;
+  z-index: 40;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.combo-search {
+  margin: 8px;
+  width: calc(100% - 16px);
+}
+
+.combo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+  overflow-y: auto;
+  max-height: 40vh;
+}
+
+.combo-list li {
+  padding: 12px 14px;
+  font-size: 0.9375rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.combo-list li:active,
+.combo-list li:hover {
+  background: var(--accent-light);
+}
+
+.combo-empty {
+  color: var(--text-secondary);
+  cursor: default;
+}
+
+.combo-empty:active,
+.combo-empty:hover {
+  background: transparent;
+}
+
 .date-row {
   display: grid;
   grid-template-columns: auto 1fr auto;

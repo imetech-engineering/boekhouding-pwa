@@ -6,8 +6,6 @@
     tab: "invoer",
     entries: [],
     intel: null,
-    wb: null,
-    ws: null,
     etag: null,
     meta: null,
     loading: false,
@@ -53,19 +51,21 @@
     return UrenAuth.acquireToken();
   }
 
+  function drivePath() {
+    return UrenAuth.getConfig().graph.drivePath;
+  }
+
   async function refreshFromCloud() {
     state.loading = true;
     setStatus("Laden uit OneDrive…");
     try {
       const token = await ensureLoggedIn();
-      const path = UrenAuth.getConfig().graph.drivePath;
-      const { bytes, etag, meta } = await UrenGraph.downloadWorkbook(path, token);
-      const { wb, ws, entries } = UrenExcel.readAllEntries(bytes);
-      state.wb = wb;
-      state.ws = ws;
+      const path = drivePath();
+      const meta = await UrenGraph.getDriveItemMeta(path, token);
+      const entries = await UrenGraphExcel.readAllEntries(path, token);
       state.entries = entries;
       state.intel = UrenExcel.buildIntel(entries);
-      state.etag = etag;
+      state.etag = meta.etag;
       state.meta = meta;
       setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
       renderInvoer();
@@ -80,22 +80,16 @@
     }
   }
 
-  async function persistWorkbook(bytes) {
-    const token = await ensureLoggedIn();
-    const path = UrenAuth.getConfig().graph.drivePath;
-    const meta = await UrenGraph.uploadWorkbook(path, token, bytes, state.etag);
-    state.etag = meta.etag;
-    state.meta = meta;
-    setStatus(`Opgeslagen ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
-  }
-
   async function saveAfterMutation(mutator) {
-    if (!state.wb || !state.ws) {
-      await refreshFromCloud();
-    }
+    const token = await ensureLoggedIn();
+    const path = drivePath();
     try {
-      const bytes = mutator(state.wb, state.ws);
-      await persistWorkbook(bytes);
+      await UrenGraphExcel.withSession(path, token, (sessionId) =>
+        mutator(path, token, sessionId)
+      );
+      const meta = await UrenGraph.getDriveItemMeta(path, token);
+      state.etag = meta.etag;
+      state.meta = meta;
       await refreshFromCloud();
       showToast("Opgeslagen in OneDrive");
     } catch (e) {
@@ -133,30 +127,51 @@
     $("#field-locatie").value = entry?.locatie || "";
     $("#field-uren").value = entry?.uren ?? "";
     $("#field-tarief").value = entry?.tarief ?? "";
+    onComboChange();
   }
 
-  function renderDatalists() {
-    if (!state.intel) return;
-    const ogDl = $("#dl-og");
-    const prDl = $("#dl-project");
-    const locDl = $("#dl-locatie");
-    if (!ogDl) return;
-    const fill = (dl, items) => {
-      dl.innerHTML = "";
-      for (const n of items) {
-        const o = document.createElement("option");
-        o.value = n;
-        dl.appendChild(o);
-      }
-    };
+  function onComboChange() {
+    const t = UrenInvoer.suggestTarief(
+      state.intel,
+      $("#field-og")?.value,
+      $("#field-project")?.value
+    );
+    if (t !== "") $("#field-tarief").value = t;
     const og = ($("#field-og")?.value || "").trim();
     const proj = ($("#field-project")?.value || "").trim();
-    fill(
-      ogDl,
-      UrenInvoer.sortByUsage(state.intel.og_usage, state.intel.all_opdrachtgevers)
+    const combo = state.intel?.last_combo?.[`${og}\0${proj}`];
+    if (combo) {
+      if (!$("#field-locatie")?.value && combo.locatie) $("#field-locatie").value = combo.locatie;
+      if (!$("#field-werk")?.value && combo.werkzaamheden) $("#field-werk").value = combo.werkzaamheden;
+    }
+  }
+
+  function comboOptionsOg() {
+    if (!state.intel) return [];
+    return UrenInvoer.sortByUsage(state.intel.og_usage, state.intel.all_opdrachtgevers);
+  }
+
+  function comboOptionsProj() {
+    if (!state.intel) return [];
+    return UrenInvoer.smartProjects(state.intel, $("#field-og")?.value);
+  }
+
+  function comboOptionsLoc() {
+    if (!state.intel) return [];
+    return UrenInvoer.smartLocaties(
+      state.intel,
+      $("#field-og")?.value,
+      $("#field-project")?.value
     );
-    fill(prDl, UrenInvoer.smartProjects(state.intel, og));
-    fill(locDl, UrenInvoer.smartLocaties(state.intel, og, proj));
+  }
+
+  function adjustHours(delta) {
+    const el = $("#field-uren");
+    if (!el) return;
+    let v = parseFloat(el.value);
+    if (!Number.isFinite(v)) v = 0;
+    v = Math.max(0, Math.round((v + delta) * 2) / 2);
+    el.value = v === 0 ? "" : String(v);
   }
 
   function applyHistoryToForm(entry, focusWerk = false) {
@@ -171,7 +186,7 @@
     $("#field-werk").value = entry.werkzaamheden || "";
     $("#field-uren").value = entry.uren ?? "";
     $("#field-tarief").value = entry.tarief ?? "";
-    renderDatalists();
+    onComboChange();
     switchTab("invoer");
     showToast("Regel overgenomen — datum blijft vandaag");
     if (focusWerk) $("#field-werk")?.focus();
@@ -256,7 +271,9 @@
         } else if (btn.dataset.act === "del") {
           if (!confirm("Regel verwijderen uit Excel?")) return;
           try {
-            await saveAfterMutation((wb, ws) => UrenExcel.deleteEntry(wb, ws, row));
+            await saveAfterMutation((path, token, sid) =>
+              UrenGraphExcel.deleteEntry(path, token, sid, row)
+            );
           } catch (_) {}
         }
       });
@@ -264,7 +281,6 @@
   }
 
   function renderInvoer() {
-    renderDatalists();
     renderHistory();
     if (!state.editRow) {
       fillForm(null);
@@ -401,13 +417,15 @@
     }
     try {
       if (state.editRow) {
-        await saveAfterMutation((wb, ws) =>
-          UrenExcel.updateEntry(wb, ws, state.editRow, fields)
+        await saveAfterMutation((path, token, sid) =>
+          UrenGraphExcel.updateEntry(path, token, sid, state.editRow, fields)
         );
         state.editRow = null;
         $("#btn-save").textContent = "Opslaan";
       } else {
-        await saveAfterMutation((wb, ws) => UrenExcel.addEntry(wb, ws, fields));
+        await saveAfterMutation((path, token, sid) =>
+          UrenGraphExcel.addEntry(path, token, sid, fields)
+        );
       }
       fillForm(null);
     } catch (_) {}
@@ -435,35 +453,23 @@
     $("#btn-date-prev")?.addEventListener("click", () => adjustDate(-1));
     $("#btn-date-next")?.addEventListener("click", () => adjustDate(1));
     $("#btn-history-apply")?.addEventListener("click", applySelectedHistory);
-    $("#btn-refresh")?.addEventListener("click", () => refreshFromCloud().catch(() => {}));
-    $("#history-search")?.addEventListener("input", renderHistory);
-    $("#field-og")?.addEventListener("input", renderDatalists);
-    $("#field-og")?.addEventListener("change", () => {
-      const t = UrenInvoer.suggestTarief(
-        state.intel,
-        $("#field-og").value,
-        $("#field-project").value
-      );
-      if (t !== "") $("#field-tarief").value = t;
-      renderDatalists();
-    });
-    $("#field-project")?.addEventListener("input", renderDatalists);
-    $("#field-project")?.addEventListener("change", () => {
-      const t = UrenInvoer.suggestTarief(
-        state.intel,
-        $("#field-og").value,
-        $("#field-project").value
-      );
-      if (t !== "") $("#field-tarief").value = t;
-      renderDatalists();
-      const og = ($("#field-og").value || "").trim();
-      const proj = ($("#field-project").value || "").trim();
-      const combo = state.intel?.last_combo?.[`${og}\0${proj}`];
-      if (combo) {
-        if (!$("#field-locatie").value && combo.locatie) $("#field-locatie").value = combo.locatie;
-        if (!$("#field-werk").value && combo.werkzaamheden) $("#field-werk").value = combo.werkzaamheden;
+    $("#btn-uren-min")?.addEventListener("click", () => adjustHours(-0.5));
+    $("#btn-uren-plus")?.addEventListener("click", () => adjustHours(0.5));
+    $("#field-uren")?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        adjustHours(0.5);
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        adjustHours(-0.5);
       }
     });
+    $("#btn-refresh")?.addEventListener("click", () => refreshFromCloud().catch(() => {}));
+    $("#history-search")?.addEventListener("input", renderHistory);
+    $("#field-og")?.addEventListener("change", onComboChange);
+    $("#field-project")?.addEventListener("change", onComboChange);
+    $("#field-locatie")?.addEventListener("change", onComboChange);
     $("#btn-login")?.addEventListener("click", async () => {
       try {
         await UrenAuth.login();
@@ -496,6 +502,9 @@
 
   async function init() {
     bindEvents();
+    UrenCombo.createCombo("field-og", comboOptionsOg, onComboChange);
+    UrenCombo.createCombo("field-project", comboOptionsProj, onComboChange);
+    UrenCombo.createCombo("field-locatie", comboOptionsLoc, onComboChange);
     UrenInstall.init(switchTab);
     switchTab("invoer");
     try {

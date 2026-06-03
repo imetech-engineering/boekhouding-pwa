@@ -135,10 +135,13 @@ Alternatief: [Azure Static Web Apps](https://azure.microsoft.com/products/web-ap
 
 ## Sync en conflicten
 
-- Elke download slaat `@odata.etag` op; upload stuurt `If-Match`.
-- Wijziging op PC/telefoon tussen download en upload → **412**: melding *Bestand gewijzigd — ververs en probeer opnieuw*.
-- Excel open op PC kan lock geven → sluit werkboek kort of gebruik ververs.
+- Schrijven gaat via **Microsoft Graph Excel API** (alleen cellen/tabelrijen) — het hele bestand wordt niet opnieuw opgebouwd; opmaak, tabellen en formules blijven intact.
+- Elke sessie opent/sluit een workbook-sessie op OneDrive.
 - Schrijf niet tegelijk in desktop-app en telefoon.
+
+### Beschadigd bestand door eerdere PWA-versie?
+
+Als een eerdere versie (SheetJS) het bestand heeft overschreven: herstel via **OneDrive → versiegeschiedenis** van `urenadministratie_2025.xlsx`, daarna opnieuw verversen in de app.
 
 ## Desktop-app
 

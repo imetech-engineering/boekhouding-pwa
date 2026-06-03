@@ -81,6 +81,30 @@
     return null;
   }
 
+  function findSimilarEntries(entries, fields, hoursTolerance = 0.5) {
+    const og = (fields.opdrachtgever || "").trim().toLowerCase();
+    const proj = (fields.project || "").trim().toLowerCase();
+    const datumStr = fields.datumStr;
+    const uren = Number(fields.uren);
+    if (!datumStr || !og || !proj) return [];
+    return (entries || []).filter((e) => {
+      if (e.datumStr !== datumStr) return false;
+      if ((e.opdrachtgever || "").trim().toLowerCase() !== og) return false;
+      if ((e.project || "").trim().toLowerCase() !== proj) return false;
+      if (Number.isFinite(uren) && Math.abs((e.uren || 0) - uren) > hoursTolerance) return false;
+      return true;
+    });
+  }
+
+  function formatSimilarWarning(matches) {
+    const n = matches.length;
+    const sample = matches[0];
+    const line = sample
+      ? `${sample.datumStr} · ${sample.opdrachtgever} · ${sample.project} · ${sample.uren} u`
+      : "";
+    return `Er ${n === 1 ? "staat al" : `staan al ${n}`} een vergelijkbare regel${n > 1 ? "s" : ""} op deze dag (${line}${n > 1 ? ", …" : ""}). Toch opslaan?`;
+  }
+
   global.UrenInvoer = {
     sortByUsage,
     sortContextValues,
@@ -90,5 +114,7 @@
     suggestTarief,
     formatHistoryLine,
     validateForm,
+    findSimilarEntries,
+    formatSimilarWarning,
   };
 })(window);

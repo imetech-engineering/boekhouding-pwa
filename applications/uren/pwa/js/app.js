@@ -20,7 +20,15 @@
       selectedTarieven: [],
       tariefNonZero: false,
       groupMode: "none",
+      customYear: new Date().getFullYear(),
+      customMonth: new Date().getMonth() + 1,
+      customWeekYear: new Date().getFullYear(),
+      customWeek: 1,
+      chartMode: "none",
+      chartYear: new Date().getFullYear(),
     },
+    chartInstance: null,
+    darkMode: false,
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -34,14 +42,53 @@
     }
   }
 
+  function haptic(pattern) {
+    if (navigator.vibrate) {
+      try {
+        navigator.vibrate(pattern);
+      } catch (_) {}
+    }
+  }
+
   function showToast(msg, isError) {
     const t = $("#toast");
     if (!t) return;
     t.textContent = msg;
     t.classList.toggle("hidden", false);
     t.classList.toggle("error", !!isError);
+    haptic(isError ? [40, 60, 40] : 30);
     clearTimeout(showToast._tid);
     showToast._tid = setTimeout(() => t.classList.add("hidden"), 5000);
+  }
+
+  function applyDarkMode(on) {
+    state.darkMode = !!on;
+    document.documentElement.dataset.theme = on ? "dark" : "";
+    const meta = $("#meta-theme-color");
+    if (meta) meta.content = on ? "#121210" : "#2563EB";
+    const cb = $("#toggle-dark-mode");
+    if (cb) cb.checked = on;
+    try {
+      localStorage.setItem("imtech-uren-dark", on ? "1" : "0");
+    } catch (_) {}
+    if (state.chartInstance) renderAnalyseChart(state.entries);
+  }
+
+  function loadDarkPreference() {
+    try {
+      applyDarkMode(localStorage.getItem("imtech-uren-dark") === "1");
+    } catch (_) {}
+  }
+
+  function updatePeriodCustomVisibility() {
+    const mode = state.analyseFilters.periodMode;
+    $("#filter-custom-week")?.classList.toggle("hidden", mode !== "custom_week");
+    $("#filter-custom-month")?.classList.toggle("hidden", mode !== "custom_month");
+    const chartMode = state.analyseFilters.chartMode;
+    const needsYear = chartMode === "week_year" || chartMode === "month_year";
+    $("#filter-chart-year")?.classList.toggle("hidden", !needsYear);
+    document.querySelector(".chart-year-label")?.classList.toggle("hidden", !needsYear);
+    $("#chart-wrap")?.classList.toggle("hidden", chartMode === "none");
   }
 
   async function ensureLoggedIn() {
@@ -379,6 +426,87 @@
     return UrenAnalyse.sortFilterValues(rows, "project");
   }
 
+  function tariefChipSource() {
+    return UrenAnalyse.sortFilterValues(state.entries, "tarief").map((v) =>
+      typeof v === "number" ? v : Number(v)
+    );
+  }
+
+  function renderAnalyseChart(allEntries) {
+    const f = state.analyseFilters;
+    const mode = f.chartMode;
+    const wrap = $("#chart-wrap");
+    const canvas = $("#analyse-chart");
+    if (!wrap || !canvas || typeof Chart === "undefined") return;
+    if (mode === "none") {
+      if (state.chartInstance) {
+        state.chartInstance.destroy();
+        state.chartInstance = null;
+      }
+      wrap.classList.add("hidden");
+      return;
+    }
+    wrap.classList.remove("hidden");
+    const filtered = UrenAnalyse.filterRows(allEntries, f);
+    const year = f.chartYear || UrenAnalyse.chartYearFromRows(filtered);
+    let labels = [];
+    let data = [];
+    let chartType = "bar";
+    let title = "";
+    if (mode === "week_year") {
+      const weeks = UrenAnalyse.aggregateHoursPerIsoWeek(filtered, year);
+      labels = weeks.map((w) => `W${w.week}`);
+      data = weeks.map((w) => w.uren);
+      title = `Uren per ISO-week ${year}`;
+    } else if (mode === "month_year") {
+      const months = UrenAnalyse.aggregateHoursPerMonth(filtered, year);
+      labels = months.map((m) => String(m.month));
+      data = months.map((m) => m.uren);
+      title = `Uren per maand ${year}`;
+    } else if (mode === "og_top") {
+      const ogs = UrenAnalyse.aggregateHoursPerOg(filtered, 10);
+      labels = ogs.map((o) => o.og);
+      data = ogs.map((o) => o.uren);
+      title = "Uren per opdrachtgever";
+    } else if (mode === "cumulative") {
+      const cum = UrenAnalyse.aggregateCumulativeHours(filtered);
+      labels = cum.map((c) => c.label.slice(5));
+      data = cum.map((c) => c.uren);
+      chartType = "line";
+      title = "Cumulatief uren";
+    }
+    const grid = getComputedStyle(document.documentElement).getPropertyValue("--chart-grid").trim();
+    const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    const text = getComputedStyle(document.documentElement).getPropertyValue("--text-secondary").trim();
+    if (state.chartInstance) state.chartInstance.destroy();
+    state.chartInstance = new Chart(canvas, {
+      type: chartType,
+      data: {
+        labels,
+        datasets: [
+          {
+            label: title,
+            data,
+            backgroundColor: chartType === "bar" ? accent : "transparent",
+            borderColor: accent,
+            borderWidth: chartType === "line" ? 2 : 0,
+            fill: chartType === "line",
+            tension: 0.2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, title: { display: !!title, text: title, color: text } },
+        scales: {
+          x: { ticks: { color: text, maxRotation: 45 }, grid: { color: grid } },
+          y: { ticks: { color: text }, grid: { color: grid } },
+        },
+      },
+    });
+  }
+
   function renderAnalyse() {
     if (!state.entries.length) {
       $("#analyse-summary").textContent = "Geen data — ververs uit OneDrive.";
@@ -406,6 +534,52 @@
         else f.selectedProjs.push(val);
       }
     });
+    const chipTr = $("#chips-tarief");
+    if (chipTr) {
+      chipTr.innerHTML = "";
+      const mkTr = (label, onClick, active) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "chip" + (active ? " active" : "");
+        b.textContent = label;
+        b.addEventListener("click", () => {
+          onClick();
+          const nz = $("#filter-tarief-nonzero");
+          if (nz) nz.checked = f.tariefNonZero;
+          renderAnalyse();
+        });
+        chipTr.appendChild(b);
+      };
+      mkTr(
+        "Alles",
+        () => {
+          f.selectedTarieven = [];
+          f.tariefNonZero = false;
+        },
+        !f.selectedTarieven.length && !f.tariefNonZero
+      );
+      mkTr(
+        "Alles behalve 0",
+        () => {
+          f.selectedTarieven = [];
+          f.tariefNonZero = !f.tariefNonZero;
+        },
+        f.tariefNonZero
+      );
+      for (const t of tariefChipSource()) {
+        const active = f.selectedTarieven.includes(t);
+        mkTr(
+          `€${t}`,
+          () => {
+            f.tariefNonZero = false;
+            const i = f.selectedTarieven.indexOf(t);
+            if (i >= 0) f.selectedTarieven.splice(i, 1);
+            else f.selectedTarieven.push(t);
+          },
+          active
+        );
+      }
+    }
     const filtered = UrenAnalyse.filterRows(state.entries, f);
     const sum = UrenAnalyse.summarize(filtered);
     const uniqueDays = UrenAnalyse.countUniqueDays(filtered);
@@ -438,6 +612,8 @@
         locBody.appendChild(tr);
       }
     }
+    updatePeriodCustomVisibility();
+    renderAnalyseChart(state.entries);
   }
 
   function renderAccount() {
@@ -467,6 +643,10 @@
     if (err) {
       showToast(err, true);
       return;
+    }
+    if (!state.editRow) {
+      const similar = UrenInvoer.findSimilarEntries(state.entries, fields);
+      if (similar.length && !confirm(UrenInvoer.formatSimilarWarning(similar))) return;
     }
     try {
       if (state.editRow) {
@@ -542,10 +722,54 @@
       renderAccount();
       setStatus("Uitgelogd");
     });
+    const now = new Date();
+    const iso = isoWeekInfo(now);
+    const wy = $("#filter-week-year");
+    const wn = $("#filter-week-num");
+    const my = $("#filter-month-year");
+    const mn = $("#filter-month-num");
+    if (wy) wy.value = iso.year;
+    if (wn) wn.value = iso.week;
+    if (my) my.value = now.getFullYear();
+    if (mn) mn.value = now.getMonth() + 1;
+    state.analyseFilters.customWeekYear = iso.year;
+    state.analyseFilters.customWeek = iso.week;
+    state.analyseFilters.customYear = now.getFullYear();
+    state.analyseFilters.customMonth = now.getMonth() + 1;
+    state.analyseFilters.chartYear = now.getFullYear();
+    const cy = $("#filter-chart-year");
+    if (cy) cy.value = now.getFullYear();
+
     $("#filter-period")?.addEventListener("change", (e) => {
       state.analyseFilters.periodMode = e.target.value;
+      updatePeriodCustomVisibility();
       renderAnalyse();
     });
+    const syncCustom = () => {
+      state.analyseFilters.customWeekYear = Number($("#filter-week-year")?.value) || iso.year;
+      state.analyseFilters.customWeek = Number($("#filter-week-num")?.value) || 1;
+      state.analyseFilters.customYear = Number($("#filter-month-year")?.value) || now.getFullYear();
+      state.analyseFilters.customMonth = Number($("#filter-month-num")?.value) || 1;
+      renderAnalyse();
+    };
+    ["#filter-week-year", "#filter-week-num", "#filter-month-year", "#filter-month-num"].forEach(
+      (sel) => $(sel)?.addEventListener("change", syncCustom)
+    );
+    $("#filter-tarief-nonzero")?.addEventListener("change", (e) => {
+      state.analyseFilters.tariefNonZero = e.target.checked;
+      if (e.target.checked) state.analyseFilters.selectedTarieven = [];
+      renderAnalyse();
+    });
+    $("#filter-chart")?.addEventListener("change", (e) => {
+      state.analyseFilters.chartMode = e.target.value;
+      updatePeriodCustomVisibility();
+      renderAnalyse();
+    });
+    $("#filter-chart-year")?.addEventListener("change", (e) => {
+      state.analyseFilters.chartYear = Number(e.target.value) || now.getFullYear();
+      renderAnalyse();
+    });
+    $("#toggle-dark-mode")?.addEventListener("change", (e) => applyDarkMode(e.target.checked));
     $("#filter-keyword")?.addEventListener("input", (e) => {
       state.analyseFilters.keyword = e.target.value;
       renderAnalyse();
@@ -557,6 +781,7 @@
   }
 
   async function init() {
+    loadDarkPreference();
     bindEvents();
     UrenCombo.createCombo("field-og", "dl-og", comboOptionsOg, onComboChange);
     UrenCombo.createCombo("field-project", "dl-project", comboOptionsProj, onComboChange);

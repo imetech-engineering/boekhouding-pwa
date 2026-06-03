@@ -39,7 +39,96 @@
       const end = new Date(y, m + 1, 0);
       return { start, end };
     }
+    if (mode === "custom_week") {
+      const y = filters.customWeekYear || t.getFullYear();
+      const w = filters.customWeek || 1;
+      const start = isoWeekStart(y, w);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      return { start, end };
+    }
     return { start: null, end: null };
+  }
+
+  function isoWeekStart(year, week) {
+    const jan4 = new Date(year, 0, 4);
+    const day = jan4.getDay() || 7;
+    const week1Mon = new Date(jan4);
+    week1Mon.setDate(jan4.getDate() - day + 1);
+    const start = new Date(week1Mon);
+    start.setDate(week1Mon.getDate() + (week - 1) * 7);
+    return dateOnly(start);
+  }
+
+  function chartYearFromRows(rows, fallback) {
+    let maxY = fallback || new Date().getFullYear();
+    for (const r of rows) {
+      const d = dateOnly(r.datum);
+      if (d.getFullYear() > maxY) maxY = d.getFullYear();
+    }
+    return maxY;
+  }
+
+  function aggregateHoursPerIsoWeek(rows, year) {
+    const buckets = {};
+    for (const r of rows) {
+      const d = dateOnly(r.datum);
+      const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+      const isoYear = tmp.getUTCFullYear();
+      const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+      const wk = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+      if (isoYear !== year) continue;
+      buckets[wk] = (buckets[wk] || 0) + r.uren;
+    }
+    const out = [];
+    for (let w = 1; w <= 53; w++) {
+      out.push({ week: w, uren: Math.round((buckets[w] || 0) * 100) / 100 });
+    }
+    return out;
+  }
+
+  function aggregateHoursPerMonth(rows, year) {
+    const buckets = {};
+    for (let m = 1; m <= 12; m++) buckets[m] = 0;
+    for (const r of rows) {
+      const d = dateOnly(r.datum);
+      if (d.getFullYear() !== year) continue;
+      buckets[d.getMonth() + 1] += r.uren;
+    }
+    return Object.keys(buckets).map((m) => ({
+      month: Number(m),
+      uren: Math.round(buckets[m] * 100) / 100,
+    }));
+  }
+
+  function aggregateHoursPerOg(rows, topN = 12) {
+    const buckets = {};
+    for (const r of rows) {
+      const og = (r.opdrachtgever || "").trim() || "(geen)";
+      buckets[og] = (buckets[og] || 0) + r.uren;
+    }
+    return Object.entries(buckets)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, topN)
+      .map(([og, uren]) => ({ og, uren: Math.round(uren * 100) / 100 }));
+  }
+
+  function aggregateCumulativeHours(rows) {
+    const daily = {};
+    for (const r of rows) {
+      const d = dateOnly(r.datum);
+      const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      daily[k] = (daily[k] || 0) + r.uren;
+    }
+    const keys = Object.keys(daily).sort();
+    let total = 0;
+    return keys.map((k) => {
+      total += daily[k];
+      const parts = k.split("-").map(Number);
+      const label = `${parts[0]}-${String(parts[1] + 1).padStart(2, "0")}-${String(parts[2]).padStart(2, "0")}`;
+      return { label, uren: Math.round(total * 100) / 100 };
+    });
   }
 
   function filterRows(rows, filters) {
@@ -189,5 +278,11 @@
     periodBounds,
     countUniqueDays,
     aggregateLocations,
+    isoWeekStart,
+    chartYearFromRows,
+    aggregateHoursPerIsoWeek,
+    aggregateHoursPerMonth,
+    aggregateHoursPerOg,
+    aggregateCumulativeHours,
   };
 })(window);

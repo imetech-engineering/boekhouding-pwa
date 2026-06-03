@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#2563EB" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>IMeTech Uren</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  </head>
+  <body>
+    <header class="app-header">
+      <h1>IMeTech Uren</h1>
+      <p id="sync-status" class="sub">—</p>
+    </header>
+
+    <main>
+      <section id="panel-invoer" class="tab-panel">
+        <div class="card">
+          <h2>Nieuwe registratie</h2>
+          <label for="field-datum">Datum</label>
+          <input id="field-datum" type="date" autocomplete="off" />
+
+          <label for="field-og">Opdrachtgever</label>
+          <input id="field-og" list="dl-og" autocomplete="off" />
+          <datalist id="dl-og"></datalist>
+
+          <label for="field-project">Project</label>
+          <input id="field-project" list="dl-project" autocomplete="off" />
+          <datalist id="dl-project"></datalist>
+
+          <label for="field-locatie">Locatie</label>
+          <input id="field-locatie" list="dl-locatie" autocomplete="off" />
+          <datalist id="dl-locatie"></datalist>
+
+          <label for="field-werk">Werkzaamheden</label>
+          <textarea id="field-werk" rows="3"></textarea>
+
+          <div class="row-2">
+            <div>
+              <label for="field-uren">Uren</label>
+              <input id="field-uren" type="number" step="0.25" min="0" inputmode="decimal" />
+            </div>
+            <div>
+              <label for="field-tarief">Tarief €/u</label>
+              <input id="field-tarief" type="number" step="0.01" min="0" inputmode="decimal" />
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button type="button" id="btn-save" class="btn-primary">Opslaan</button>
+            <button type="button" id="btn-clear" class="btn-secondary">Wis</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Historie</h2>
+          <label for="history-search">Zoeken</label>
+          <input id="history-search" type="search" placeholder="Filter historie…" />
+          <ul id="history-list"></ul>
+        </div>
+      </section>
+
+      <section id="panel-analyse" class="tab-panel hidden">
+        <div class="card">
+          <h2>Filters</h2>
+          <label for="filter-period">Periode</label>
+          <select id="filter-period">
+            <option value="alles">Alles</option>
+            <option value="week">Deze week</option>
+            <option value="month" selected>Deze maand</option>
+            <option value="year">Dit jaar</option>
+          </select>
+          <label for="filter-keyword">Zoek in werkzaamheden</label>
+          <input id="filter-keyword" type="search" />
+          <label for="filter-group">Groeperen</label>
+          <select id="filter-group">
+            <option value="none">Per regel</option>
+            <option value="opdrachtgever">Opdrachtgever</option>
+            <option value="project">Project + tarief</option>
+            <option value="week">Week</option>
+            <option value="month">Maand</option>
+          </select>
+          <p class="sub">Opdrachtgever</p>
+          <div id="chips-og" class="chips"></div>
+          <p class="sub">Project</p>
+          <div id="chips-proj" class="chips"></div>
+          <p id="analyse-summary" class="sub"></p>
+        </div>
+        <ul id="analyse-list"></ul>
+      </section>
+
+      <section id="panel-instellingen" class="tab-panel hidden">
+        <div class="card">
+          <h2>Microsoft-account</h2>
+          <p id="account-label">—</p>
+          <div class="btn-row">
+            <button type="button" id="btn-login" class="btn-primary">Inloggen</button>
+            <button type="button" id="btn-logout" class="btn-secondary">Uitloggen</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>OneDrive-sync</h2>
+          <p class="sub">
+            Wijzigingen gebruiken etag-bescherming: bij conflict op PC en telefoon tegelijk
+            krijg je een melding — ververs en probeer opnieuw.
+          </p>
+          <div class="btn-row">
+            <button type="button" id="btn-refresh" class="btn-primary">Ververs uit OneDrive</button>
+          </div>
+          <a id="onedrive-link" class="link hidden" href="#" target="_blank" rel="noopener"
+            >Open bestand in OneDrive</a
+          >
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Hoofdnavigatie">
+      <button type="button" data-tab="invoer" class="active">Invoer</button>
+      <button type="button" data-tab="analyse">Analyse</button>
+      <button type="button" data-tab="instellingen">Instellingen</button>
+    </nav>
+
+    <div id="toast" class="hidden" role="status"></div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3/dist/msal-browser.min.js"></script>
+    <script src="config.example.js"></script>
+    <!-- <script src="config.js"></script> — uncomment after copying config.example.js -->
+    <script src="js/auth.js"></script>
+    <script src="js/graph.js"></script>
+    <script src="js/uren_excel.js"></script>
+    <script src="js/uren_analyse.js"></script>
+    <script src="js/uren_invoer.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

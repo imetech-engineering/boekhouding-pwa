@@ -367,16 +367,16 @@
 
   async function deleteEntry(drivePath, token, sessionId, rowIndex) {
     const layout = await getTableLayout(drivePath, token, sessionId);
-    const tableIndex = excelRowToTableIndex(rowIndex, layout.dataStartRow);
-    if (tableIndex < 0) {
+    if (rowIndex < layout.dataStartRow) {
       throw new Error("Regel niet meer gevonden in Excel (ververs lijsten).");
     }
-    // /rows/{index} returns ApiNotFound on OneDrive — itemAt is required.
+    // Table-row DELETE needs an exclusive lock (423) when Excel is open elsewhere.
+    // Worksheet range delete uses the same API surface as add/update (PATCH) and co-exists better.
     await excelFetch(
       drivePath,
       token,
-      `/tables('${encodeSheet(TABLE)}')/rows/$/itemAt(index=${tableIndex})`,
-      { method: "DELETE" },
+      wsPath(`/range(address='${rowIndex}:${rowIndex}')/delete`),
+      { method: "POST", body: JSON.stringify({ shift: "Up" }) },
       sessionId
     );
   }

@@ -25,6 +25,11 @@
   let msalInstance = null;
 
   function createMsal() {
+    if (typeof msal === "undefined" || !msal.PublicClientApplication) {
+      throw new Error(
+        "MSAL kon niet laden. Ververs de pagina (Ctrl+F5) of controleer je internetverbinding."
+      );
+    }
     const cfg = getConfig();
     return new msal.PublicClientApplication({
       auth: {

@@ -11,6 +11,14 @@
         "config.js ontbreekt of is niet ingevuld. Kopieer config.example.js naar config.js."
       );
     }
+    if (
+      c.azure.authority?.includes("TENANT_ID") ||
+      c.azure.tenantId === "TENANT_ID"
+    ) {
+      throw new Error(
+        "Vul tenantId in config.js in (Azure Portal → Entra ID → Overview → Tenant ID)."
+      );
+    }
     return c;
   }
 

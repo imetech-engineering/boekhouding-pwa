@@ -1,16 +1,16 @@
-const CACHE = "imtech-uren-pwa-v1";
+const CACHE = "imtech-uren-pwa-v2";
 const ASSETS = [
   "./",
   "./index.html",
   "./css/app.css",
   "./manifest.webmanifest",
+  "./config.js",
   "./js/auth.js",
   "./js/graph.js",
   "./js/uren_excel.js",
   "./js/uren_analyse.js",
   "./js/uren_invoer.js",
   "./js/app.js",
-  "./config.example.js",
 ];
 
 self.addEventListener("install", (event) => {

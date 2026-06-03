@@ -5,8 +5,12 @@
 window.UREN_CONFIG = {
   azure: {
     clientId: "9e9bd8db-fc64-46e2-ac72-bf786fff11a6",
-    /** tenantId 'common' — personal + work/school Microsoft accounts */
-    authority: "https://login.microsoftonline.com/common",
+    /**
+     * Single tenant (IMeTech only). Fill TENANT_ID from Azure Portal →
+     * Microsoft Entra ID → Overview → Tenant ID (Directory ID).
+     */
+    tenantId: "TENANT_ID",
+    authority: "https://login.microsoftonline.com/TENANT_ID",
     /**
      * Must match exactly a SPA redirect URI registered in Azure.
      * Dynamic: works on GitHub Pages and localhost without editing.

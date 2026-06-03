@@ -5,8 +5,11 @@
 window.UREN_CONFIG = {
   azure: {
     clientId: "YOUR_AZURE_APPLICATION_CLIENT_ID",
-    /** tenantId 'common' — personal + work/school Microsoft accounts */
-    authority: "https://login.microsoftonline.com/common",
+    /**
+     * Single tenant (org accounts only). From Azure Portal → Entra ID → Overview → Tenant ID.
+     */
+    tenantId: "TENANT_ID",
+    authority: "https://login.microsoftonline.com/TENANT_ID",
     /**
      * Default: current page URL (works for localhost and GitHub Pages).
      * GitHub Pages (project site) — register in Azure e.g. imetech-engineering/uren-pwa:

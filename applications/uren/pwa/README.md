@@ -25,7 +25,7 @@ pwa/
 
 1. Ga naar [Azure Portal](https://portal.azure.com) → **Microsoft Entra ID** → **App registrations** → **New registration**.
 2. Naam: `IMeTech Uren PWA`.
-3. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts** (of alleen persoonlijk, naar wens).
+3. Supported account types: **Accounts in this organizational directory only (IMeTech Engineering)** — single tenant. Vul daarna `tenantId` en `authority` in `config.js` (Tenant ID staat op Entra ID → Overview).
 4. Redirect URI: platform **Single-page application (SPA)** — zie hieronder **HTTPS-URL bepalen** (GitHub Pages).
 5. Na aanmaken: kopieer **Application (client) ID** naar `config.js` (in deze repo: `9e9bd8db-fc64-46e2-ac72-bf786fff11a6`).
 6. **API permissions** → Add permission → Microsoft Graph → **Delegated**:

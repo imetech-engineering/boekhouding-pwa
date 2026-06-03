@@ -27,12 +27,14 @@ pwa/
 2. Naam: `IMeTech Uren PWA`.
 3. Supported account types: **Accounts in any organizational directory and personal Microsoft accounts** (of alleen persoonlijk, naar wens).
 4. Redirect URI: platform **Single-page application (SPA)** — zie hieronder **HTTPS-URL bepalen** (GitHub Pages).
-5. Na aanmaken: kopieer **Application (client) ID** naar `config.js`.
+5. Na aanmaken: kopieer **Application (client) ID** naar `config.js` (in deze repo: `9e9bd8db-fc64-46e2-ac72-bf786fff11a6`).
 6. **API permissions** → Add permission → Microsoft Graph → **Delegated**:
    - `Files.ReadWrite`
    - `User.Read`
 7. Klik **Grant admin consent** alleen nodig als je organisatie dat vereist; voor persoonlijk M365-account meestal niet.
 8. Onder **Authentication**: zorg dat **SPA** redirect URI’s kloppen; geen client secret nodig (PKCE).
+
+**Scopes in code** (`config.js` → `graph.scopes`): `User.Read`, `Files.ReadWrite` — moeten overeenkomen met de delegated permissions hierboven.
 
 ### HTTPS-URL bepalen (GitHub Pages)
 
@@ -46,14 +48,16 @@ In Azure moet **exact dezelfde URL** staan als waar de browser na inloggen naart
 
 | Onderdeel | Waarde |
 |-----------|--------|
-| GitHub-gebruikersnaam | `<GITHUB_GEBRUIKERSNAAM>` (bijv. `ivome`) |
-| Repositorynaam | `<REPO_NAAM>` (bijv. `automatisatie` of `uren-pwa`) |
-| **Site-URL** | `https://<GITHUB_GEBRUIKERSNAAM>.github.io/<REPO_NAAM>/` |
-| **Azure SPA redirect (primair)** | `https://<GITHUB_GEBRUIKERSNAAM>.github.io/<REPO_NAAM>/` |
-| **Azure SPA redirect (extra, aanbevolen)** | `https://<GITHUB_GEBRUIKERSNAAM>.github.io/<REPO_NAAM>/index.html` |
+| GitHub-gebruikersnaam | `imetech-engineering` |
+| Repositorynaam | `uren-pwa` |
+| **Site-URL** | `https://imetech-engineering.github.io/uren-pwa/` |
+| **Azure SPA redirect (primair)** | `https://imetech-engineering.github.io/uren-pwa/` |
+| **Azure SPA redirect (extra, aanbevolen)** | `https://imetech-engineering.github.io/uren-pwa/index.html` |
 | Lokaal testen | `http://localhost:8080/` |
 
-Voorbeeld: repo `https://github.com/ivome/uren-pwa` → Azure redirect: `https://ivome.github.io/uren-pwa/`
+Repo: [imetech-engineering/uren-pwa](https://github.com/imetech-engineering/uren-pwa) → Pages: `https://imetech-engineering.github.io/uren-pwa/`
+
+Controleer in Azure Portal → App registration → **Authentication** → **Single-page application** dat beide HTTPS-redirects **exact** staan (inclusief trailing `/` op de site-root).
 
 **Niet** gebruiken: pad `.../applications/uren/pwa/` op GitHub Pages — de workflow publiceert alleen de inhoud van `applications/uren/pwa/` naar de **root** van de Pages-site, dus het pad is alleen `/<repo>/`.
 
@@ -71,7 +75,7 @@ Vul `clientId` en pas `redirectUri` aan (moet exact overeenkomen met Azure SPA-U
 
 In `index.html`: laad `config.js` i.p.v. `config.example.js`.
 
-**Productie:** `config.js` staat in `.gitignore`. Voor GitHub Pages moet `config.js` wél op de site staan. Opties: **private** repository en eenmalig `git add -f applications/uren/pwa/config.js` committen, of een CI-stap die `config.js` uit GitHub Secrets genereert (alleen client ID is geen geheim, maar liever geen keys in een public repo).
+**Productie:** `config.js` wordt mee gedeployed (SPA client ID is geen geheim). Commit `applications/uren/pwa/config.js` naar de repo zodat GitHub Pages het bestand serveert.
 
 ## Deploy (GitHub Pages)
 

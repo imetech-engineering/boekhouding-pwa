@@ -195,7 +195,7 @@
   }
 
   function isoWeekInfo(d) {
-    const date = dateOnly(d);
+    const date = d instanceof Date ? d : new Date(d);
     const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
     tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
     const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
@@ -226,6 +226,8 @@
     dayEl.textContent = `${dayH.toFixed(1)} u`;
     weekEl.textContent = `${weekH.toFixed(1)} u (week ${weekNo})`;
   }
+
+  function renderHistory() {
     const list = $("#history-list");
     if (!list || !state.intel) return;
     list.innerHTML = "";

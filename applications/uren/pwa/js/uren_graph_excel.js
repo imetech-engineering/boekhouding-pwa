@@ -7,6 +7,8 @@
   const START_ROW = UrenExcel.START_ROW;
   const COL = { DATUM: 0, WEEK: 1, JAAR: 2, OG: 3, PROJ: 4, WERK: 5, LOC: 6, UREN: 7, TARIEF: 8 };
 
+  let cachedLayout = null;
+
   function encodeSheet(name) {
     return name.replace(/'/g, "''");
   }
@@ -46,7 +48,37 @@
     return res;
   }
 
+  function parseRangeTopRow(address) {
+    if (!address) return null;
+    const m = address.match(/(?:'[^']+'!)?\$?([A-Z]+)\$?(\d+)/i);
+    return m ? parseInt(m[2], 10) : null;
+  }
+
+  async function getTableLayout(drivePath, token, sessionId) {
+    if (cachedLayout) return cachedLayout;
+    const rangeData = await excelFetch(
+      drivePath,
+      token,
+      `/tables('${encodeSheet(TABLE)}')/range`,
+      {},
+      sessionId
+    );
+    const headerRow = parseRangeTopRow(rangeData.address) || START_ROW - 1;
+    const dataStartRow = headerRow + 1;
+    cachedLayout = { headerRow, dataStartRow };
+    return cachedLayout;
+  }
+
+  function tableIndexToExcelRow(tableIndex, dataStartRow) {
+    return dataStartRow + tableIndex;
+  }
+
+  function excelRowToTableIndex(excelRow, dataStartRow) {
+    return excelRow - dataStartRow;
+  }
+
   async function withSession(drivePath, token, fn) {
+    cachedLayout = null;
     const created = await excelFetch(
       drivePath,
       token,
@@ -57,6 +89,7 @@
     try {
       return await fn(sessionId);
     } finally {
+      cachedLayout = null;
       try {
         await excelFetch(
           drivePath,
@@ -72,11 +105,15 @@
   async function fetchAllTableRows(drivePath, token, sessionId) {
     const rows = [];
     let path = `/tables('${encodeSheet(TABLE)}')/rows`;
+    let seq = 0;
     while (path) {
       const data = await excelFetch(drivePath, token, path, {}, sessionId);
       for (const r of data.value || []) {
         const vals = r.values?.[0];
-        if (vals) rows.push({ index: r.index, values: vals });
+        if (!vals) continue;
+        const idx = typeof r.index === "number" ? r.index : seq;
+        rows.push({ index: idx, values: vals });
+        seq = idx + 1;
       }
       const next = data["@odata.nextLink"];
       path = next || null;
@@ -85,7 +122,7 @@
     return rows;
   }
 
-  async function readUsedRangeValues(drivePath, token, sessionId) {
+  async function readUsedRangeValues(drivePath, token, sessionId, dataStartRow) {
     const data = await excelFetch(
       drivePath,
       token,
@@ -95,9 +132,9 @@
     );
     const address = data.address || data.text || "";
     const match = address.match(/:I(\d+)/i);
-    const endRow = match ? parseInt(match[1], 10) : START_ROW + 500;
-    if (endRow < START_ROW) return [];
-    const range = wsPath(`/range(address='A${START_ROW}:I${endRow}')`);
+    const endRow = match ? parseInt(match[1], 10) : dataStartRow + 500;
+    if (endRow < dataStartRow) return [];
+    const range = wsPath(`/range(address='A${dataStartRow}:I${endRow}')`);
     const block = await excelFetch(drivePath, token, range, {}, sessionId);
     return block.values || [];
   }
@@ -120,10 +157,19 @@
     return typeof v === "string" && v.trim().toLowerCase() === "totaal";
   }
 
-  function rowIsEmptySlot(datumVal) {
+  function rowIsEmptySlot(datumVal, values) {
     if (cellIsTotaal(datumVal)) return false;
-    if (datumVal == null || datumVal === "") return true;
-    return typeof datumVal === "string" && !String(datumVal).trim();
+    if (datumVal != null && datumVal !== "" && String(datumVal).trim()) return false;
+    if (values) {
+      for (let c = COL.OG; c <= COL.TARIEF; c++) {
+        const v = values[c];
+        if (v == null || v === "") continue;
+        if (typeof v === "number" && v === 0) continue;
+        if (typeof v === "string" && !v.trim()) continue;
+        return false;
+      }
+    }
+    return true;
   }
 
   function rowToEntry(values, excelRow) {
@@ -149,6 +195,9 @@
   }
 
   async function readAllEntries(drivePath, token) {
+    const layout = await getTableLayout(drivePath, token);
+    const { dataStartRow } = layout;
+
     let tableRows = [];
     try {
       tableRows = await fetchAllTableRows(drivePath, token);
@@ -159,22 +208,22 @@
     const entries = [];
     if (tableRows.length) {
       for (const tr of tableRows) {
-        const excelRow = START_ROW + tr.index;
+        const excelRow = tableIndexToExcelRow(tr.index, dataStartRow);
         const entry = rowToEntry(tr.values, excelRow);
         if (entry) entries.push(entry);
       }
       return entries;
     }
 
-    const values = await readUsedRangeValues(drivePath, token);
+    const values = await readUsedRangeValues(drivePath, token, null, dataStartRow);
     for (let i = 0; i < values.length; i++) {
-      const entry = rowToEntry(values[i], START_ROW + i);
+      const entry = rowToEntry(values[i], dataStartRow + i);
       if (entry) entries.push(entry);
     }
     return entries;
   }
 
-  function findAddRow(tableRows, flatValues) {
+  function findAddRow(tableRows, flatValues, dataStartRow) {
     if (tableRows?.length) {
       let lastIdx = tableRows.length - 1;
       while (lastIdx >= 0) {
@@ -187,14 +236,26 @@
       const searchEnd = totaalAtEnd ? lastIdx - 1 : lastIdx;
       for (let i = 0; i <= searchEnd; i++) {
         const d = tableRows[i].values?.[COL.DATUM];
-        if (rowIsEmptySlot(d)) {
-          return { excelRow: START_ROW + tableRows[i].index, needInsert: false };
+        if (rowIsEmptySlot(d, tableRows[i].values)) {
+          return {
+            excelRow: tableIndexToExcelRow(tableRows[i].index, dataStartRow),
+            needInsert: false,
+            insertAtIndex: null,
+          };
         }
       }
-      const insertIndex = totaalAtEnd
+      const insertAtIndex = totaalAtEnd
         ? tableRows[lastIdx].index
-        : tableRows[lastIdx].index + 1;
-      return { excelRow: START_ROW + insertIndex, needInsert: true };
+        : null;
+      const nextIndex = tableRows[lastIdx].index + 1;
+      return {
+        excelRow: tableIndexToExcelRow(
+          insertAtIndex != null ? insertAtIndex : nextIndex,
+          dataStartRow
+        ),
+        needInsert: true,
+        insertAtIndex,
+      };
     }
 
     const values = flatValues || [];
@@ -207,12 +268,20 @@
     const totaalAtEnd = endIdx >= 0 && cellIsTotaal(values[endIdx]?.[COL.DATUM]);
     const searchEnd = totaalAtEnd ? endIdx - 1 : endIdx;
     for (let i = 0; i <= searchEnd; i++) {
-      if (rowIsEmptySlot(values[i]?.[COL.DATUM])) {
-        return { excelRow: START_ROW + i, needInsert: false };
+      if (rowIsEmptySlot(values[i]?.[COL.DATUM], values[i])) {
+        return {
+          excelRow: dataStartRow + i,
+          needInsert: false,
+          insertAtIndex: null,
+        };
       }
     }
     const insertIdx = totaalAtEnd ? endIdx : endIdx + 1;
-    return { excelRow: START_ROW + insertIdx, needInsert: true };
+    return {
+      excelRow: dataStartRow + insertIdx,
+      needInsert: true,
+      insertAtIndex: totaalAtEnd ? endIdx : null,
+    };
   }
 
   function fieldsToDataRow(fields) {
@@ -237,32 +306,36 @@
   }
 
   async function addEntry(drivePath, token, sessionId, fields) {
+    const layout = await getTableLayout(drivePath, token, sessionId);
     const tableRows = await fetchAllTableRows(drivePath, token, sessionId);
-    const { excelRow, needInsert } = findAddRow(tableRows, null);
+    const { excelRow, needInsert, insertAtIndex } = findAddRow(
+      tableRows,
+      null,
+      layout.dataStartRow
+    );
 
     if (needInsert) {
+      const payload = {
+        values: [
+          [
+            fields.datumStr,
+            null,
+            null,
+            fields.opdrachtgever || "",
+            fields.project || "",
+            fields.werkzaamheden || "",
+            fields.locatie || "",
+            Number(fields.uren) || 0,
+            Number(fields.tarief) || 0,
+          ],
+        ],
+      };
+      if (insertAtIndex != null) payload.index = insertAtIndex;
       await excelFetch(
         drivePath,
         token,
         `/tables('${encodeSheet(TABLE)}')/rows/add`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            values: [
-              [
-                fields.datumStr,
-                null,
-                null,
-                fields.opdrachtgever || "",
-                fields.project || "",
-                fields.werkzaamheden || "",
-                fields.locatie || "",
-                Number(fields.uren) || 0,
-                Number(fields.tarief) || 0,
-              ],
-            ],
-          }),
-        },
+        { method: "POST", body: JSON.stringify(payload) },
         sessionId
       );
     } else {
@@ -278,7 +351,8 @@
   }
 
   async function updateEntry(drivePath, token, sessionId, rowIndex, fields) {
-    if (rowIndex < START_ROW) {
+    const layout = await getTableLayout(drivePath, token, sessionId);
+    if (rowIndex < layout.dataStartRow) {
       throw new Error("Regel niet meer gevonden in Excel (ververs lijsten).");
     }
     await patchRange(drivePath, token, sessionId, `A${rowIndex}`, [[fields.datumStr]]);
@@ -292,7 +366,8 @@
   }
 
   async function deleteEntry(drivePath, token, sessionId, rowIndex) {
-    const tableIndex = rowIndex - START_ROW;
+    const layout = await getTableLayout(drivePath, token, sessionId);
+    const tableIndex = excelRowToTableIndex(rowIndex, layout.dataStartRow);
     if (tableIndex < 0) {
       throw new Error("Regel niet meer gevonden in Excel (ververs lijsten).");
     }

@@ -1,13 +1,11 @@
 /**
  * Excel I/O via Microsoft Graph Workbook API — preserves formatting, tables and formulas.
- * Does NOT re-upload the whole .xlsx (unlike SheetJS).
  */
 (function (global) {
   const SHEET = UrenExcel.SHEET_NAME;
   const TABLE = UrenExcel.TABLE_NAME;
   const START_ROW = UrenExcel.START_ROW;
   const COL = { DATUM: 0, WEEK: 1, JAAR: 2, OG: 3, PROJ: 4, WERK: 5, LOC: 6, UREN: 7, TARIEF: 8 };
-  const MAX_SCAN_ROW = 800;
 
   function encodeSheet(name) {
     return name.replace(/'/g, "''");
@@ -17,8 +15,13 @@
     return `/worksheets('${encodeSheet(SHEET)}')${suffix}`;
   }
 
+  function workbookUrl(drivePath, suffix) {
+    if (suffix.startsWith("http")) return suffix;
+    return `${UrenGraph.itemUrl(drivePath)}:/workbook${suffix}`;
+  }
+
   async function excelFetch(drivePath, token, suffix, options = {}, sessionId) {
-    const url = `${UrenGraph.itemUrl(drivePath)}:/workbook${suffix}`;
+    const url = workbookUrl(drivePath, suffix);
     const headers = { ...(options.headers || {}) };
     if (sessionId) headers["workbook-session-id"] = sessionId;
     if (options.body && !headers["Content-Type"]) {
@@ -64,6 +67,39 @@
         );
       } catch (_) {}
     }
+  }
+
+  async function fetchAllTableRows(drivePath, token, sessionId) {
+    const rows = [];
+    let path = `/tables('${encodeSheet(TABLE)}')/rows`;
+    while (path) {
+      const data = await excelFetch(drivePath, token, path, {}, sessionId);
+      for (const r of data.value || []) {
+        const vals = r.values?.[0];
+        if (vals) rows.push({ index: r.index, values: vals });
+      }
+      const next = data["@odata.nextLink"];
+      path = next || null;
+    }
+    rows.sort((a, b) => a.index - b.index);
+    return rows;
+  }
+
+  async function readUsedRangeValues(drivePath, token, sessionId) {
+    const data = await excelFetch(
+      drivePath,
+      token,
+      wsPath("/usedRange(valuesOnly=true)"),
+      {},
+      sessionId
+    );
+    const address = data.address || data.text || "";
+    const match = address.match(/:I(\d+)/i);
+    const endRow = match ? parseInt(match[1], 10) : START_ROW + 500;
+    if (endRow < START_ROW) return [];
+    const range = wsPath(`/range(address='A${START_ROW}:I${endRow}')`);
+    const block = await excelFetch(drivePath, token, range, {}, sessionId);
+    return block.values || [];
   }
 
   function parseGraphDate(v) {
@@ -113,31 +149,65 @@
   }
 
   async function readAllEntries(drivePath, token) {
-    const range = wsPath(`/range(address='A${START_ROW}:I${MAX_SCAN_ROW}')`);
-    const data = await excelFetch(drivePath, token, range);
+    let tableRows = [];
+    try {
+      tableRows = await fetchAllTableRows(drivePath, token);
+    } catch (_) {
+      tableRows = [];
+    }
+
     const entries = [];
-    const rows = data.values || [];
-    for (let i = 0; i < rows.length; i++) {
-      const excelRow = START_ROW + i;
-      const entry = rowToEntry(rows[i], excelRow);
+    if (tableRows.length) {
+      for (const tr of tableRows) {
+        const excelRow = START_ROW + tr.index;
+        const entry = rowToEntry(tr.values, excelRow);
+        if (entry) entries.push(entry);
+      }
+      return entries;
+    }
+
+    const values = await readUsedRangeValues(drivePath, token);
+    for (let i = 0; i < values.length; i++) {
+      const entry = rowToEntry(values[i], START_ROW + i);
       if (entry) entries.push(entry);
     }
     return entries;
   }
 
-  function findAddRow(values) {
+  function findAddRow(tableRows, flatValues) {
+    if (tableRows?.length) {
+      let lastIdx = tableRows.length - 1;
+      while (lastIdx >= 0) {
+        const v = tableRows[lastIdx].values;
+        if (v && v.some((c) => c != null && c !== "")) break;
+        lastIdx--;
+      }
+      const totaalAtEnd =
+        lastIdx >= 0 && cellIsTotaal(tableRows[lastIdx].values?.[COL.DATUM]);
+      const searchEnd = totaalAtEnd ? lastIdx - 1 : lastIdx;
+      for (let i = 0; i <= searchEnd; i++) {
+        const d = tableRows[i].values?.[COL.DATUM];
+        if (rowIsEmptySlot(d)) {
+          return { excelRow: START_ROW + tableRows[i].index, needInsert: false };
+        }
+      }
+      const insertIndex = totaalAtEnd
+        ? tableRows[lastIdx].index
+        : tableRows[lastIdx].index + 1;
+      return { excelRow: START_ROW + insertIndex, needInsert: true };
+    }
+
+    const values = flatValues || [];
     let endIdx = values.length - 1;
     while (endIdx >= 0) {
       const row = values[endIdx];
       if (row && row.some((c) => c != null && c !== "")) break;
       endIdx--;
     }
-    const totaalAtEnd =
-      endIdx >= 0 && cellIsTotaal(values[endIdx]?.[COL.DATUM]);
+    const totaalAtEnd = endIdx >= 0 && cellIsTotaal(values[endIdx]?.[COL.DATUM]);
     const searchEnd = totaalAtEnd ? endIdx - 1 : endIdx;
     for (let i = 0; i <= searchEnd; i++) {
-      const d = values[i]?.[COL.DATUM];
-      if (rowIsEmptySlot(d)) {
+      if (rowIsEmptySlot(values[i]?.[COL.DATUM])) {
         return { excelRow: START_ROW + i, needInsert: false };
       }
     }
@@ -167,9 +237,8 @@
   }
 
   async function addEntry(drivePath, token, sessionId, fields) {
-    const range = wsPath(`/range(address='A${START_ROW}:I${MAX_SCAN_ROW}')`);
-    const data = await excelFetch(drivePath, token, range, {}, sessionId);
-    const { excelRow, needInsert } = findAddRow(data.values || []);
+    const tableRows = await fetchAllTableRows(drivePath, token, sessionId);
+    const { excelRow, needInsert } = findAddRow(tableRows, null);
 
     if (needInsert) {
       await excelFetch(

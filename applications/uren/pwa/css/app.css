@@ -257,23 +257,55 @@ button {
 
 .btn-combo {
   flex: 0 0 auto;
-  min-width: 72px;
-  padding: 8px 10px;
-  font-size: 0.8125rem;
-  white-space: nowrap;
+  min-width: var(--touch);
+  width: var(--touch);
+  padding: 8px;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.combo-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(26, 26, 24, 0.25);
 }
 
 .combo-popup {
-  position: absolute;
-  z-index: 40;
+  position: fixed;
+  z-index: 50;
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  max-height: 50vh;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  max-height: 55vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.combo-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 0;
+}
+
+.combo-popup-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.combo-close {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
 }
 
 .combo-search {

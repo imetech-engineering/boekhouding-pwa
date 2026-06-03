@@ -132,6 +132,7 @@
   }
 
   function onComboChange() {
+    renderDatalists();
     const t = UrenInvoer.suggestTarief(
       state.intel,
       $("#field-og")?.value,
@@ -164,6 +165,23 @@
       $("#field-og")?.value,
       $("#field-project")?.value
     );
+  }
+
+  function renderDatalists() {
+    if (!state.intel) return;
+    const fill = (id, items) => {
+      const dl = document.getElementById(id);
+      if (!dl) return;
+      dl.innerHTML = "";
+      for (const n of items) {
+        const o = document.createElement("option");
+        o.value = n;
+        dl.appendChild(o);
+      }
+    };
+    fill("dl-og", comboOptionsOg());
+    fill("dl-project", comboOptionsProj());
+    fill("dl-locatie", comboOptionsLoc());
   }
 
   function adjustHours(delta) {
@@ -301,6 +319,7 @@
   }
 
   function renderInvoer() {
+    renderDatalists();
     renderHistory();
     updateInvoerStats();
     if (!state.editRow) {
@@ -502,6 +521,8 @@
       }
     });
     $("#history-search")?.addEventListener("input", renderHistory);
+    $("#field-og")?.addEventListener("input", renderDatalists);
+    $("#field-project")?.addEventListener("input", renderDatalists);
     $("#field-og")?.addEventListener("change", onComboChange);
     $("#field-project")?.addEventListener("change", onComboChange);
     $("#field-locatie")?.addEventListener("change", onComboChange);
@@ -537,9 +558,9 @@
 
   async function init() {
     bindEvents();
-    UrenCombo.createCombo("field-og", comboOptionsOg, onComboChange);
-    UrenCombo.createCombo("field-project", comboOptionsProj, onComboChange);
-    UrenCombo.createCombo("field-locatie", comboOptionsLoc, onComboChange);
+    UrenCombo.createCombo("field-og", "dl-og", comboOptionsOg, onComboChange);
+    UrenCombo.createCombo("field-project", "dl-project", comboOptionsProj, onComboChange);
+    UrenCombo.createCombo("field-locatie", "dl-locatie", comboOptionsLoc, onComboChange);
     UrenInstall.init(switchTab);
     switchTab("invoer");
     try {

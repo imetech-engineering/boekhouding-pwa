@@ -280,6 +280,16 @@
     return writeWorkbookBytes(wb);
   }
 
+  function bumpContextList(bucket, key, value, uren, dt) {
+    if (!key || !value) return;
+    if (!bucket[key]) bucket[key] = {};
+    const s = bucket[key][value] || { count: 0, uren: 0, last: null };
+    s.count += 1;
+    s.uren += uren;
+    if (!s.last || dt > s.last) s.last = dt;
+    bucket[key][value] = s;
+  }
+
   function buildIntel(entries) {
     const intel = {
       history: [...entries].reverse(),
@@ -288,9 +298,13 @@
       loc_usage: {},
       projects_by_og: {},
       locaties_by_og: {},
+      locaties_by_og_proj: {},
+      werk_by_context: {},
+      last_combo: {},
       all_opdrachtgevers: [],
       all_projects: [],
       all_locaties: [],
+      all_werk: [],
       tarieven_pair: {},
     };
     const bump = (map, key, uren, dt) => {
@@ -305,15 +319,29 @@
     };
     for (const e of entries) {
       const dt = e.datum;
-      bump(intel.og_usage, e.opdrachtgever, e.uren, dt);
-      bump(intel.proj_usage, e.project, e.uren, dt);
-      bump(intel.loc_usage, e.locatie, e.uren, dt);
-      uniq(intel.all_opdrachtgevers, e.opdrachtgever);
-      uniq(intel.all_projects, e.project);
-      uniq(intel.all_locaties, e.locatie);
-      if (e.opdrachtgever && e.project) {
-        intel.tarieven_pair[`${e.opdrachtgever}\0${e.project}`] = e.tarief;
+      const og = e.opdrachtgever;
+      const proj = e.project;
+      const loc = e.locatie;
+      const wz = e.werkzaamheden;
+      bump(intel.og_usage, og, e.uren, dt);
+      bump(intel.proj_usage, proj, e.uren, dt);
+      bump(intel.loc_usage, loc, e.uren, dt);
+      uniq(intel.all_opdrachtgevers, og);
+      uniq(intel.all_projects, proj);
+      uniq(intel.all_locaties, loc);
+      if (og) {
+        bumpContextList(intel.projects_by_og, og, proj, e.uren, dt);
+        bumpContextList(intel.locaties_by_og, og, loc, e.uren, dt);
       }
+      if (og && proj) {
+        bumpContextList(intel.locaties_by_og_proj, `${og}\0${proj}`, loc, e.uren, dt);
+        intel.last_combo[`${og}\0${proj}`] = e;
+        intel.tarieven_pair[`${og}\0${proj}`] = e.tarief;
+      }
+      if (og && proj && loc && wz) {
+        bumpContextList(intel.werk_by_context, `${og}\0${proj}\0${loc}`, wz, e.uren, dt);
+      }
+      if (wz && !intel.all_werk.includes(wz)) intel.all_werk.push(wz);
     }
     return intel;
   }

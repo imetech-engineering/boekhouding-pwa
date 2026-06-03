@@ -15,6 +15,16 @@
     <link rel="icon" href="icons/icon-192.png" type="image/png" />
   </head>
   <body>
+    <div id="install-banner" class="install-banner hidden" role="dialog" aria-label="App installeren">
+      <div class="install-banner-inner">
+        <p><strong>Installeer IMeTech Uren</strong> op je startscherm voor snelle toegang.</p>
+        <div class="install-banner-actions">
+          <button type="button" id="btn-install" class="btn-primary">Installeren</button>
+          <button type="button" id="btn-install-dismiss" class="btn-secondary">Later</button>
+        </div>
+      </div>
+    </div>
+
     <header class="app-header">
       <h1>IMeTech Uren</h1>
       <p id="sync-status" class="sub">—</p>
@@ -25,7 +35,11 @@
         <div class="card">
           <h2>Nieuwe registratie</h2>
           <label for="field-datum">Datum</label>
-          <input id="field-datum" type="date" autocomplete="off" />
+          <div class="date-row">
+            <button type="button" id="btn-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
+            <input id="field-datum" type="date" autocomplete="off" />
+            <button type="button" id="btn-date-next" class="btn-secondary btn-compact" aria-label="Volgende dag">▶</button>
+          </div>
 
           <label for="field-og">Opdrachtgever</label>
           <input id="field-og" list="dl-og" autocomplete="off" />
@@ -61,8 +75,11 @@
 
         <div class="card">
           <h2>Historie</h2>
-          <label for="history-search">Zoeken</label>
-          <input id="history-search" type="search" placeholder="Filter historie…" />
+          <div class="hist-toolbar">
+            <input id="history-search" type="search" placeholder="Filter historie…" />
+            <button type="button" id="btn-history-apply" class="btn-secondary btn-compact">↩ Overnemen</button>
+          </div>
+          <p id="history-status" class="sub hist-hint">Tik een regel of dubbeltik om over te nemen naar vandaag.</p>
           <ul id="history-list"></ul>
         </div>
       </section>
@@ -106,6 +123,16 @@
           </div>
         </div>
         <div class="card">
+          <h2>App installeren</h2>
+          <p id="install-manual" class="sub hidden">
+            Geen installatie-knop zichtbaar? In Chrome: menu (⋮) →
+            <strong>Toevoegen aan startscherm</strong> of <strong>App installeren</strong>.
+          </p>
+          <div class="btn-row">
+            <button type="button" id="btn-install-settings" class="btn-primary">Installeren op startscherm</button>
+          </div>
+        </div>
+        <div class="card">
           <h2>OneDrive-sync</h2>
           <p class="sub">
             Wijzigingen gebruiken etag-bescherming: bij conflict op PC en telefoon tegelijk
@@ -137,6 +164,7 @@
     <script src="js/uren_excel.js"></script>
     <script src="js/uren_analyse.js"></script>
     <script src="js/uren_invoer.js"></script>
+    <script src="js/install.js"></script>
     <script src="js/app.js"></script>
   </body>
 </html>

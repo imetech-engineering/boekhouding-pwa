@@ -1,4 +1,4 @@
-const CACHE = "imtech-uren-pwa-v3";
+const CACHE = "imtech-uren-pwa-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,6 +10,7 @@ const ASSETS = [
   "./js/uren_excel.js",
   "./js/uren_analyse.js",
   "./js/uren_invoer.js",
+  "./js/install.js",
   "./js/app.js",
 ];
 

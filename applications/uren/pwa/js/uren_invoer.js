@@ -34,6 +34,44 @@
     return `${entry.datumStr} | ${entry.opdrachtgever} | ${entry.project} | ${entry.locatie} | ${wz} | ${entry.uren} u × €${entry.tarief}`;
   }
 
+  function sortContextValues(bucket, key) {
+    const map = bucket?.[key];
+    if (!map) return [];
+    return Object.keys(map).sort((a, b) => {
+      const sa = map[a];
+      const sb = map[b];
+      const la = sa.last ? sa.last.getTime() : 0;
+      const lb = sb.last ? sb.last.getTime() : 0;
+      if (sb.uren !== sa.uren) return sb.uren - sa.uren;
+      if (sb.count !== sa.count) return sb.count - sa.count;
+      if (lb !== la) return lb - la;
+      return a.localeCompare(b);
+    });
+  }
+
+  function smartProjects(intel, og) {
+    if (!intel) return [];
+    og = (og || "").trim();
+    if (og && intel.projects_by_og?.[og]) {
+      return sortContextValues(intel.projects_by_og, og);
+    }
+    return sortByUsage(intel.proj_usage, intel.all_projects);
+  }
+
+  function smartLocaties(intel, og, project) {
+    if (!intel) return [];
+    og = (og || "").trim();
+    project = (project || "").trim();
+    const pairKey = `${og}\0${project}`;
+    if (og && project && intel.locaties_by_og_proj?.[pairKey]) {
+      return sortContextValues(intel.locaties_by_og_proj, pairKey);
+    }
+    if (og && intel.locaties_by_og?.[og]) {
+      return sortContextValues(intel.locaties_by_og, og);
+    }
+    return sortByUsage(intel.loc_usage, intel.all_locaties);
+  }
+
   function validateForm(fields) {
     if (!fields.datumStr) return "Datum is verplicht.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fields.datumStr)) return "Datum formaat: JJJJ-MM-DD.";
@@ -45,6 +83,9 @@
 
   global.UrenInvoer = {
     sortByUsage,
+    sortContextValues,
+    smartProjects,
+    smartLocaties,
     filterSuggestions,
     suggestTarief,
     formatHistoryLine,

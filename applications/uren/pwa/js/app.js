@@ -13,6 +13,7 @@
     loading: false,
     syncStatus: "Nog niet geladen",
     editRow: null,
+    selectedHistoryRow: null,
     analyseFilters: {
       periodMode: "month",
       keyword: "",
@@ -148,18 +149,40 @@
         dl.appendChild(o);
       }
     };
+    const og = ($("#field-og")?.value || "").trim();
+    const proj = ($("#field-project")?.value || "").trim();
     fill(
       ogDl,
       UrenInvoer.sortByUsage(state.intel.og_usage, state.intel.all_opdrachtgevers)
     );
-    fill(
-      prDl,
-      UrenInvoer.sortByUsage(state.intel.proj_usage, state.intel.all_projects)
-    );
-    fill(
-      locDl,
-      UrenInvoer.sortByUsage(state.intel.loc_usage, state.intel.all_locaties)
-    );
+    fill(prDl, UrenInvoer.smartProjects(state.intel, og));
+    fill(locDl, UrenInvoer.smartLocaties(state.intel, og, proj));
+  }
+
+  function applyHistoryToForm(entry, focusWerk = false) {
+    if (!entry) return;
+    state.editRow = null;
+    $("#btn-save").textContent = "Opslaan";
+    const today = UrenExcel.formatDateIso(new Date());
+    if (!$("#field-datum").value) $("#field-datum").value = today;
+    $("#field-og").value = entry.opdrachtgever || "";
+    $("#field-project").value = entry.project || "";
+    $("#field-locatie").value = entry.locatie || "";
+    $("#field-werk").value = entry.werkzaamheden || "";
+    $("#field-uren").value = entry.uren ?? "";
+    $("#field-tarief").value = entry.tarief ?? "";
+    renderDatalists();
+    switchTab("invoer");
+    showToast("Regel overgenomen — datum blijft vandaag");
+    if (focusWerk) $("#field-werk")?.focus();
+    else $("#field-uren")?.focus();
+  }
+
+  function applySelectedHistory() {
+    const row = state.selectedHistoryRow;
+    const entry = row != null ? state.entries.find((x) => x.row_index === row) : null;
+    if (entry) applyHistoryToForm(entry, true);
+    else showToast("Selecteer eerst een regel in de historie", true);
   }
 
   function renderHistory() {
@@ -173,25 +196,63 @@
         UrenInvoer.formatHistoryLine(e).toLowerCase().includes(q)
       );
     }
+    const totalMatched = items.length;
     items = items.slice(0, 80);
+    if (state.selectedHistoryRow != null && !items.some((e) => e.row_index === state.selectedHistoryRow)) {
+      state.selectedHistoryRow = null;
+    }
     for (const e of items) {
       const li = document.createElement("li");
       li.className = "history-item";
+      if (e.row_index === state.selectedHistoryRow) li.classList.add("selected");
+      li.dataset.row = String(e.row_index);
       li.innerHTML = `<span class="history-text">${UrenInvoer.formatHistoryLine(e)}</span>
         <span class="history-actions">
+          <button type="button" data-act="apply" data-row="${e.row_index}">Overnemen</button>
           <button type="button" data-act="edit" data-row="${e.row_index}">Bewerk</button>
           <button type="button" data-act="del" data-row="${e.row_index}">Verwijder</button>
         </span>`;
+      li.addEventListener("dblclick", (ev) => {
+        if (ev.target.closest("button")) return;
+        applyHistoryToForm(e, true);
+      });
+      li.addEventListener("click", (ev) => {
+        if (ev.target.closest("button")) return;
+        const now = Date.now();
+        if (
+          renderHistory._lastTap?.row === e.row_index &&
+          now - renderHistory._lastTap.t < 450
+        ) {
+          applyHistoryToForm(e, true);
+          renderHistory._lastTap = null;
+          return;
+        }
+        renderHistory._lastTap = { row: e.row_index, t: now };
+        state.selectedHistoryRow = e.row_index;
+        renderHistory();
+      });
       list.appendChild(li);
     }
+    const status = $("#history-status");
+    if (status) {
+      if (!totalMatched) status.textContent = "Geen historie gevonden.";
+      else if (totalMatched > items.length)
+        status.textContent = `${items.length} van ${totalMatched} — dubbeltik of Overnemen voor vandaag.`;
+      else status.textContent = `${totalMatched} regels — dubbeltik of Overnemen voor vandaag.`;
+    }
     list.querySelectorAll("button").forEach((btn) => {
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
         const row = Number(btn.dataset.row);
         const entry = state.entries.find((x) => x.row_index === row);
-        if (btn.dataset.act === "edit" && entry) {
+        if (btn.dataset.act === "apply" && entry) {
+          applyHistoryToForm(entry, true);
+        } else if (btn.dataset.act === "edit" && entry) {
           state.editRow = row;
+          state.selectedHistoryRow = row;
           fillForm(entry);
           $("#btn-save").textContent = "Bijwerken";
+          switchTab("invoer");
         } else if (btn.dataset.act === "del") {
           if (!confirm("Regel verwijderen uit Excel?")) return;
           try {
@@ -241,6 +302,27 @@
     return typeof v === "number" ? v : v;
   }
 
+  function pruneProjectSelection() {
+    const f = state.analyseFilters;
+    if (!f.selectedOgs.length) return;
+    const valid = new Set(
+      state.entries
+        .filter((r) => r.project && f.selectedOgs.includes(r.opdrachtgever))
+        .map((r) => r.project)
+    );
+    f.selectedProjs = f.selectedProjs.filter((p) => valid.has(p));
+  }
+
+  function projectChipSource() {
+    const f = state.analyseFilters;
+    const rows = state.entries.filter(
+      (r) =>
+        r.project &&
+        (f.selectedOgs.length === 0 || f.selectedOgs.includes(r.opdrachtgever))
+    );
+    return UrenAnalyse.sortFilterValues(rows, "project");
+  }
+
   function renderAnalyse() {
     if (!state.entries.length) {
       $("#analyse-summary").textContent = "Geen data — ververs uit OneDrive.";
@@ -249,7 +331,6 @@
     }
     const f = state.analyseFilters;
     const ogs = UrenAnalyse.sortFilterValues(state.entries, "opdrachtgever");
-    const projs = UrenAnalyse.sortFilterValues(state.entries, "project");
     renderChipRow("#chips-og", ogs, f.selectedOgs, (val) => {
       if (val == null) f.selectedOgs = [];
       else {
@@ -257,8 +338,10 @@
         if (i >= 0) f.selectedOgs.splice(i, 1);
         else f.selectedOgs.push(val);
       }
+      pruneProjectSelection();
+      renderAnalyse();
     });
-    renderChipRow("#chips-proj", projs, f.selectedProjs, (val) => {
+    renderChipRow("#chips-proj", projectChipSource(), f.selectedProjs, (val) => {
       if (val == null) f.selectedProjs = [];
       else {
         const i = f.selectedProjs.indexOf(val);
@@ -330,6 +413,14 @@
     } catch (_) {}
   }
 
+  function adjustDate(deltaDays) {
+    const el = $("#field-datum");
+    if (!el?.value) return;
+    const d = new Date(el.value + "T12:00:00");
+    d.setDate(d.getDate() + deltaDays);
+    el.value = UrenExcel.formatDateIso(d);
+  }
+
   function bindEvents() {
     document.querySelectorAll(".bottom-nav button").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
@@ -337,11 +428,16 @@
     $("#btn-save")?.addEventListener("click", onSave);
     $("#btn-clear")?.addEventListener("click", () => {
       state.editRow = null;
+      state.selectedHistoryRow = null;
       $("#btn-save").textContent = "Opslaan";
       fillForm(null);
     });
+    $("#btn-date-prev")?.addEventListener("click", () => adjustDate(-1));
+    $("#btn-date-next")?.addEventListener("click", () => adjustDate(1));
+    $("#btn-history-apply")?.addEventListener("click", applySelectedHistory);
     $("#btn-refresh")?.addEventListener("click", () => refreshFromCloud().catch(() => {}));
     $("#history-search")?.addEventListener("input", renderHistory);
+    $("#field-og")?.addEventListener("input", renderDatalists);
     $("#field-og")?.addEventListener("change", () => {
       const t = UrenInvoer.suggestTarief(
         state.intel,
@@ -349,7 +445,9 @@
         $("#field-project").value
       );
       if (t !== "") $("#field-tarief").value = t;
+      renderDatalists();
     });
+    $("#field-project")?.addEventListener("input", renderDatalists);
     $("#field-project")?.addEventListener("change", () => {
       const t = UrenInvoer.suggestTarief(
         state.intel,
@@ -357,6 +455,14 @@
         $("#field-project").value
       );
       if (t !== "") $("#field-tarief").value = t;
+      renderDatalists();
+      const og = ($("#field-og").value || "").trim();
+      const proj = ($("#field-project").value || "").trim();
+      const combo = state.intel?.last_combo?.[`${og}\0${proj}`];
+      if (combo) {
+        if (!$("#field-locatie").value && combo.locatie) $("#field-locatie").value = combo.locatie;
+        if (!$("#field-werk").value && combo.werkzaamheden) $("#field-werk").value = combo.werkzaamheden;
+      }
     });
     $("#btn-login")?.addEventListener("click", async () => {
       try {
@@ -390,6 +496,7 @@
 
   async function init() {
     bindEvents();
+    UrenInstall.init(switchTab);
     switchTab("invoer");
     try {
       await UrenAuth.getMsal();

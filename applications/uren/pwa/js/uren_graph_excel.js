@@ -370,15 +370,10 @@
     if (rowIndex < layout.dataStartRow) {
       throw new Error("Regel niet meer gevonden in Excel (ververs lijsten).");
     }
-    // Table-row DELETE needs an exclusive lock (423) when Excel is open elsewhere.
-    // Worksheet range delete uses the same API surface as add/update (PATCH) and co-exists better.
-    await excelFetch(
-      drivePath,
-      token,
-      wsPath(`/range(address='${rowIndex}:${rowIndex}')/delete`),
-      { method: "POST", body: JSON.stringify({ shift: "Up" }) },
-      sessionId
-    );
+    // Leegschrijven i.p.v. rij DELETE — zelfde PATCH-pad als toevoegen/bewerken, geen vergrendeling.
+    await patchRange(drivePath, token, sessionId, `A${rowIndex}:I${rowIndex}`, [
+      ["", "", "", "", "", "", "", "", ""],
+    ]);
   }
 
   global.UrenGraphExcel = {

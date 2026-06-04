@@ -1,9 +1,8 @@
 /**
  * MSAL browser auth (OAuth 2.0 PKCE) for Microsoft Graph.
+ * Tokens/account persist in localStorage so PWA stays logged in after restart.
  */
 (function (global) {
-  const STORAGE_ACCOUNT = "uren_msal_account";
-
   function getConfig() {
     const c = global.UREN_CONFIG;
     if (!c?.azure?.clientId || c.azure.clientId.startsWith("YOUR_")) {
@@ -38,10 +37,22 @@
         redirectUri: cfg.azure.redirectUri,
       },
       cache: {
-        cacheLocation: "sessionStorage",
-        storeAuthStateInCookie: false,
+        cacheLocation: "localStorage",
+        storeAuthStateInCookie: true,
       },
     });
+  }
+
+  function pickAccount(instance) {
+    return instance.getActiveAccount() || instance.getAllAccounts()[0] || null;
+  }
+
+  function ensureActiveAccount(instance) {
+    const acc = pickAccount(instance);
+    if (acc && !instance.getActiveAccount()) {
+      instance.setActiveAccount(acc);
+    }
+    return acc;
   }
 
   async function getMsal() {
@@ -50,21 +61,17 @@
       await msalInstance.initialize();
       const resp = await msalInstance.handleRedirectPromise();
       if (resp?.account) {
-        sessionStorage.setItem(STORAGE_ACCOUNT, JSON.stringify(resp.account));
+        msalInstance.setActiveAccount(resp.account);
+      } else {
+        ensureActiveAccount(msalInstance);
       }
     }
     return msalInstance;
   }
 
   function activeAccount() {
-    const accounts = msalInstance?.getAllAccounts() || [];
-    if (accounts.length) return accounts[0];
-    try {
-      const raw = sessionStorage.getItem(STORAGE_ACCOUNT);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
+    if (!msalInstance) return null;
+    return pickAccount(msalInstance);
   }
 
   async function login() {
@@ -73,7 +80,7 @@
     try {
       const result = await instance.loginPopup({ scopes, prompt: "select_account" });
       if (result?.account) {
-        sessionStorage.setItem(STORAGE_ACCOUNT, JSON.stringify(result.account));
+        instance.setActiveAccount(result.account);
       }
       return result;
     } catch (e) {
@@ -86,20 +93,16 @@
   async function logout() {
     const instance = await getMsal();
     const account = activeAccount();
-    sessionStorage.removeItem(STORAGE_ACCOUNT);
     if (account) {
       await instance.logoutPopup({ account });
     }
+    instance.setActiveAccount(null);
   }
 
   async function acquireToken() {
     const instance = await getMsal();
     const scopes = getConfig().graph.scopes;
-    let account = activeAccount();
-    if (!account) {
-      const all = instance.getAllAccounts();
-      account = all[0] || null;
-    }
+    let account = ensureActiveAccount(instance);
     if (!account) {
       throw new Error("Niet ingelogd. Log in via Instellingen.");
     }
@@ -118,7 +121,8 @@
   }
 
   function isLoggedIn() {
-    return !!activeAccount() || (msalInstance?.getAllAccounts()?.length > 0);
+    if (!msalInstance) return false;
+    return msalInstance.getAllAccounts().length > 0;
   }
 
   global.UrenAuth = {

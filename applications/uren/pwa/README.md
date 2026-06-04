@@ -128,7 +128,7 @@ Alternatief: [Azure Static Web Apps](https://azure.microsoft.com/products/web-ap
 1. Deploy de PWA naar HTTPS.
 2. Open **Chrome** → ga naar de PWA-URL (`https://<GITHUB_GEBRUIKERSNAAM>.github.io/<REPO_NAAM>/`).
 3. Zorg dat `config.js` op de server staat (zie **config.js** hierboven).
-4. Tab **Instellingen** → **Inloggen** → Microsoft-account (zelfde als OneDrive).
+4. Tab **Instellingen** → **Inloggen** → Microsoft-account (zelfde als OneDrive). Na de eerste keer blijft je ingelogd (tokens in `localStorage`); je hoeft niet opnieuw in te loggen na het sluiten van de app. Gebruik **Uitloggen** alleen als je van account wilt wisselen.
 5. **Ververs uit OneDrive** — controleer sync-status bovenaan.
 6. Chrome-menu (⋮) → **Toevoegen aan startscherm** / **Install app**.
 7. Open vanaf startscherm: volledig scherm, bottom nav (Invoer | Analyse | Instellingen).

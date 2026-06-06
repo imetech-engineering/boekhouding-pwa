@@ -1,0 +1,63 @@
+# =============================================================================
+# imetech-engineering/uren-pwa — public repo: PWA + GitHub Pages deploy ONLY
+# =============================================================================
+# This workspace lives inside a larger Automatisatie folder. Default-deny
+# prevents accidental `git add .` from publishing desktop apps, Excel, secrets,
+# or other local tooling.
+#
+# Allowed in git:
+#   .github/workflows/deploy-uren-pwa.yml
+#   applications/uren/pwa/**
+# =============================================================================
+
+# --- Default: ignore everything at repo root ---
+/*
+!/.gitignore
+
+# --- GitHub Actions (Pages deploy workflow only) ---
+!/.github/
+/.github/*
+!/.github/workflows/
+/.github/workflows/*
+!/.github/workflows/deploy-uren-pwa.yml
+
+# --- PWA (sole application artifact) ---
+!/applications/
+/applications/*
+!/applications/uren/
+/applications/uren/*
+!/applications/uren/pwa/
+
+# --- Never commit secrets or data files (any path) ---
+**/.env
+**/.env.*
+**/.env.local
+**/secrets.*
+**/credentials*.json
+**/*token*.json
+**/*.pem
+**/*.key
+**/*.pfx
+**/*.p12
+
+# --- Never commit Excel / exports (business data) ---
+**/*.xlsx
+**/*.xlsm
+**/*.xls
+**/*.csv
+
+# --- Desktop / Python ecosystem (not needed for PWA) ---
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/dist/
+**/build/
+**/*.spec
+**/node_modules/
+
+# --- OS / editor noise ---
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/.vscode/
+**/.idea/

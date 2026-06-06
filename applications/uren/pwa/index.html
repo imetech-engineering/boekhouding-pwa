@@ -170,6 +170,59 @@
         </div>
       </section>
 
+      <section id="panel-projecten" class="tab-panel hidden">
+        <div class="card">
+          <h2>Projectoverzicht</h2>
+          <p id="projecten-summary" class="sub">—</p>
+          <div id="projecten-status-cards" class="status-cards"></div>
+        </div>
+        <div class="card">
+          <h2>Filters</h2>
+          <input id="projecten-search" type="search" placeholder="Zoek project of opdrachtgever…" />
+          <p class="sub">Status</p>
+          <div id="chips-project-status" class="chips"></div>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="btn-project-add" class="btn-primary">Project toevoegen</button>
+        </div>
+        <ul id="projecten-list" class="projecten-list"></ul>
+      </section>
+
+      <div id="project-modal" class="modal hidden" role="dialog" aria-labelledby="project-modal-title">
+        <div class="modal-backdrop" data-close-modal></div>
+        <div class="modal-sheet">
+          <h2 id="project-modal-title">Project</h2>
+          <label for="est-datum">Datum</label>
+          <input id="est-datum" type="date" />
+          <label for="est-og">Opdrachtgever</label>
+          <input id="est-og" list="dl-og-est" autocomplete="off" />
+          <datalist id="dl-og-est"></datalist>
+          <label for="est-project">Project</label>
+          <input id="est-project" autocomplete="off" />
+          <label for="est-planned">Ureninschatting</label>
+          <input id="est-planned" type="number" step="0.5" min="0" inputmode="decimal" />
+          <label for="est-status">Status</label>
+          <select id="est-status"></select>
+          <label for="est-opmerking">Opmerking</label>
+          <textarea id="est-opmerking" rows="2"></textarea>
+          <div class="est-readonly row-2">
+            <div>
+              <span class="stat-label">Gemaakte uren</span>
+              <span id="est-actual" class="stat-value">—</span>
+            </div>
+            <div>
+              <span class="stat-label">Uurstatus / delta</span>
+              <span id="est-delta" class="stat-value">—</span>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-est-save" class="btn-primary">Opslaan</button>
+            <button type="button" id="btn-est-cancel" class="btn-secondary">Annuleren</button>
+            <button type="button" id="btn-est-delete" class="btn-secondary btn-danger hidden">Verwijderen</button>
+          </div>
+        </div>
+      </div>
+
       <section id="panel-grafieken" class="tab-panel hidden">
         <div class="card card-grafieken">
           <h2>Grafieken</h2>
@@ -247,6 +300,7 @@
 
     <nav class="bottom-nav" aria-label="Hoofdnavigatie">
       <button type="button" data-tab="invoer" class="active">Invoer</button>
+      <button type="button" data-tab="projecten">Projecten</button>
       <button type="button" data-tab="analyse">Analyse</button>
       <button type="button" data-tab="grafieken">Grafieken</button>
       <button type="button" data-tab="instellingen">Instellingen</button>
@@ -260,7 +314,9 @@
     <script src="js/auth.js"></script>
     <script src="js/graph.js"></script>
     <script src="js/uren_excel.js"></script>
+    <script src="js/uren_estimates.js"></script>
     <script src="js/uren_graph_excel.js"></script>
+    <script src="js/uren_graph_estimates.js"></script>
     <script src="js/uren_analyse.js"></script>
     <script src="js/uren_invoer.js"></script>
     <script src="js/combobox.js"></script>

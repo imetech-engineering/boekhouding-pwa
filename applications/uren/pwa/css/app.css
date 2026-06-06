@@ -174,6 +174,9 @@ button {
   border-radius: var(--radius-md);
   border: none;
   cursor: pointer;
+  color: var(--text-primary);
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .btn-primary {
@@ -415,7 +418,12 @@ button {
   font-size: 0.75rem;
   padding: 6px 10px;
   background: var(--bg-tertiary);
+  color: var(--text-primary);
   border: 1px solid var(--border);
+}
+
+.history-actions button:active {
+  background: var(--bg-hover);
 }
 
 .analyse-row {
@@ -604,4 +612,178 @@ a.link {
 .chart-wrap canvas {
   width: 100% !important;
   height: 100% !important;
+}
+
+.status-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.status-card {
+  flex: 1 1 calc(50% - 4px);
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.status-card.active {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+
+.status-card .sc-count {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.status-card .sc-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.projecten-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 16px;
+}
+
+.project-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.project-card:active {
+  background: var(--bg-hover);
+}
+
+.project-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.project-card-title {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  line-height: 1.3;
+}
+
+.project-card-og {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.status-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-actief { background: #dbeafe; color: #1d4ed8; }
+.status-wacht { background: #fef3c7; color: #b45309; }
+.status-afgerond { background: #dcfce7; color: #15803d; }
+.status-hold { background: #f3f4f6; color: #4b5563; }
+.status-geannuleerd { background: #fee2e2; color: #b91c1c; }
+.status-default { background: var(--bg-tertiary); color: var(--text-secondary); }
+
+html[data-theme="dark"] .status-actief { background: #1e3a5f; color: #93c5fd; }
+html[data-theme="dark"] .status-wacht { background: #422006; color: #fcd34d; }
+html[data-theme="dark"] .status-afgerond { background: #14532d; color: #86efac; }
+html[data-theme="dark"] .status-hold { background: #374151; color: #d1d5db; }
+html[data-theme="dark"] .status-geannuleerd { background: #450a0a; color: #fca5a5; }
+
+.project-progress {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.project-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  max-width: 100%;
+}
+
+.project-progress-bar.over {
+  background: var(--danger);
+}
+
+.project-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.project-stats .delta-negative {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.modal.hidden {
+  display: none !important;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.modal-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90dvh;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 20px 16px calc(20px + var(--safe-bottom));
+  z-index: 1;
+}
+
+.modal-sheet h2 {
+  margin: 0 0 16px;
+}
+
+.est-readonly {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: var(--danger);
 }

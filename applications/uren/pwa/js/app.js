@@ -32,6 +32,9 @@
     },
     chartInstance: null,
     darkMode: false,
+    estimates: [],
+    estimateFilters: { statuses: [], search: "" },
+    estimateEditRow: null,
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -247,12 +250,15 @@
       const path = drivePath();
       const meta = await UrenGraph.getDriveItemMeta(path, token);
       const entries = await UrenGraphExcel.readAllEntries(path, token);
+      const estimates = await UrenGraphEstimates.readAllEstimates(path, token);
       state.entries = entries;
+      state.estimates = estimates;
       state.intel = UrenExcel.buildIntel(entries);
       state.etag = meta.etag;
       state.meta = meta;
       setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
       renderInvoer();
+      renderProjecten();
       renderAnalyse();
       renderGrafieken();
       renderAccount();
@@ -265,13 +271,11 @@
     }
   }
 
-  async function saveAfterMutation(mutator) {
+  async function saveAfterMutation(mutator, sessionFn = UrenGraphExcel.withSession) {
     const token = await ensureLoggedIn();
     const path = drivePath();
     try {
-      await UrenGraphExcel.withSession(path, token, (sessionId) =>
-        mutator(path, token, sessionId)
-      );
+      await sessionFn(path, token, (sessionId) => mutator(path, token, sessionId));
       const meta = await UrenGraph.getDriveItemMeta(path, token);
       state.etag = meta.etag;
       state.meta = meta;
@@ -289,6 +293,204 @@
         showToast(e.message || String(e), true);
       }
       throw e;
+    }
+  }
+
+  function getEstimateFormFields() {
+    return {
+      datumStr: $("#est-datum")?.value,
+      opdrachtgever: $("#est-og")?.value,
+      project: $("#est-project")?.value,
+      ureninschatting: $("#est-planned")?.value,
+      status: $("#est-status")?.value,
+      opmerking: $("#est-opmerking")?.value,
+    };
+  }
+
+  function fillEstimateStatusSelect() {
+    const sel = $("#est-status");
+    if (!sel) return;
+    sel.innerHTML = "";
+    for (const s of UrenEstimates.PROJECT_STATUSES) {
+      const o = document.createElement("option");
+      o.value = s;
+      o.textContent = s;
+      sel.appendChild(o);
+    }
+  }
+
+  function openProjectModal(entry) {
+    fillEstimateStatusSelect();
+    state.estimateEditRow = entry?.row_index ?? null;
+    $("#project-modal-title").textContent = entry ? "Project bewerken" : "Project toevoegen";
+    $("#est-datum").value = entry?.datumStr || UrenExcel.formatDateIso(new Date());
+    $("#est-og").value = entry?.opdrachtgever || "";
+    $("#est-project").value = entry?.project || "";
+    $("#est-planned").value = entry?.ureninschatting ?? "";
+    $("#est-status").value = entry?.status || UrenEstimates.DEFAULT_STATUS;
+    $("#est-opmerking").value = entry?.opmerking || "";
+    const actual = entry?.gemaakte_uren;
+    const delta = entry ? UrenEstimates.displayDelta(entry) : null;
+    $("#est-actual").textContent = entry ? `${Number(actual || 0).toFixed(1)} u` : "—";
+    $("#est-delta").textContent =
+      delta != null ? `${Number(delta).toFixed(1)} u` : entry ? "—" : "—";
+    $("#btn-est-delete")?.classList.toggle("hidden", !entry);
+    const dl = $("#dl-og-est");
+    if (dl && state.intel) {
+      dl.innerHTML = "";
+      for (const n of comboOptionsOg()) {
+        const o = document.createElement("option");
+        o.value = n;
+        dl.appendChild(o);
+      }
+    }
+    $("#project-modal")?.classList.remove("hidden");
+  }
+
+  function closeProjectModal() {
+    state.estimateEditRow = null;
+    $("#project-modal")?.classList.add("hidden");
+  }
+
+  async function onEstimateSave() {
+    const fields = getEstimateFormFields();
+    if (!fields.project?.trim()) {
+      showToast("Project is verplicht.", true);
+      return;
+    }
+    if (!fields.datumStr) {
+      showToast("Datum is verplicht.", true);
+      return;
+    }
+    try {
+      if (state.estimateEditRow) {
+        await saveAfterMutation(
+          (path, token, sid) =>
+            UrenGraphEstimates.updateEstimate(path, token, sid, state.estimateEditRow, fields),
+          UrenGraphEstimates.withSession
+        );
+      } else {
+        await saveAfterMutation(
+          (path, token, sid) => UrenGraphEstimates.addEstimate(path, token, sid, fields),
+          UrenGraphEstimates.withSession
+        );
+      }
+      closeProjectModal();
+    } catch (_) {}
+  }
+
+  async function onEstimateDelete() {
+    if (!state.estimateEditRow) return;
+    if (!confirm("Projectrij verwijderen uit Excel?")) return;
+    try {
+      await saveAfterMutation(
+        (path, token, sid) =>
+          UrenGraphEstimates.deleteEstimate(path, token, sid, state.estimateEditRow),
+        UrenGraphEstimates.withSession
+      );
+      closeProjectModal();
+    } catch (_) {}
+  }
+
+  function renderProjecten() {
+    const summaryEl = $("#projecten-summary");
+    const listEl = $("#projecten-list");
+    if (!summaryEl || !listEl) return;
+    if (!state.estimates?.length) {
+      summaryEl.textContent = "Geen projecten — ververs uit OneDrive.";
+      listEl.innerHTML = "";
+      $("#projecten-status-cards").innerHTML = "";
+      return;
+    }
+    const summary = UrenEstimates.buildStatusSummary(state.estimates);
+    const activeLine =
+      summary.activePlanned > 0 || summary.activeActual > 0
+        ? `Actief: ${summary.activeActual} / ${summary.activePlanned} u (resterend ${summary.activeRemaining} u)`
+        : "";
+    const overLine = summary.overBudget.length
+      ? ` | ${summary.overBudget.length} over budget`
+      : "";
+    summaryEl.textContent = `${state.estimates.length} projecten${activeLine ? " · " + activeLine : ""}${overLine}`;
+
+    const cardsEl = $("#projecten-status-cards");
+    if (cardsEl) {
+      cardsEl.innerHTML = "";
+      for (const st of UrenEstimates.PROJECT_STATUSES) {
+        const count = summary.counts[st] || 0;
+        if (!count) continue;
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className =
+          "status-card" +
+          (state.estimateFilters.statuses.includes(st) ? " active" : "");
+        card.innerHTML = `<div class="sc-count">${count}</div><div class="sc-label">${st}</div>`;
+        card.addEventListener("click", () => {
+          const f = state.estimateFilters;
+          const i = f.statuses.indexOf(st);
+          if (i >= 0) f.statuses.splice(i, 1);
+          else f.statuses.push(st);
+          renderProjecten();
+        });
+        cardsEl.appendChild(card);
+      }
+    }
+
+    const chipsEl = $("#chips-project-status");
+    if (chipsEl) {
+      chipsEl.innerHTML = "";
+      const mk = (label, val) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        const active =
+          val == null
+            ? state.estimateFilters.statuses.length === 0
+            : state.estimateFilters.statuses.includes(val);
+        b.className = "chip" + (active ? " active" : "");
+        b.textContent = label;
+        b.addEventListener("click", () => {
+          if (val == null) state.estimateFilters.statuses = [];
+          else {
+            const i = state.estimateFilters.statuses.indexOf(val);
+            if (i >= 0) state.estimateFilters.statuses.splice(i, 1);
+            else state.estimateFilters.statuses.push(val);
+          }
+          renderProjecten();
+        });
+        chipsEl.appendChild(b);
+      };
+      mk("Alles", null);
+      for (const st of UrenEstimates.PROJECT_STATUSES) mk(st, st);
+    }
+
+    const filtered = UrenEstimates.filterEstimates(
+      UrenEstimates.sortEstimates(state.estimates),
+      state.estimateFilters
+    );
+    listEl.innerHTML = "";
+    for (const row of filtered) {
+      const li = document.createElement("li");
+      li.className = "project-card";
+      const planned = Number(row.ureninschatting) || 0;
+      const actual = Number(row.gemaakte_uren) || 0;
+      const delta = UrenEstimates.displayDelta(row);
+      const pct = planned > 0 ? Math.min(100, (actual / planned) * 100) : 0;
+      const over = delta != null && delta < 0;
+      const deltaHtml =
+        delta != null
+          ? `<span class="${over ? "delta-negative" : ""}">${delta > 0 ? "+" : ""}${Number(delta).toFixed(1)} u</span>`
+          : "";
+      li.innerHTML = `<div class="project-card-head">
+          <span class="project-card-title">${row.project}</span>
+          <span class="status-badge ${UrenEstimates.statusClass(row.status)}">${row.status}</span>
+        </div>
+        <div class="project-card-og">${row.opdrachtgever || "—"}</div>
+        <div class="project-progress"><div class="project-progress-bar${over ? " over" : ""}" style="width:${pct}%"></div></div>
+        <div class="project-stats">
+          <span>${actual.toFixed(1)} / ${planned.toFixed(1)} u</span>
+          ${deltaHtml}
+        </div>`;
+      li.addEventListener("click", () => openProjectModal(row));
+      listEl.appendChild(li);
     }
   }
 
@@ -697,6 +899,7 @@
     });
     const panel = document.getElementById(`panel-${tab}`);
     if (panel) panel.classList.remove("hidden");
+    if (tab === "projecten") renderProjecten();
     if (tab === "analyse") renderAnalyse();
     if (tab === "grafieken") renderGrafieken();
   }
@@ -752,6 +955,17 @@
     $("#btn-date-next")?.addEventListener("click", () => adjustDate(1));
     $("#field-datum")?.addEventListener("change", updateInvoerStats);
     $("#btn-refresh")?.addEventListener("click", () => refreshFromCloud().catch(() => {}));
+    $("#btn-project-add")?.addEventListener("click", () => openProjectModal(null));
+    $("#btn-est-save")?.addEventListener("click", () => onEstimateSave());
+    $("#btn-est-cancel")?.addEventListener("click", closeProjectModal);
+    $("#btn-est-delete")?.addEventListener("click", () => onEstimateDelete());
+    $("#projecten-search")?.addEventListener("input", (e) => {
+      state.estimateFilters.search = e.target.value;
+      renderProjecten();
+    });
+    document.querySelectorAll("[data-close-modal]").forEach((el) => {
+      el.addEventListener("click", closeProjectModal);
+    });
     $("#btn-uren-min")?.addEventListener("click", () => adjustHours(-0.5));
     $("#btn-uren-plus")?.addEventListener("click", () => adjustHours(0.5));
     $("#field-uren")?.addEventListener("keydown", (e) => {
@@ -782,8 +996,10 @@
     $("#btn-logout")?.addEventListener("click", async () => {
       await UrenAuth.logout();
       state.entries = [];
+      state.estimates = [];
       state.etag = null;
       renderAccount();
+      renderProjecten();
       setStatus("Uitgelogd");
     });
     const now = new Date();

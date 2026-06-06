@@ -31,8 +31,6 @@
   const DEFAULT_STATUS = "Wachten op akkoord";
   const ACTIVE_STATUSES = new Set(["In opdracht", "On hold", "Wachten op akkoord"]);
 
-  const PROJECT_NR_RE = /^((?:10|20|30|40|50|60|70)\d{2})(?:\s+|-+)?(.*)$/;
-
   function parseGraphDate(v) {
     if (v == null || v === "") return null;
     if (typeof v === "number") {
@@ -75,21 +73,35 @@
     };
   }
 
-  function projectSortKey(project) {
-    const m = PROJECT_NR_RE.exec(project || "");
-    if (m) return [0, m[1], (m[2] || "").toLowerCase()];
-    return [1, "", (project || "").toLowerCase()];
+  function entryDate(entry) {
+    if (!entry?.datum) return null;
+    return entry.datum instanceof Date ? entry.datum : new Date(entry.datum);
   }
 
-  function sortEstimates(rows) {
+  function lastHourDatesByProject(hourEntries) {
+    const last = {};
+    for (const e of hourEntries || []) {
+      const proj = String(e.project || "").trim();
+      if (!proj) continue;
+      const d = entryDate(e);
+      if (!d || Number.isNaN(d.getTime())) continue;
+      if (!last[proj] || d > last[proj]) last[proj] = d;
+    }
+    return last;
+  }
+
+  /** Nieuwste urenregel per project bovenaan; zonder uren onderaan. */
+  function sortEstimates(rows, hourEntries) {
+    const last = lastHourDatesByProject(hourEntries);
     return [...rows].sort((a, b) => {
-      const ka = projectSortKey(a.project);
-      const kb = projectSortKey(b.project);
-      for (let i = 0; i < 3; i++) {
-        if (ka[i] < kb[i]) return -1;
-        if (ka[i] > kb[i]) return 1;
-      }
-      return 0;
+      const da = last[a.project];
+      const db = last[b.project];
+      if (da && db) return db - da;
+      if (da) return -1;
+      if (db) return 1;
+      const ea = a.datum instanceof Date ? a.datum.getTime() : 0;
+      const eb = b.datum instanceof Date ? b.datum.getTime() : 0;
+      return eb - ea;
     });
   }
 

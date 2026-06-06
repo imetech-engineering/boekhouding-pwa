@@ -463,7 +463,7 @@
     }
 
     const filtered = UrenEstimates.filterEstimates(
-      UrenEstimates.sortEstimates(state.estimates),
+      UrenEstimates.sortEstimates(state.estimates, state.entries),
       state.estimateFilters
     );
     listEl.innerHTML = "";

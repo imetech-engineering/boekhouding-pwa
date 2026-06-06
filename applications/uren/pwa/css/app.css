@@ -368,11 +368,17 @@ button {
   background: transparent;
 }
 
-.date-row {
+.date-row,
+.year-row {
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 8px;
   align-items: center;
+}
+
+.year-row input[readonly] {
+  text-align: center;
+  cursor: default;
 }
 
 .btn-compact {

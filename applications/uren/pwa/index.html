@@ -109,7 +109,11 @@
             <div class="row-2">
               <div>
                 <label for="filter-week-year">ISO-jaar</label>
-                <input id="filter-week-year" type="number" min="2018" max="2035" />
+                <div class="year-row">
+                  <button type="button" class="btn-secondary btn-compact btn-year-prev" data-year-input="filter-week-year" aria-label="Vorig jaar">◀</button>
+                  <input id="filter-week-year" type="number" min="2018" max="2035" readonly inputmode="none" />
+                  <button type="button" class="btn-secondary btn-compact btn-year-next" data-year-input="filter-week-year" aria-label="Volgend jaar">▶</button>
+                </div>
               </div>
               <div>
                 <label for="filter-week-num">Week</label>
@@ -121,7 +125,11 @@
             <div class="row-2">
               <div>
                 <label for="filter-month-year">Jaar</label>
-                <input id="filter-month-year" type="number" min="2018" max="2035" />
+                <div class="year-row">
+                  <button type="button" class="btn-secondary btn-compact btn-year-prev" data-year-input="filter-month-year" aria-label="Vorig jaar">◀</button>
+                  <input id="filter-month-year" type="number" min="2018" max="2035" readonly inputmode="none" />
+                  <button type="button" class="btn-secondary btn-compact btn-year-next" data-year-input="filter-month-year" aria-label="Volgend jaar">▶</button>
+                </div>
               </div>
               <div>
                 <label for="filter-month-num">Maand</label>
@@ -230,7 +238,11 @@
           <div class="row-2">
             <div>
               <label for="grafiek-year">Jaar</label>
-              <input id="grafiek-year" type="number" min="2018" max="2035" />
+              <div class="year-row">
+                <button type="button" class="btn-secondary btn-compact btn-year-prev" data-year-input="grafiek-year" aria-label="Vorig jaar">◀</button>
+                <input id="grafiek-year" type="number" min="2018" max="2035" readonly inputmode="none" />
+                <button type="button" class="btn-secondary btn-compact btn-year-next" data-year-input="grafiek-year" aria-label="Volgend jaar">▶</button>
+              </div>
             </div>
             <div>
               <label for="grafiek-type">Visualisatie</label>
@@ -239,6 +251,8 @@
                 <option value="month_year">Uren per maand</option>
                 <option value="og_bar">Uren per opdrachtgever (staaf)</option>
                 <option value="og_pie">Uren per opdrachtgever (taart)</option>
+                <option value="revenue_og_bar">Omzet (€) per opdrachtgever (staaf)</option>
+                <option value="revenue_og_pie">Omzet (€) per opdrachtgever (taart)</option>
                 <option value="revenue_month">Omzet (€) per maand</option>
                 <option value="locatie">Uren per locatie</option>
                 <option value="cumulative">Cumulatief uren (jaar)</option>

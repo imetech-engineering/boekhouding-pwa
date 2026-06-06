@@ -130,6 +130,12 @@
       data = ogs.map((o) => o.uren);
       title = `Uren per opdrachtgever ${year}`;
       chartType = mode === "og_pie" ? "pie" : "bar";
+    } else if (mode === "revenue_og_bar" || mode === "revenue_og_pie") {
+      const ogs = UrenAnalyse.aggregateRevenuePerOg(yearRows, 10);
+      labels = ogs.map((o) => o.og);
+      data = ogs.map((o) => o.bedrag);
+      title = `Omzet (€) per opdrachtgever ${year}`;
+      chartType = mode === "revenue_og_pie" ? "pie" : "bar";
     } else if (mode === "revenue_month") {
       const months = UrenAnalyse.aggregateRevenuePerMonth(yearRows, year);
       labels = months.map((m) => MONTH_LABELS[m.month - 1]);
@@ -940,6 +946,39 @@
     updateInvoerStats();
   }
 
+  function adjustYearInput(inputId, delta) {
+    const el = document.getElementById(inputId);
+    if (!el) return null;
+    const min = Number(el.min) || 2018;
+    const max = Number(el.max) || 2035;
+    let y = Number(el.value) || new Date().getFullYear();
+    y = Math.min(max, Math.max(min, y + delta));
+    el.value = String(y);
+    return y;
+  }
+
+  function bindYearSteppers() {
+    document.querySelectorAll(".btn-year-prev, .btn-year-next").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const inputId = btn.dataset.yearInput;
+        if (!inputId) return;
+        const y = adjustYearInput(inputId, btn.classList.contains("btn-year-prev") ? -1 : 1);
+        if (y == null) return;
+        haptic(20);
+        if (inputId === "grafiek-year") {
+          state.chartFilters.year = y;
+          renderGrafieken();
+        } else if (inputId === "filter-week-year") {
+          state.analyseFilters.customWeekYear = y;
+          renderAnalyse();
+        } else if (inputId === "filter-month-year") {
+          state.analyseFilters.customYear = y;
+          renderAnalyse();
+        }
+      });
+    });
+  }
+
   function bindEvents() {
     document.querySelectorAll(".bottom-nav button").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
@@ -1045,10 +1084,7 @@
       updateGrafiekControlsVisibility();
       renderGrafieken();
     });
-    $("#grafiek-year")?.addEventListener("change", (e) => {
-      state.chartFilters.year = Number(e.target.value) || now.getFullYear();
-      renderGrafieken();
-    });
+    bindYearSteppers();
     $("#grafiek-cumulative-euro")?.addEventListener("change", (e) => {
       state.chartFilters.cumulativeEuro = e.target.checked;
       renderGrafieken();

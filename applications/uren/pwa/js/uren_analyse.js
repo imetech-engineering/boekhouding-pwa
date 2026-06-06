@@ -122,6 +122,18 @@
       .map(([og, uren]) => ({ og, uren: Math.round(uren * 100) / 100 }));
   }
 
+  function aggregateRevenuePerOg(rows, topN = 10) {
+    const buckets = {};
+    for (const r of rows) {
+      const og = (r.opdrachtgever || "").trim() || "(geen)";
+      buckets[og] = (buckets[og] || 0) + (r.bedrag || 0);
+    }
+    return Object.entries(buckets)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, topN)
+      .map(([og, bedrag]) => ({ og, bedrag: Math.round(bedrag * 100) / 100 }));
+  }
+
   function aggregateRevenuePerMonth(rows, year) {
     const buckets = {};
     for (let m = 1; m <= 12; m++) buckets[m] = 0;
@@ -366,6 +378,7 @@
     aggregateHoursPerIsoWeek,
     aggregateHoursPerMonth,
     aggregateHoursPerOg,
+    aggregateRevenuePerOg,
     aggregateRevenuePerMonth,
     aggregateHoursPerLocatie,
     aggregateCumulativeForYear,

@@ -1,4 +1,4 @@
-const CACHE = "imtech-uren-pwa-v19";
+const CACHE = "imtech-uren-pwa-v20";
 const ASSETS = [
   "./",
   "./index.html",
@@ -14,6 +14,8 @@ const ASSETS = [
   "./js/uren_analyse.js",
   "./js/uren_invoer.js",
   "./js/combobox.js",
+  "./js/werk_picker.js",
+  "./js/offline_queue.js",
   "./js/install.js",
   "./js/app.js",
 ];

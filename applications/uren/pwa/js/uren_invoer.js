@@ -76,8 +76,37 @@
     if (!fields.datumStr) return "Datum is verplicht.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fields.datumStr)) return "Datum formaat: JJJJ-MM-DD.";
     if (!fields.opdrachtgever?.trim()) return "Opdrachtgever is verplicht.";
+    if (!fields.project?.trim()) return "Project is verplicht.";
+    if (!fields.locatie?.trim()) return "Locatie is verplicht.";
+    if (!fields.werkzaamheden?.trim()) return "Werkzaamheden zijn verplicht.";
     const u = Number(fields.uren);
     if (!Number.isFinite(u) || u <= 0) return "Uren moet een positief getal zijn.";
+    return null;
+  }
+
+  function budgetWarning(estimates, fields, excludeRowIndex) {
+    const proj = (fields.project || "").trim();
+    const og = (fields.opdrachtgever || "").trim();
+    const newHours = Number(fields.uren);
+    if (!proj || !Number.isFinite(newHours) || newHours <= 0) return null;
+    const est = (estimates || []).find(
+      (e) =>
+        e.project === proj &&
+        (!og || !e.opdrachtgever || e.opdrachtgever === og) &&
+        UrenEstimates.ACTIVE_STATUSES.has(e.status)
+    );
+    if (!est) return null;
+    const delta = UrenEstimates.displayDelta(est);
+    if (delta == null) return null;
+    let oldHours = 0;
+    if (excludeRowIndex != null) {
+      // caller passes matching entry hours via fields._prevHours if editing
+      oldHours = Number(fields._prevHours) || 0;
+    }
+    const after = delta - newHours + oldHours;
+    if (after < 0) {
+      return `Project "${proj}": na deze regel ${after.toFixed(1)} u over budget (inschatting overschreden). Toch opslaan?`;
+    }
     return null;
   }
 
@@ -116,5 +145,6 @@
     validateForm,
     findSimilarEntries,
     formatSimilarWarning,
+    budgetWarning,
   };
 })(window);

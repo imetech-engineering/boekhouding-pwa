@@ -9,9 +9,14 @@
     etag: null,
     meta: null,
     loading: false,
+    quietRefresh: false,
     syncStatus: "Nog niet geladen",
     editRow: null,
     selectedHistoryRow: null,
+    weekTarget: 0,
+    lastOg: "",
+    lastProj: "",
+    lastLoc: "",
     analyseFilters: {
       periodMode: "month",
       keyword: "",
@@ -84,6 +89,258 @@
     try {
       applyDarkMode(localStorage.getItem("imtech-uren-dark") === "1");
     } catch (_) {}
+  }
+
+  function loadWeekTarget() {
+    try {
+      const v = Number(localStorage.getItem("imtech-uren-week-target"));
+      state.weekTarget = Number.isFinite(v) && v >= 0 ? v : 0;
+    } catch (_) {
+      state.weekTarget = 0;
+    }
+    const inp = $("#week-target-input");
+    if (inp) inp.value = state.weekTarget ? String(state.weekTarget) : "";
+  }
+
+  function saveWeekTarget(val) {
+    const n = Math.max(0, Number(val) || 0);
+    state.weekTarget = n;
+    try {
+      localStorage.setItem("imtech-uren-week-target", String(n));
+    } catch (_) {}
+    updateInvoerStats();
+  }
+
+  function fieldsToEntry(fields, rowIndex) {
+    const d = new Date(fields.datumStr + "T12:00:00");
+    return {
+      datum: d,
+      datumStr: fields.datumStr,
+      opdrachtgever: (fields.opdrachtgever || "").trim(),
+      project: (fields.project || "").trim(),
+      werkzaamheden: (fields.werkzaamheden || "").trim(),
+      locatie: (fields.locatie || "").trim(),
+      uren: Number(fields.uren) || 0,
+      tarief: Number(fields.tarief) || 0,
+      row_index: rowIndex,
+    };
+  }
+
+  function renderAll(initialForm = false) {
+    renderInvoer(initialForm);
+    renderProjecten();
+    renderAnalyse();
+    renderGrafieken();
+  }
+
+  function optimisticAdd(fields) {
+    const tempRow = -Date.now();
+    const entry = fieldsToEntry(fields, tempRow);
+    const snapshot = { entries: [...state.entries] };
+    state.entries = [...state.entries, entry];
+    state.intel = UrenExcel.buildIntel(state.entries);
+    return () => {
+      state.entries = snapshot.entries;
+      state.intel = UrenExcel.buildIntel(state.entries);
+    };
+  }
+
+  function optimisticUpdate(rowIndex, fields) {
+    const idx = state.entries.findIndex((e) => e.row_index === rowIndex);
+    if (idx < 0) return null;
+    const snapshot = { entries: [...state.entries], idx, prev: { ...state.entries[idx] } };
+    const next = [...state.entries];
+    next[idx] = fieldsToEntry(fields, rowIndex);
+    state.entries = next;
+    state.intel = UrenExcel.buildIntel(state.entries);
+    return () => {
+      const rollback = [...state.entries];
+      rollback[snapshot.idx] = snapshot.prev;
+      state.entries = rollback;
+      state.intel = UrenExcel.buildIntel(state.entries);
+    };
+  }
+
+  function optimisticDelete(rowIndex) {
+    const idx = state.entries.findIndex((e) => e.row_index === rowIndex);
+    if (idx < 0) return null;
+    const snapshot = { entries: [...state.entries], removed: state.entries[idx] };
+    state.entries = state.entries.filter((e) => e.row_index !== rowIndex);
+    state.intel = UrenExcel.buildIntel(state.entries);
+    return () => {
+      state.entries = snapshot.entries;
+      state.intel = UrenExcel.buildIntel(state.entries);
+    };
+  }
+
+  async function updateQueueBadge() {
+    const el = $("#queue-status");
+    if (!el) return;
+    try {
+      const n = await UrenOfflineQueue.count();
+      if (n > 0) {
+        el.textContent = `${n} wijziging${n > 1 ? "en" : ""} wachten op sync`;
+        el.classList.remove("hidden");
+      } else {
+        el.classList.add("hidden");
+      }
+    } catch (_) {
+      el.classList.add("hidden");
+    }
+  }
+
+  function showConflictModal(message) {
+    const modal = $("#conflict-modal");
+    const msg = $("#conflict-message");
+    if (!modal) return;
+    if (msg) {
+      msg.textContent =
+        (message || "") +
+        " Het bestand is op een ander apparaat gewijzigd. Ververs om de nieuwste versie te laden en probeer opnieuw.";
+    }
+    modal.classList.remove("hidden");
+  }
+
+  function closeConflictModal() {
+    $("#conflict-modal")?.classList.add("hidden");
+  }
+
+  function isNetworkError(e) {
+    if (!UrenOfflineQueue.isOnline()) return true;
+    const m = (e?.message || "").toLowerCase();
+    return (
+      e?.name === "TypeError" ||
+      m.includes("failed to fetch") ||
+      m.includes("network") ||
+      m.includes("load failed")
+    );
+  }
+
+  async function executeMutation(descriptor) {
+    const token = await ensureLoggedIn();
+    const path = drivePath();
+    const { kind, fields, rowIndex } = descriptor;
+    if (kind === "hours_add") {
+      await UrenGraphExcel.withSession(path, token, (sid) =>
+        UrenGraphExcel.addEntry(path, token, sid, fields)
+      );
+    } else if (kind === "hours_update") {
+      await UrenGraphExcel.withSession(path, token, (sid) =>
+        UrenGraphExcel.updateEntry(path, token, sid, rowIndex, fields)
+      );
+    } else if (kind === "hours_delete") {
+      await UrenGraphExcel.withSession(path, token, (sid) =>
+        UrenGraphExcel.deleteEntry(path, token, sid, rowIndex)
+      );
+    } else if (kind === "estimate_add") {
+      await UrenGraphEstimates.withSession(path, token, (sid) =>
+        UrenGraphEstimates.addEstimate(path, token, sid, fields)
+      );
+    } else if (kind === "estimate_update") {
+      await UrenGraphEstimates.withSession(path, token, (sid) =>
+        UrenGraphEstimates.updateEstimate(path, token, sid, rowIndex, fields)
+      );
+    } else if (kind === "estimate_delete") {
+      await UrenGraphEstimates.withSession(path, token, (sid) =>
+        UrenGraphEstimates.deleteEstimate(path, token, sid, rowIndex)
+      );
+    }
+  }
+
+  async function flushOfflineQueue() {
+    if (!UrenOfflineQueue.isOnline() || !UrenAuth.isLoggedIn()) return;
+    const items = await UrenOfflineQueue.getAll();
+    if (!items.length) return;
+    setStatus(`Sync ${items.length} wachtende wijziging(en)…`);
+    for (const item of items) {
+      try {
+        await executeMutation(item);
+        await UrenOfflineQueue.remove(item.id);
+      } catch (e) {
+        if (e.name === "GraphConflictError") {
+          showConflictModal(e.message);
+          break;
+        }
+        if (isNetworkError(e)) break;
+        await UrenOfflineQueue.remove(item.id);
+        showToast(e.message || String(e), true);
+      }
+    }
+    await updateQueueBadge();
+    await refreshFromCloudQuiet();
+  }
+
+  async function refreshFromCloudQuiet() {
+    if (state.loading || state.quietRefresh) return;
+    state.quietRefresh = true;
+    try {
+      const token = await ensureLoggedIn();
+      const path = drivePath();
+      const meta = await UrenGraph.getDriveItemMeta(path, token);
+      const entries = await UrenGraphExcel.readAllEntries(path, token);
+      const estimates = await UrenGraphEstimates.readAllEstimates(path, token);
+      state.entries = entries;
+      state.estimates = estimates;
+      state.intel = UrenExcel.buildIntel(entries);
+      state.etag = meta.etag;
+      state.meta = meta;
+      setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
+      renderAll(false);
+      renderAccount();
+    } catch (_) {
+    } finally {
+      state.quietRefresh = false;
+    }
+  }
+
+  async function persistMutation(descriptor, optimisticRollback) {
+    let rollback = null;
+    if (optimisticRollback) {
+      rollback = optimisticRollback();
+      renderAll();
+      showToast("Opgeslagen…");
+    }
+
+    if (!UrenOfflineQueue.isOnline()) {
+      await UrenOfflineQueue.add(descriptor);
+      await updateQueueBadge();
+      showToast("Offline — wijziging in wachtrij");
+      return;
+    }
+
+    try {
+      await executeMutation(descriptor);
+      const token = await ensureLoggedIn();
+      const meta = await UrenGraph.getDriveItemMeta(drivePath(), token);
+      state.etag = meta.etag;
+      state.meta = meta;
+      setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
+      refreshFromCloudQuiet();
+      showToast("Opgeslagen in OneDrive");
+    } catch (e) {
+      if (e.name === "GraphConflictError") {
+        if (rollback) rollback();
+        renderAll();
+        showConflictModal(e.message);
+        throw e;
+      }
+      if (isNetworkError(e)) {
+        await UrenOfflineQueue.add(descriptor);
+        await updateQueueBadge();
+        showToast("Geen verbinding — wijziging in wachtrij");
+        return;
+      }
+      if (rollback) {
+        rollback();
+        renderAll();
+      }
+      if (e.name === "GraphLockError") {
+        showToast(e.message, true);
+      } else {
+        showToast(e.message || String(e), true);
+      }
+      throw e;
+    }
   }
 
   function updatePeriodCustomVisibility() {
@@ -252,6 +509,7 @@
     state.loading = true;
     setStatus("Laden uit OneDrive…");
     try {
+      await flushOfflineQueue();
       const token = await ensureLoggedIn();
       const path = drivePath();
       const meta = await UrenGraph.getDriveItemMeta(path, token);
@@ -263,42 +521,15 @@
       state.etag = meta.etag;
       state.meta = meta;
       setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
-      renderInvoer();
-      renderProjecten();
-      renderAnalyse();
-      renderGrafieken();
+      renderAll(true);
       renderAccount();
+      await updateQueueBadge();
     } catch (e) {
       setStatus(e.message || String(e), true);
       showToast(e.message || String(e), true);
       throw e;
     } finally {
       state.loading = false;
-    }
-  }
-
-  async function saveAfterMutation(mutator, sessionFn = UrenGraphExcel.withSession) {
-    const token = await ensureLoggedIn();
-    const path = drivePath();
-    try {
-      await sessionFn(path, token, (sessionId) => mutator(path, token, sessionId));
-      const meta = await UrenGraph.getDriveItemMeta(path, token);
-      state.etag = meta.etag;
-      state.meta = meta;
-      await refreshFromCloud();
-      showToast("Opgeslagen in OneDrive");
-    } catch (e) {
-      if (e.name === "GraphConflictError") {
-        showToast(
-          "Bestand gewijzigd elders. Tik op Ververs en probeer opnieuw.",
-          true
-        );
-      } else if (e.name === "GraphLockError") {
-        showToast(e.message, true);
-      } else {
-        showToast(e.message || String(e), true);
-      }
-      throw e;
     }
   }
 
@@ -370,18 +601,16 @@
     }
     try {
       if (state.estimateEditRow) {
-        await saveAfterMutation(
-          (path, token, sid) =>
-            UrenGraphEstimates.updateEstimate(path, token, sid, state.estimateEditRow, fields),
-          UrenGraphEstimates.withSession
-        );
+        await persistMutation({
+          kind: "estimate_update",
+          fields,
+          rowIndex: state.estimateEditRow,
+        });
       } else {
-        await saveAfterMutation(
-          (path, token, sid) => UrenGraphEstimates.addEstimate(path, token, sid, fields),
-          UrenGraphEstimates.withSession
-        );
+        await persistMutation({ kind: "estimate_add", fields, rowIndex: null });
       }
       closeProjectModal();
+      await refreshFromCloudQuiet();
     } catch (_) {}
   }
 
@@ -389,12 +618,13 @@
     if (!state.estimateEditRow) return;
     if (!confirm("Projectrij verwijderen uit Excel?")) return;
     try {
-      await saveAfterMutation(
-        (path, token, sid) =>
-          UrenGraphEstimates.deleteEstimate(path, token, sid, state.estimateEditRow),
-        UrenGraphEstimates.withSession
-      );
+      await persistMutation({
+        kind: "estimate_delete",
+        fields: null,
+        rowIndex: state.estimateEditRow,
+      });
       closeProjectModal();
+      await refreshFromCloudQuiet();
     } catch (_) {}
   }
 
@@ -524,6 +754,24 @@
     updateInvoerStats();
   }
 
+  function resetFormAfterSave() {
+    const og = ($("#field-og")?.value || "").trim() || state.lastOg;
+    const proj = ($("#field-project")?.value || "").trim() || state.lastProj;
+    const loc = ($("#field-locatie")?.value || "").trim() || state.lastLoc;
+    state.lastOg = og;
+    state.lastProj = proj;
+    state.lastLoc = loc;
+    $("#field-datum").value = UrenExcel.formatDateIso(new Date());
+    $("#field-og").value = og;
+    $("#field-project").value = proj;
+    $("#field-locatie").value = loc;
+    $("#field-werk").value = "";
+    $("#field-uren").value = "1";
+    onComboChange();
+    updateInvoerStats();
+    $("#field-werk")?.focus();
+  }
+
   function onComboChange() {
     renderDatalists();
     const t = UrenInvoer.suggestTarief(
@@ -591,7 +839,7 @@
     state.editRow = null;
     $("#btn-save").textContent = "Opslaan";
     const today = UrenExcel.formatDateIso(new Date());
-    if (!$("#field-datum").value) $("#field-datum").value = today;
+    $("#field-datum").value = today;
     $("#field-og").value = entry.opdrachtgever || "";
     $("#field-project").value = entry.project || "";
     $("#field-locatie").value = entry.locatie || "";
@@ -636,6 +884,24 @@
     }
     dayEl.textContent = `${dayH.toFixed(1)} u`;
     weekEl.textContent = `${weekH.toFixed(1)} u (week ${weekNo})`;
+
+    const targetWrap = $("#week-target-wrap");
+    const targetLabel = $("#week-target-label");
+    const targetFill = $("#week-target-fill");
+    const target = state.weekTarget;
+    if (targetWrap && target > 0) {
+      targetWrap.classList.remove("hidden");
+      const pct = Math.min(100, (weekH / target) * 100);
+      if (targetLabel) {
+        targetLabel.textContent = `${weekH.toFixed(1)} / ${target} u`;
+      }
+      if (targetFill) {
+        targetFill.style.width = `${pct}%`;
+        targetFill.classList.toggle("over", weekH > target);
+      }
+    } else if (targetWrap) {
+      targetWrap.classList.add("hidden");
+    }
   }
 
   function renderHistory() {
@@ -665,6 +931,7 @@
           <button type="button" data-act="edit" data-row="${e.row_index}">Bewerk</button>
           <button type="button" data-act="del" data-row="${e.row_index}">Verwijder</button>
         </span>`;
+      bindHistorySwipe(li, e);
       li.addEventListener("dblclick", (ev) => {
         if (ev.target.closest("button")) return;
         applyHistoryToForm(e, true);
@@ -702,20 +969,83 @@
         } else if (btn.dataset.act === "del") {
           if (!confirm("Regel verwijderen uit Excel?")) return;
           try {
-            await saveAfterMutation((path, token, sid) =>
-              UrenGraphExcel.deleteEntry(path, token, sid, row)
+            await persistMutation(
+              { kind: "hours_delete", fields: null, rowIndex: row },
+              () => optimisticDelete(row)
             );
+            resetFormAfterSave();
           } catch (_) {}
         }
       });
     });
   }
 
-  function renderInvoer() {
+  function bindHistorySwipe(li, entry) {
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+    const threshold = 72;
+
+    li.addEventListener(
+      "touchstart",
+      (ev) => {
+        if (ev.target.closest("button")) return;
+        const t = ev.touches[0];
+        startX = t.clientX;
+        startY = t.clientY;
+        tracking = true;
+      },
+      { passive: true }
+    );
+
+    li.addEventListener(
+      "touchmove",
+      (ev) => {
+        if (!tracking) return;
+        const t = ev.touches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        if (Math.abs(dy) > Math.abs(dx)) {
+          tracking = false;
+          li.style.transform = "";
+          li.classList.remove("swiping");
+          return;
+        }
+        if (Math.abs(dx) > 8) {
+          li.classList.add("swiping");
+          li.style.transform = `translateX(${dx}px)`;
+        }
+      },
+      { passive: true }
+    );
+
+    li.addEventListener("touchend", async (ev) => {
+      if (!tracking) return;
+      tracking = false;
+      const t = ev.changedTouches[0];
+      const dx = t.clientX - startX;
+      li.style.transform = "";
+      li.classList.remove("swiping");
+      if (dx > threshold) {
+        applyHistoryToForm(entry, true);
+      } else if (dx < -threshold) {
+        if (!confirm("Regel verwijderen uit Excel?")) return;
+        try {
+          await persistMutation(
+            { kind: "hours_delete", fields: null, rowIndex: entry.row_index },
+            () => optimisticDelete(entry.row_index)
+          );
+          resetFormAfterSave();
+        } catch (_) {}
+      }
+    });
+  }
+
+  function renderInvoer(initialForm = false) {
     renderDatalists();
     renderHistory();
     updateInvoerStats();
-    if (!state.editRow) {
+    if (initialForm && !state.editRow) {
       fillForm(null);
       const og = $("#field-og")?.value;
       const pr = $("#field-project")?.value;
@@ -905,6 +1235,10 @@
     });
     const panel = document.getElementById(`panel-${tab}`);
     if (panel) panel.classList.remove("hidden");
+    const sticky = $("#invoer-sticky-bar");
+    const mainEl = document.querySelector("main");
+    if (sticky) sticky.classList.toggle("hidden", tab !== "invoer");
+    if (mainEl) mainEl.classList.toggle("has-sticky-save", tab === "invoer");
     if (tab === "projecten") renderProjecten();
     if (tab === "analyse") renderAnalyse();
     if (tab === "grafieken") renderGrafieken();
@@ -921,20 +1255,72 @@
       const similar = UrenInvoer.findSimilarEntries(state.entries, fields);
       if (similar.length && !confirm(UrenInvoer.formatSimilarWarning(similar))) return;
     }
+    const prevEntry = state.editRow
+      ? state.entries.find((x) => x.row_index === state.editRow)
+      : null;
+    const budgetFields = { ...fields, _prevHours: prevEntry?.uren };
+    const budgetMsg = UrenInvoer.budgetWarning(state.estimates, budgetFields, state.editRow);
+    if (budgetMsg && !confirm(budgetMsg)) return;
+
     try {
       if (state.editRow) {
-        await saveAfterMutation((path, token, sid) =>
-          UrenGraphExcel.updateEntry(path, token, sid, state.editRow, fields)
+        const row = state.editRow;
+        await persistMutation(
+          { kind: "hours_update", fields, rowIndex: row },
+          () => optimisticUpdate(row, fields)
         );
         state.editRow = null;
         $("#btn-save").textContent = "Opslaan";
       } else {
-        await saveAfterMutation((path, token, sid) =>
-          UrenGraphExcel.addEntry(path, token, sid, fields)
+        await persistMutation(
+          { kind: "hours_add", fields, rowIndex: null },
+          () => optimisticAdd(fields)
         );
       }
-      fillForm(null);
+      resetFormAfterSave();
     } catch (_) {}
+  }
+
+  function bindPullToRefresh() {
+    const mainEl = document.querySelector("main");
+    const indicator = $("#pull-indicator");
+    if (!mainEl) return;
+    let startY = 0;
+    let pulling = false;
+
+    mainEl.addEventListener(
+      "touchstart",
+      (ev) => {
+        if (mainEl.scrollTop > 0 || state.loading) return;
+        startY = ev.touches[0].clientY;
+        pulling = true;
+      },
+      { passive: true }
+    );
+
+    mainEl.addEventListener(
+      "touchmove",
+      (ev) => {
+        if (!pulling || mainEl.scrollTop > 0) return;
+        const dy = ev.touches[0].clientY - startY;
+        if (dy > 50) indicator?.classList.remove("hidden");
+        else indicator?.classList.add("hidden");
+      },
+      { passive: true }
+    );
+
+    mainEl.addEventListener("touchend", async (ev) => {
+      if (!pulling) return;
+      pulling = false;
+      const dy = ev.changedTouches[0].clientY - startY;
+      indicator?.classList.add("hidden");
+      if (dy > 80 && mainEl.scrollTop <= 0) {
+        haptic(15);
+        try {
+          await refreshFromCloud();
+        } catch (_) {}
+      }
+    });
   }
 
   function adjustDate(deltaDays) {
@@ -1098,10 +1484,50 @@
       state.analyseFilters.groupMode = e.target.value;
       renderAnalyse();
     });
+    $("#week-target-input")?.addEventListener("change", (e) => saveWeekTarget(e.target.value));
+    $("#btn-werk-pick")?.addEventListener("click", () => {
+      const el = $("#field-werk");
+      UrenWerkPicker.openWerkPicker(
+        el,
+        state.intel,
+        () => ({
+          og: $("#field-og")?.value,
+          project: $("#field-project")?.value,
+          loc: $("#field-locatie")?.value,
+        }),
+        null
+      );
+    });
+    $("#field-werk")?.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        $("#btn-werk-pick")?.click();
+      }
+    });
+    $("#btn-conflict-refresh")?.addEventListener("click", async () => {
+      closeConflictModal();
+      try {
+        await refreshFromCloud();
+      } catch (_) {}
+    });
+    $("#btn-conflict-dismiss")?.addEventListener("click", closeConflictModal);
+    document.querySelectorAll("[data-close-conflict]").forEach((el) => {
+      el.addEventListener("click", closeConflictModal);
+    });
+    window.addEventListener("online", () => {
+      flushOfflineQueue().catch(() => {});
+    });
+    bindPullToRefresh();
+    setInterval(() => {
+      if (UrenAuth.isLoggedIn() && UrenOfflineQueue.isOnline() && !state.loading) {
+        flushOfflineQueue().catch(() => {});
+      }
+    }, 120000);
   }
 
   async function init() {
     loadDarkPreference();
+    loadWeekTarget();
     bindEvents();
     UrenCombo.createCombo("field-og", "dl-og", comboOptionsOg, onComboChange);
     UrenCombo.createCombo("field-project", "dl-project", comboOptionsProj, onComboChange);
@@ -1111,6 +1537,7 @@
     try {
       await UrenAuth.getMsal();
       renderAccount();
+      await updateQueueBadge();
       if (UrenAuth.isLoggedIn()) await refreshFromCloud();
     } catch (e) {
       setStatus(e.message, true);

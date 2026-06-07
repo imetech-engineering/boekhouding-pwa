@@ -174,6 +174,7 @@
     COL,
     PROJECT_STATUSES,
     DEFAULT_STATUS,
+    ACTIVE_STATUSES,
     parseEstimateRow,
     sortEstimates,
     filterEstimates,

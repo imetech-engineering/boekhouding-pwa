@@ -19,6 +19,7 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
   --nav-h: 56px;
+  --sticky-h: 52px;
   --touch: 44px;
 }
 
@@ -103,10 +104,124 @@ main {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  padding: 12px 16px 16px;
+  padding: 12px 16px calc(16px + var(--sticky-h));
   max-width: 640px;
   width: 100%;
   margin: 0 auto;
+}
+
+main.has-sticky-save {
+  padding-bottom: calc(16px + var(--sticky-h) + var(--nav-h) + var(--safe-bottom));
+}
+
+.pull-indicator {
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-align: center;
+  padding: 4px 0 0;
+}
+
+.pull-indicator.hidden {
+  display: none;
+}
+
+.queue-badge {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.queue-badge.hidden {
+  display: none;
+}
+
+.invoer-sticky-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--nav-h) + var(--safe-bottom));
+  z-index: 90;
+  display: flex;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.invoer-sticky-bar.hidden {
+  display: none;
+}
+
+.invoer-sticky-bar .btn-primary {
+  flex: 1;
+}
+
+.werk-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.werk-row textarea {
+  margin: 0;
+}
+
+.week-target-wrap {
+  margin-top: 10px;
+}
+
+.week-target-wrap.hidden {
+  display: none;
+}
+
+.week-target-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.week-target-bar {
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.week-target-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.2s ease;
+}
+
+.week-target-fill.over {
+  background: var(--danger);
+}
+
+.combo-new {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.history-item.swiping {
+  transition: transform 0.05s linear;
+}
+
+.history-swipe-hint {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  padding: 0 2px;
+}
+
+.modal-sheet-sm {
+  max-width: 360px;
 }
 
 .tab-panel.hidden {

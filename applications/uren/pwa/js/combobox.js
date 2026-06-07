@@ -78,12 +78,21 @@
       }
 
       function renderList(q) {
-        const query = (q || "").trim().toLowerCase();
+        const raw = (q || "").trim();
+        const query = raw.toLowerCase();
         let items = full;
         if (query) items = full.filter((o) => o.toLowerCase().includes(query));
         list.innerHTML = "";
-        if (!items.length) {
-          list.innerHTML = '<li class="combo-empty">Geen resultaten</li>';
+        const exact = raw && full.some((o) => o.toLowerCase() === query);
+        if (raw && !exact) {
+          const liNew = document.createElement("li");
+          liNew.className = "combo-new";
+          liNew.textContent = `Nieuw: ${raw}`;
+          liNew.addEventListener("click", () => pick(raw));
+          list.appendChild(liNew);
+        }
+        if (!items.length && !raw) {
+          list.innerHTML = '<li class="combo-empty">Typ om nieuw toe te voegen</li>';
           return;
         }
         for (const opt of items.slice(0, 60)) {
@@ -101,8 +110,15 @@
           closeActivePopup();
         }
         if (e.key === "Enter") {
+          const raw = search.value.trim();
+          const firstNew = list.querySelector("li.combo-new");
+          if (firstNew && raw) {
+            pick(raw);
+            return;
+          }
           const first = list.querySelector("li:not(.combo-empty)");
-          if (first) pick(first.textContent);
+          if (first) pick(first.textContent.replace(/^Nieuw:\s*/, "") || first.textContent);
+          else if (raw) pick(raw);
         }
       });
 

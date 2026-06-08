@@ -853,6 +853,7 @@
     fill("dl-og", comboOptionsOg());
     fill("dl-project", comboOptionsProj());
     fill("dl-locatie", comboOptionsLoc());
+    fill("dl-werk", comboOptionsWerk());
   }
 
   function adjustHours(delta) {
@@ -1547,9 +1548,8 @@
     UrenCombo.createCombo("field-locatie", "dl-locatie", comboOptionsLoc, () => onComboChange("loc"), {
       title: "Locatie",
     });
-    UrenCombo.createCombo("field-werk", null, comboOptionsWerk, () => onComboChange("werk"), {
+    UrenCombo.createCombo("field-werk", "dl-werk", comboOptionsWerk, () => onComboChange("werk"), {
       title: "Werkzaamheden",
-      multiline: true,
     });
     UrenInstall.init(switchTab);
     switchTab("invoer");

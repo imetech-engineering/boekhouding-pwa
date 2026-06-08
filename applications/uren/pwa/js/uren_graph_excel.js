@@ -90,15 +90,13 @@
       return await fn(sessionId);
     } finally {
       cachedLayout = null;
-      try {
-        await excelFetch(
-          drivePath,
-          token,
-          "/closeSession",
-          { method: "POST", body: JSON.stringify({}) },
-          sessionId
-        );
-      } catch (_) {}
+      await excelFetch(
+        drivePath,
+        token,
+        "/closeSession",
+        { method: "POST", body: JSON.stringify({}) },
+        sessionId
+      );
     }
   }
 

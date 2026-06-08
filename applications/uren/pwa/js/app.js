@@ -272,75 +272,83 @@
     await refreshFromCloudQuiet();
   }
 
+  async function reloadFromCloud() {
+    const token = await ensureLoggedIn();
+    const path = drivePath();
+    const meta = await UrenGraph.getDriveItemMeta(path, token);
+    const entries = await UrenGraphExcel.readAllEntries(path, token);
+    const estimates = await UrenGraphEstimates.readAllEstimates(path, token);
+    state.entries = entries;
+    state.estimates = estimates;
+    state.intel = UrenExcel.buildIntel(entries);
+    state.etag = meta.etag;
+    state.meta = meta;
+    return meta;
+  }
+
   async function refreshFromCloudQuiet() {
-    if (state.loading || state.quietRefresh) return;
+    if (state.loading) return;
+    while (state.quietRefresh) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
     state.quietRefresh = true;
     try {
-      const token = await ensureLoggedIn();
-      const path = drivePath();
-      const meta = await UrenGraph.getDriveItemMeta(path, token);
-      const entries = await UrenGraphExcel.readAllEntries(path, token);
-      const estimates = await UrenGraphEstimates.readAllEstimates(path, token);
-      state.entries = entries;
-      state.estimates = estimates;
-      state.intel = UrenExcel.buildIntel(entries);
-      state.etag = meta.etag;
-      state.meta = meta;
+      const meta = await reloadFromCloud();
       setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
       renderAll(false);
       renderAccount();
-    } catch (_) {
+    } catch (e) {
+      showToast(e.message || String(e), true);
+      throw e;
     } finally {
       state.quietRefresh = false;
     }
   }
 
-  async function persistMutation(descriptor, optimisticRollback) {
-    let rollback = null;
-    if (optimisticRollback) {
-      rollback = optimisticRollback();
-      renderAll();
-      showToast("Opgeslagen…");
-    }
+  function applyOptimistic(optimisticRollback) {
+    if (!optimisticRollback) return null;
+    const rollback = optimisticRollback();
+    renderAll();
+    return rollback;
+  }
 
+  async function queueOfflineMutation(descriptor, optimisticRollback) {
+    applyOptimistic(optimisticRollback);
+    await UrenOfflineQueue.add(descriptor);
+    await updateQueueBadge();
+    showToast("Offline — wijziging in wachtrij");
+  }
+
+  async function persistMutation(descriptor, optimisticRollback) {
     if (!UrenOfflineQueue.isOnline()) {
-      await UrenOfflineQueue.add(descriptor);
-      await updateQueueBadge();
-      showToast("Offline — wijziging in wachtrij");
+      await queueOfflineMutation(descriptor, optimisticRollback);
       return;
     }
 
+    setStatus("Opslaan in OneDrive…");
     try {
       await executeMutation(descriptor);
-      const token = await ensureLoggedIn();
-      const meta = await UrenGraph.getDriveItemMeta(drivePath(), token);
-      state.etag = meta.etag;
-      state.meta = meta;
-      setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
-      refreshFromCloudQuiet();
-      showToast("Opgeslagen in OneDrive");
     } catch (e) {
       if (e.name === "GraphConflictError") {
-        if (rollback) rollback();
-        renderAll();
         showConflictModal(e.message);
         throw e;
       }
       if (isNetworkError(e)) {
-        await UrenOfflineQueue.add(descriptor);
-        await updateQueueBadge();
-        showToast("Geen verbinding — wijziging in wachtrij");
+        await queueOfflineMutation(descriptor, optimisticRollback);
         return;
-      }
-      if (rollback) {
-        rollback();
-        renderAll();
       }
       if (e.name === "GraphLockError") {
         showToast(e.message, true);
       } else {
         showToast(e.message || String(e), true);
       }
+      throw e;
+    }
+    try {
+      await refreshFromCloudQuiet();
+      showToast("Opgeslagen in OneDrive");
+    } catch (e) {
+      showToast("Opgeslagen in OneDrive — ververs handmatig als de lijst niet klopt.", true);
       throw e;
     }
   }

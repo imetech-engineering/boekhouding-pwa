@@ -77,28 +77,24 @@ body {
   position: relative;
   z-index: 10;
   padding: calc(12px + var(--safe-top)) 16px 12px;
+  padding-right: 136px;
   background: var(--bg-primary);
   border-bottom: 1px solid var(--border);
 }
 
-.header-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .header-logo {
+  position: absolute;
+  top: calc(12px + var(--safe-top));
+  right: 16px;
   display: block;
-  height: 32px;
+  height: 28px;
   width: auto;
-  max-width: 148px;
+  max-width: 120px;
   object-fit: contain;
-  flex-shrink: 0;
 }
 
 .header-text {
   min-width: 0;
-  flex: 1;
 }
 
 .app-header h1 {

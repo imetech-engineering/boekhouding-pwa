@@ -2,6 +2,8 @@
  * Invoer form, suggesties and historie UI helpers.
  */
 (function (global) {
+  const WERK_STALE_DAYS = 90;
+
   function sortByUsage(usageMap, names) {
     const list = names ? [...names] : Object.keys(usageMap || {});
     return list.sort((a, b) => {
@@ -14,6 +16,36 @@
       if (lb !== la) return lb - la;
       return String(a).localeCompare(String(b));
     });
+  }
+
+  /** Werkzaamheden: recent eerst; lang niet gebruikt (>90d) naar beneden. */
+  function sortByRecency(usageMap, names, staleDays = WERK_STALE_DAYS) {
+    const list = names ? [...names] : Object.keys(usageMap || {});
+    const now = Date.now();
+    const staleMs = staleDays * 24 * 60 * 60 * 1000;
+
+    function meta(name) {
+      const s = usageMap[name] || { uren: 0, count: 0, last: null };
+      const lastMs = s.last ? s.last.getTime() : 0;
+      const stale = lastMs > 0 && now - lastMs > staleMs;
+      return { ...s, lastMs, stale, noDate: !lastMs };
+    }
+
+    return list.sort((a, b) => {
+      const sa = meta(a);
+      const sb = meta(b);
+      if (sa.noDate !== sb.noDate) return sa.noDate ? 1 : -1;
+      if (sa.stale !== sb.stale) return sa.stale ? 1 : -1;
+      if (sb.lastMs !== sa.lastMs) return sb.lastMs - sa.lastMs;
+      if (sb.count !== sa.count) return sb.count - sa.count;
+      if (sb.uren !== sa.uren) return sb.uren - sa.uren;
+      return String(a).localeCompare(String(b));
+    });
+  }
+
+  function sortWerkFromMap(map) {
+    if (!map || !Object.keys(map).length) return [];
+    return sortByRecency(map);
   }
 
   function rankSearchOption(opt, query) {
@@ -93,16 +125,22 @@
     loc = (loc || "").trim();
     const fullKey = `${og}\0${project}\0${loc}`;
     const projKey = `${og}\0${project}`;
-    if (og && project && loc && intel.werk_by_context?.[fullKey]) {
-      return sortContextValues(intel.werk_by_context, fullKey);
-    }
-    if (og && project && intel.werk_by_og_proj?.[projKey]) {
-      return sortContextValues(intel.werk_by_og_proj, projKey);
-    }
-    if (og && intel.werk_by_og?.[og]) {
-      return sortContextValues(intel.werk_by_og, og);
-    }
-    return sortByUsage(intel.werk_usage, intel.all_werk);
+    const out = [];
+    const seen = new Set();
+    const addLayer = (bucket, key) => {
+      const map = bucket?.[key];
+      if (!map) return;
+      for (const name of sortWerkFromMap(map)) {
+        if (seen.has(name)) continue;
+        seen.add(name);
+        out.push(name);
+      }
+    };
+    if (og && project && loc) addLayer(intel.werk_by_context, fullKey);
+    if (og && project) addLayer(intel.werk_by_og_proj, projKey);
+    if (og) addLayer(intel.werk_by_og, og);
+    if (out.length) return out;
+    return sortByRecency(intel.werk_usage, intel.all_werk);
   }
 
   function validateForm(fields) {
@@ -169,6 +207,7 @@
 
   global.UrenInvoer = {
     sortByUsage,
+    sortByRecency,
     sortContextValues,
     smartProjects,
     smartLocaties,

@@ -81,6 +81,26 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-logo {
+  display: block;
+  height: 32px;
+  width: auto;
+  max-width: 148px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.header-text {
+  min-width: 0;
+  flex: 1;
+}
+
 .app-header h1 {
   margin: 0;
   font-size: 1.125rem;
@@ -158,15 +178,12 @@ main.has-sticky-save {
   flex: 1;
 }
 
-.werk-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  align-items: start;
+.combo-wrap-multiline {
+  align-items: flex-start;
 }
 
-.werk-row textarea {
-  margin: 0;
+.combo-wrap-multiline .btn-combo {
+  margin-top: 2px;
 }
 
 .week-target-wrap {

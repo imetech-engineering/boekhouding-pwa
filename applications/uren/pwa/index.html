@@ -12,7 +12,7 @@
     <title>IMeTech Uren</title>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="css/app.css" />
-    <link rel="icon" href="icons/icon-192.png" type="image/png" />
+    <link rel="icon" href="icons/favicon-32.png" type="image/png" />
   </head>
   <body>
     <div id="install-banner" class="install-banner hidden" role="dialog" aria-label="App installeren">
@@ -26,8 +26,20 @@
     </div>
 
     <header class="app-header">
-      <h1>IMeTech Uren</h1>
-      <p id="sync-status" class="sub">—</p>
+      <div class="header-brand">
+        <img
+          id="header-logo"
+          class="header-logo"
+          src="branding/logo-zwart.png"
+          alt="IMeTech Engineering"
+          width="148"
+          height="32"
+        />
+        <div class="header-text">
+          <h1>Uren</h1>
+          <p id="sync-status" class="sub">—</p>
+        </div>
+      </div>
       <p id="queue-status" class="sub queue-badge hidden" role="status"></p>
       <div id="pull-indicator" class="pull-indicator hidden" aria-hidden="true">↓ Loslaten om te verversen</div>
     </header>
@@ -72,10 +84,7 @@
           <datalist id="dl-locatie"></datalist>
 
           <label for="field-werk">Werkzaamheden</label>
-          <div class="werk-row">
-            <textarea id="field-werk" rows="3"></textarea>
-            <button type="button" id="btn-werk-pick" class="btn-secondary btn-compact" aria-label="Recente werkzaamheden">▼</button>
-          </div>
+          <textarea id="field-werk" rows="3"></textarea>
 
           <div class="row-2">
             <div>
@@ -362,7 +371,6 @@
     <script src="js/uren_analyse.js"></script>
     <script src="js/uren_invoer.js"></script>
     <script src="js/combobox.js"></script>
-    <script src="js/werk_picker.js"></script>
     <script src="js/offline_queue.js"></script>
     <script src="js/install.js"></script>
     <script src="js/app.js"></script>

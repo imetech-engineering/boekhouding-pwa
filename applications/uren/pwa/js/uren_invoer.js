@@ -5,11 +5,25 @@
   function sortByUsage(usageMap, names) {
     const list = names ? [...names] : Object.keys(usageMap || {});
     return list.sort((a, b) => {
-      const sa = usageMap[a] || { uren: 0, count: 0 };
-      const sb = usageMap[b] || { uren: 0, count: 0 };
+      const sa = usageMap[a] || { uren: 0, count: 0, last: null };
+      const sb = usageMap[b] || { uren: 0, count: 0, last: null };
+      const la = sa.last ? sa.last.getTime() : 0;
+      const lb = sb.last ? sb.last.getTime() : 0;
       if (sb.uren !== sa.uren) return sb.uren - sa.uren;
-      return sb.count - sa.count;
+      if (sb.count !== sa.count) return sb.count - sa.count;
+      if (lb !== la) return lb - la;
+      return String(a).localeCompare(String(b));
     });
+  }
+
+  function rankSearchOption(opt, query) {
+    const q = (query || "").trim().toLowerCase();
+    if (!q) return 0;
+    const o = String(opt).toLowerCase();
+    if (o === q) return 0;
+    if (o.startsWith(q)) return 1;
+    if (o.includes(q)) return 2;
+    return 3;
   }
 
   function filterSuggestions(list, query, limit = 12) {
@@ -70,6 +84,25 @@
       return sortContextValues(intel.locaties_by_og, og);
     }
     return sortByUsage(intel.loc_usage, intel.all_locaties);
+  }
+
+  function smartWerkzaamheden(intel, og, project, loc) {
+    if (!intel) return [];
+    og = (og || "").trim();
+    project = (project || "").trim();
+    loc = (loc || "").trim();
+    const fullKey = `${og}\0${project}\0${loc}`;
+    const projKey = `${og}\0${project}`;
+    if (og && project && loc && intel.werk_by_context?.[fullKey]) {
+      return sortContextValues(intel.werk_by_context, fullKey);
+    }
+    if (og && project && intel.werk_by_og_proj?.[projKey]) {
+      return sortContextValues(intel.werk_by_og_proj, projKey);
+    }
+    if (og && intel.werk_by_og?.[og]) {
+      return sortContextValues(intel.werk_by_og, og);
+    }
+    return sortByUsage(intel.werk_usage, intel.all_werk);
   }
 
   function validateForm(fields) {
@@ -139,6 +172,8 @@
     sortContextValues,
     smartProjects,
     smartLocaties,
+    smartWerkzaamheden,
+    rankSearchOption,
     filterSuggestions,
     suggestTarief,
     formatHistoryLine,

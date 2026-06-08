@@ -34,6 +34,9 @@
       locaties_by_og: {},
       locaties_by_og_proj: {},
       werk_by_context: {},
+      werk_by_og_proj: {},
+      werk_by_og: {},
+      werk_usage: {},
       last_combo: {},
       all_opdrachtgevers: [],
       all_projects: [],
@@ -60,6 +63,7 @@
       bump(intel.og_usage, og, e.uren, dt);
       bump(intel.proj_usage, proj, e.uren, dt);
       bump(intel.loc_usage, loc, e.uren, dt);
+      bump(intel.werk_usage, wz, e.uren, dt);
       uniq(intel.all_opdrachtgevers, og);
       uniq(intel.all_projects, proj);
       uniq(intel.all_locaties, loc);
@@ -72,10 +76,14 @@
         intel.last_combo[`${og}\0${proj}`] = e;
         intel.tarieven_pair[`${og}\0${proj}`] = e.tarief;
       }
-      if (og && proj && loc && wz) {
-        bumpContextList(intel.werk_by_context, `${og}\0${proj}\0${loc}`, wz, e.uren, dt);
+      if (wz) {
+        if (og) bumpContextList(intel.werk_by_og, og, wz, e.uren, dt);
+        if (og && proj) bumpContextList(intel.werk_by_og_proj, `${og}\0${proj}`, wz, e.uren, dt);
+        if (og && proj && loc) {
+          bumpContextList(intel.werk_by_context, `${og}\0${proj}\0${loc}`, wz, e.uren, dt);
+        }
+        if (!intel.all_werk.includes(wz)) intel.all_werk.push(wz);
       }
-      if (wz && !intel.all_werk.includes(wz)) intel.all_werk.push(wz);
     }
     return intel;
   }

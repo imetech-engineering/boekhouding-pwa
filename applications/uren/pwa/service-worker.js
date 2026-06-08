@@ -1,10 +1,13 @@
-const CACHE = "imtech-uren-pwa-v20";
+const CACHE = "imtech-uren-pwa-v21";
 const ASSETS = [
   "./",
   "./index.html",
   "./css/app.css",
   "./manifest.webmanifest",
   "./config.js",
+  "./branding/logo-zwart.png",
+  "./branding/logo-wit.png",
+  "./icons/favicon-32.png",
   "./js/auth.js",
   "./js/graph.js",
   "./js/uren_excel.js",
@@ -14,7 +17,6 @@ const ASSETS = [
   "./js/uren_analyse.js",
   "./js/uren_invoer.js",
   "./js/combobox.js",
-  "./js/werk_picker.js",
   "./js/offline_queue.js",
   "./js/install.js",
   "./js/app.js",

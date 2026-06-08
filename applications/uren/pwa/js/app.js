@@ -77,6 +77,8 @@
     document.documentElement.dataset.theme = on ? "dark" : "";
     const meta = $("#meta-theme-color");
     if (meta) meta.content = on ? "#121210" : "#2563EB";
+    const logo = $("#header-logo");
+    if (logo) logo.src = on ? "branding/logo-wit.png" : "branding/logo-zwart.png";
     const cb = $("#toggle-dark-mode");
     if (cb) cb.checked = on;
     try {
@@ -750,7 +752,7 @@
     $("#field-locatie").value = entry?.locatie || "";
     $("#field-uren").value = entry?.uren ?? "";
     $("#field-tarief").value = entry?.tarief ?? "";
-    onComboChange();
+    onComboChange("og");
     updateInvoerStats();
   }
 
@@ -767,25 +769,39 @@
     $("#field-locatie").value = loc;
     $("#field-werk").value = "";
     $("#field-uren").value = "1";
-    onComboChange();
+    onComboChange("og");
     updateInvoerStats();
     $("#field-werk")?.focus();
   }
 
-  function onComboChange() {
+  function invoerContext() {
+    return {
+      og: ($("#field-og")?.value || "").trim(),
+      proj: ($("#field-project")?.value || "").trim(),
+      loc: ($("#field-locatie")?.value || "").trim(),
+    };
+  }
+
+  /** Bij opdrachtgever alleen sorteren; aanvullen pas bij project/locatie. */
+  function onComboChange(trigger) {
     renderDatalists();
-    const t = UrenInvoer.suggestTarief(
-      state.intel,
-      $("#field-og")?.value,
-      $("#field-project")?.value
-    );
-    if (t !== "") $("#field-tarief").value = t;
-    const og = ($("#field-og")?.value || "").trim();
-    const proj = ($("#field-project")?.value || "").trim();
-    const combo = state.intel?.last_combo?.[`${og}\0${proj}`];
-    if (combo) {
-      if (!$("#field-locatie")?.value && combo.locatie) $("#field-locatie").value = combo.locatie;
-      if (!$("#field-werk")?.value && combo.werkzaamheden) $("#field-werk").value = combo.werkzaamheden;
+    const { og, proj, loc } = invoerContext();
+    if (og && proj) {
+      const t = UrenInvoer.suggestTarief(state.intel, og, proj);
+      if (t !== "") $("#field-tarief").value = t;
+    }
+    if (trigger === "project" && og && proj) {
+      const combo = state.intel?.last_combo?.[`${og}\0${proj}`];
+      if (combo?.locatie && !($("#field-locatie")?.value || "").trim()) {
+        $("#field-locatie").value = combo.locatie;
+      }
+    }
+    if (trigger === "loc" && og && proj && loc) {
+      const wzEl = $("#field-werk");
+      if (wzEl && !(wzEl.value || "").trim()) {
+        const opts = UrenInvoer.smartWerkzaamheden(state.intel, og, proj, loc);
+        if (opts.length) wzEl.value = opts[0];
+      }
     }
   }
 
@@ -806,6 +822,12 @@
       $("#field-og")?.value,
       $("#field-project")?.value
     );
+  }
+
+  function comboOptionsWerk() {
+    if (!state.intel) return [];
+    const { og, proj, loc } = invoerContext();
+    return UrenInvoer.smartWerkzaamheden(state.intel, og, proj, loc);
   }
 
   function renderDatalists() {
@@ -1404,11 +1426,9 @@
       }
     });
     $("#history-search")?.addEventListener("input", renderHistory);
-    $("#field-og")?.addEventListener("input", renderDatalists);
-    $("#field-project")?.addEventListener("input", renderDatalists);
-    $("#field-og")?.addEventListener("change", onComboChange);
-    $("#field-project")?.addEventListener("change", onComboChange);
-    $("#field-locatie")?.addEventListener("change", onComboChange);
+    $("#field-og")?.addEventListener("input", () => onComboChange("og"));
+    $("#field-project")?.addEventListener("input", () => onComboChange("og"));
+    $("#field-locatie")?.addEventListener("input", () => onComboChange("project"));
     $("#btn-login")?.addEventListener("click", async () => {
       try {
         await UrenAuth.login();
@@ -1485,25 +1505,6 @@
       renderAnalyse();
     });
     $("#week-target-input")?.addEventListener("change", (e) => saveWeekTarget(e.target.value));
-    $("#btn-werk-pick")?.addEventListener("click", () => {
-      const el = $("#field-werk");
-      UrenWerkPicker.openWerkPicker(
-        el,
-        state.intel,
-        () => ({
-          og: $("#field-og")?.value,
-          project: $("#field-project")?.value,
-          loc: $("#field-locatie")?.value,
-        }),
-        null
-      );
-    });
-    $("#field-werk")?.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        $("#btn-werk-pick")?.click();
-      }
-    });
     $("#btn-conflict-refresh")?.addEventListener("click", async () => {
       closeConflictModal();
       try {
@@ -1529,9 +1530,19 @@
     loadDarkPreference();
     loadWeekTarget();
     bindEvents();
-    UrenCombo.createCombo("field-og", "dl-og", comboOptionsOg, onComboChange);
-    UrenCombo.createCombo("field-project", "dl-project", comboOptionsProj, onComboChange);
-    UrenCombo.createCombo("field-locatie", "dl-locatie", comboOptionsLoc, onComboChange);
+    UrenCombo.createCombo("field-og", "dl-og", comboOptionsOg, () => onComboChange("og"), {
+      title: "Opdrachtgever",
+    });
+    UrenCombo.createCombo("field-project", "dl-project", comboOptionsProj, () => onComboChange("project"), {
+      title: "Project",
+    });
+    UrenCombo.createCombo("field-locatie", "dl-locatie", comboOptionsLoc, () => onComboChange("loc"), {
+      title: "Locatie",
+    });
+    UrenCombo.createCombo("field-werk", null, comboOptionsWerk, () => onComboChange("werk"), {
+      title: "Werkzaamheden",
+      multiline: true,
+    });
     UrenInstall.init(switchTab);
     switchTab("invoer");
     try {

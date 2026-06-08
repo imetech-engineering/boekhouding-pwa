@@ -1,5 +1,5 @@
 /**
- * Searchable combobox — datalist on input + ▼ button opens full popup.
+ * Searchable combobox — datalist + ▼ popup (uniform voor alle invoervelden).
  */
 (function (global) {
   let activePopup = null;
@@ -16,16 +16,25 @@
     }
   }
 
-  function createCombo(inputId, datalistId, optionsFn, onSelect) {
+  function createCombo(inputId, datalistId, optionsFn, onSelect, config) {
     const input = document.getElementById(inputId);
     if (!input) return null;
 
+    const cfg = {
+      title: "Kiezen",
+      allowNew: true,
+      multiline: false,
+      ...(config || {}),
+    };
+
     if (datalistId) {
       input.setAttribute("list", datalistId);
+    } else {
+      input.removeAttribute("list");
     }
 
     const wrap = document.createElement("div");
-    wrap.className = "combo-wrap";
+    wrap.className = "combo-wrap" + (cfg.multiline ? " combo-wrap-multiline" : "");
     input.parentNode.insertBefore(wrap, input);
     wrap.appendChild(input);
 
@@ -50,7 +59,7 @@
       popup.className = "combo-popup";
       popup.innerHTML = `
         <div class="combo-popup-head">
-          <span class="combo-popup-title">Kiezen</span>
+          <span class="combo-popup-title">${cfg.title}</span>
           <button type="button" class="combo-close" aria-label="Sluiten">&times;</button>
         </div>
         <input type="search" class="combo-search" placeholder="Zoeken…" autocomplete="off" />
@@ -81,10 +90,19 @@
         const raw = (q || "").trim();
         const query = raw.toLowerCase();
         let items = full;
-        if (query) items = full.filter((o) => o.toLowerCase().includes(query));
+        if (query) {
+          items = full
+            .filter((o) => String(o).toLowerCase().includes(query))
+            .sort((a, b) => {
+              const ra = global.UrenInvoer?.rankSearchOption(a, query) ?? 0;
+              const rb = global.UrenInvoer?.rankSearchOption(b, query) ?? 0;
+              if (ra !== rb) return ra - rb;
+              return full.indexOf(a) - full.indexOf(b);
+            });
+        }
         list.innerHTML = "";
-        const exact = raw && full.some((o) => o.toLowerCase() === query);
-        if (raw && !exact) {
+        const exact = raw && full.some((o) => String(o).toLowerCase() === query);
+        if (cfg.allowNew && raw && !exact) {
           const liNew = document.createElement("li");
           liNew.className = "combo-new";
           liNew.textContent = `Nieuw: ${raw}`;
@@ -93,6 +111,9 @@
         }
         if (!items.length && !raw) {
           list.innerHTML = '<li class="combo-empty">Typ om nieuw toe te voegen</li>';
+          return;
+        }
+        if (!items.length && raw && cfg.allowNew) {
           return;
         }
         for (const opt of items.slice(0, 60)) {
@@ -118,7 +139,7 @@
           }
           const first = list.querySelector("li:not(.combo-empty)");
           if (first) pick(first.textContent.replace(/^Nieuw:\s*/, "") || first.textContent);
-          else if (raw) pick(raw);
+          else if (raw && cfg.allowNew) pick(raw);
         }
       });
 
@@ -130,6 +151,13 @@
       e.preventDefault();
       e.stopPropagation();
       openPopup();
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" && !e.altKey && !e.ctrlKey) {
+        e.preventDefault();
+        openPopup();
+      }
     });
 
     return { input, openPopup, closePopup: closeActivePopup };

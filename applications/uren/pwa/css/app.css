@@ -832,6 +832,7 @@ a.link {
 }
 
 .status-actief { background: #dbeafe; color: #1d4ed8; }
+.status-regie { background: #e0e7ff; color: #4338ca; }
 .status-wacht { background: #fef3c7; color: #b45309; }
 .status-afgerond { background: #dcfce7; color: #15803d; }
 .status-hold { background: #f3f4f6; color: #4b5563; }
@@ -839,6 +840,7 @@ a.link {
 .status-default { background: var(--bg-tertiary); color: var(--text-secondary); }
 
 html[data-theme="dark"] .status-actief { background: #1e3a5f; color: #93c5fd; }
+html[data-theme="dark"] .status-regie { background: #312e81; color: #c7d2fe; }
 html[data-theme="dark"] .status-wacht { background: #422006; color: #fcd34d; }
 html[data-theme="dark"] .status-afgerond { background: #14532d; color: #86efac; }
 html[data-theme="dark"] .status-hold { background: #374151; color: #d1d5db; }

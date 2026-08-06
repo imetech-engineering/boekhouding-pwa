@@ -23,12 +23,14 @@
   const PROJECT_STATUSES = [
     "Wachten op akkoord",
     "In opdracht",
+    "Regie",
     "Afgerond",
     "On hold",
     "Geannuleerd",
   ];
 
   const DEFAULT_STATUS = "Wachten op akkoord";
+  // "Regie" bewust NIET actief: geen hard budget, geen over-budget-melding, geen delta.
   const ACTIVE_STATUSES = new Set(["In opdracht", "On hold", "Wachten op akkoord"]);
 
   function parseGraphDate(v) {
@@ -159,6 +161,7 @@
   function statusClass(status) {
     const map = {
       "In opdracht": "status-actief",
+      Regie: "status-regie",
       "Wachten op akkoord": "status-wacht",
       Afgerond: "status-afgerond",
       "On hold": "status-hold",

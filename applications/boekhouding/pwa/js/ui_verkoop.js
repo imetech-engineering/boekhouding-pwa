@@ -49,11 +49,14 @@
     $("#verkoop-pdf-canvas").classList.remove("hidden");
     hidePdfNav();
 
-    // FAxxxx_(NL|EU|buitenEU)_Bedrijf.pdf
+    // Vers formulier voor deze factuur, dan vullen: bestandsnaam → PDF → Excel-historie.
+    clearFormFields();
+
+    // FAxxxx_(NL|EU|buitenEU)_Bedrijf.pdf — nummer, klant en land uit de naam
     const parsed = M().parseVerkoopFilename(item.name);
-    fillIfEmpty("verkoop-fnr", parsed.factuurnummer);
-    fillIfEmpty("verkoop-klant", parsed.bedrijf);
-    if (!$("#verkoop-land").value && parsed.type) $("#verkoop-land").value = parsed.type;
+    if (parsed.factuurnummer) $("#verkoop-fnr").value = parsed.factuurnummer;
+    if (parsed.bedrijf) $("#verkoop-klant").value = parsed.bedrijf;
+    if (parsed.type) $("#verkoop-land").value = parsed.type;
 
     try {
       const token = await App().ensureLoggedIn();
@@ -64,13 +67,12 @@
         await renderPdfPage();
         const text = await global.BoekPdf.extractText(pdfDoc);
         const ex = global.BoekPdf.extractInvoiceData(text);
-        fillIfEmpty("verkoop-datum", ex.datum);
-        if (!$("#verkoop-bedrag").value && ex.bedrag != null) {
-          $("#verkoop-bedrag").value = M().fmtAmountInput(ex.bedrag);
-        }
-        if (!$("#verkoop-btw").value && ex.btw != null) $("#verkoop-btw").value = String(ex.btw);
+        // Datum en bedrag staan bij verkoop in de factuur zelf
+        if (ex.datum) $("#verkoop-datum").value = ex.datum;
+        if (ex.bedrag != null) $("#verkoop-bedrag").value = M().fmtAmountInput(ex.bedrag);
+        if (ex.btw != null) $("#verkoop-btw").value = String(ex.btw);
       } else if (!item.folder) {
-        const url = await global.BoekGraph.getDownloadUrl(item.id, token);
+        const url = await global.BoekGraph.downloadObjectUrl(item.id, token);
         const img = $("#verkoop-img-preview");
         img.src = url;
         img.classList.remove("hidden");
@@ -107,11 +109,6 @@
     $("#btn-verkoop-page-prev").classList.add("hidden");
     $("#btn-verkoop-page-next").classList.add("hidden");
     $("#verkoop-page-label").classList.add("hidden");
-  }
-
-  function fillIfEmpty(id, value) {
-    const el = document.getElementById(id);
-    if (el && !el.value && value) el.value = value;
   }
 
   function applyPartyDefaults() {
@@ -167,7 +164,8 @@
     };
   }
 
-  function clearForm() {
+  /** Alleen de velden leegmaken (gebruikt bij het selecteren van een nieuwe factuur). */
+  function clearFormFields() {
     for (const id of [
       "verkoop-klant", "verkoop-omschrijving", "verkoop-fnr", "verkoop-bedrag",
       "verkoop-btw", "verkoop-categorie", "verkoop-opmerking",
@@ -180,6 +178,10 @@
     $("#verkoop-bank-check").checked = false;
     $("#verkoop-valuta-wrap").classList.add("hidden");
     prefillBankRows = [];
+  }
+
+  function clearForm() {
+    clearFormFields();
     updateBankCheck();
   }
 

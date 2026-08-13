@@ -28,6 +28,21 @@
     return [...opgeslagen, ...historie];
   }
 
+  async function maakFavoriet(f) {
+    const favs = (settings().favorieten || []).filter((x) => x.naam !== f.naam);
+    favs.unshift({
+      naam: f.naam,
+      bestemming: f.bestemming,
+      km: f.km,
+      project: f.project || "",
+      lat: f.lat ?? null,
+      lon: f.lon ?? null,
+    });
+    await App().saveSettings({ favorieten: favs });
+    renderFavorieten();
+    App().showToast(`★ "${f.naam}" opgeslagen als favoriet`);
+  }
+
   function renderFavorieten() {
     const list = $("#reis-fav-list");
     list.innerHTML = "";
@@ -37,24 +52,30 @@
       return;
     }
     for (const f of favs.slice(0, 15)) {
+      const isFav = f.bron === "vast";
       const li = document.createElement("li");
       li.className = "boek-item";
       li.innerHTML = `
         <div class="bi-head">
-          <span class="bi-title">${escapeHtml(f.naam)}</span>
+          <span class="bi-title">${isFav ? "★ " : ""}${escapeHtml(f.naam)}</span>
           <span class="bi-amount">${M().formatKm(f.km)} km</span>
         </div>
         <div class="bi-sub">
           <span>${escapeHtml(f.bestemming)}${f.project ? " · " + escapeHtml(f.project) : ""}</span>
-          <span>${f.bron === "vast" ? "★" : "uit historie"}</span>
+          <span>${isFav ? "favoriet" : "uit historie"}</span>
         </div>
-        ${f.bron === "vast" ? '<div class="bi-actions"><button type="button" class="bi-x" aria-label="Verwijder">✕</button></div>' : ""}`;
+        <div class="bi-actions">
+          ${isFav
+            ? '<button type="button" class="bi-x" aria-label="Favoriet verwijderen" title="Favoriet verwijderen">✕</button>'
+            : '<button type="button" class="bi-star" aria-label="Maak favoriet" title="Maak favoriet">☆ favoriet maken</button>'}
+        </div>`;
       li.addEventListener("click", (e) => {
-        if (e.target.classList.contains("bi-x")) return;
+        if (e.target.closest(".bi-x") || e.target.closest(".bi-star")) return;
         vulFavoriet(f);
       });
+      li.querySelector(".bi-star")?.addEventListener("click", () => maakFavoriet(f));
       li.querySelector(".bi-x")?.addEventListener("click", async () => {
-        const ok = await App().showConfirm(`Vaste bestemming "${f.naam}" verwijderen?`, "Verwijderen", "Annuleren");
+        const ok = await App().showConfirm(`Favoriet "${f.naam}" verwijderen?`, "Verwijderen", "Annuleren");
         if (ok) {
           await App().saveSettings({
             favorieten: (settings().favorieten || []).filter((x) => x.naam !== f.naam),

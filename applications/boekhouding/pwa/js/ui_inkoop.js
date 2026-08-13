@@ -51,11 +51,14 @@
     $("#inkoop-pdf-canvas").classList.remove("hidden");
     hidePdfNav();
 
-    // 1. Bestandsnaam parsen (yymmdd bedrijf factuurnummer)
+    // Vers formulier voor deze factuur, dan vullen: bestandsnaam → PDF → Excel-historie.
+    clearFormFields();
+
+    // 1. Bestandsnaam parsen (yymmdd bedrijf factuurnummer) — datum uit de naam is leidend
     filenameParsed = M().parseInkoopFilename(item.name);
-    fillIfEmpty("inkoop-datum", filenameParsed.datumIso);
-    fillIfEmpty("inkoop-leverancier", filenameParsed.bedrijf);
-    fillIfEmpty("inkoop-fnr", filenameParsed.factuurnummer);
+    if (filenameParsed.datumIso) $("#inkoop-datum").value = filenameParsed.datumIso;
+    if (filenameParsed.bedrijf) $("#inkoop-leverancier").value = filenameParsed.bedrijf;
+    if (filenameParsed.factuurnummer) $("#inkoop-fnr").value = filenameParsed.factuurnummer;
 
     // 2. Bestand ophalen: map → eerste bestand erin; afbeelding → tonen; PDF → preview + extractie
     try {
@@ -77,7 +80,7 @@
         const text = await global.BoekPdf.extractText(pdfDoc);
         applyExtraction(global.BoekPdf.extractInvoiceData(text));
       } else {
-        const url = await global.BoekGraph.getDownloadUrl(fileItem.id, token);
+        const url = await global.BoekGraph.downloadObjectUrl(fileItem.id, token);
         const img = $("#inkoop-img-preview");
         img.src = url;
         img.classList.remove("hidden");
@@ -211,7 +214,8 @@
     };
   }
 
-  function clearForm() {
+  /** Alleen de velden leegmaken (gebruikt bij het selecteren van een nieuwe factuur). */
+  function clearFormFields() {
     for (const id of [
       "inkoop-leverancier", "inkoop-omschrijving", "inkoop-fnr", "inkoop-bedrag",
       "inkoop-btw", "inkoop-categorie", "inkoop-project", "inkoop-opmerking",
@@ -226,6 +230,10 @@
     $("#inkoop-bank-check").checked = false;
     $("#inkoop-valuta-wrap").classList.add("hidden");
     prefillBankRows = [];
+  }
+
+  function clearForm() {
+    clearFormFields();
     updateBankCheck();
     updateRenameButton();
   }

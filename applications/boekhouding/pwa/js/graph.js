@@ -72,21 +72,23 @@
     return items;
   }
 
-  /** Pre-authenticated download-URL van een bestand (geen auth-header nodig, CORS ok). */
-  async function getDownloadUrl(itemId, token) {
-    const data = await graphFetch(
-      `${GRAPH}/me/drive/items/${itemId}?$select=id,@microsoft.graph.downloadUrl`,
-      token
-    );
-    return data["@microsoft.graph.downloadUrl"] || null;
-  }
-
+  /**
+   * Bestandsinhoud direct via het /content-endpoint (volgt de redirect naar de
+   * pre-auth download-URL). Betrouwbaarder dan @microsoft.graph.downloadUrl via
+   * $select — die annotation ontbreekt vaak bij OneDrive Business.
+   */
   async function downloadBytes(itemId, token) {
-    const url = await getDownloadUrl(itemId, token);
-    if (!url) throw new Error("Geen download-URL beschikbaar.");
-    const res = await fetch(url);
+    const res = await fetch(`${GRAPH}/me/drive/items/${itemId}/content`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!res.ok) throw new Error(`Download mislukt (${res.status})`);
     return res.arrayBuffer();
+  }
+
+  /** Object-URL voor een afbeelding-preview (aanroeper hoeft niets vrij te geven; laatste blijft leven). */
+  async function downloadObjectUrl(itemId, token, mime) {
+    const bytes = await downloadBytes(itemId, token);
+    return URL.createObjectURL(new Blob([bytes], mime ? { type: mime } : undefined));
   }
 
   /** Verplaats (en optioneel hernoem) een item naar een andere map. */
@@ -141,8 +143,8 @@
     graphFetch,
     getDriveItemMeta,
     listFolder,
-    getDownloadUrl,
     downloadBytes,
+    downloadObjectUrl,
     moveItem,
     renameItem,
     readJsonFile,

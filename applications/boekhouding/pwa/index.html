@@ -233,6 +233,7 @@
             <input id="verkoop-fnr" autocomplete="off" />
             <button type="button" id="btn-verkoop-fnr-suggest" class="btn-secondary btn-compact" title="Volgend FA-nummer">FA+</button>
           </div>
+          <p class="sub">FA+ vult het eerstvolgende vrije nummer in de reeks FAjjmmnn in (bijv. FA260804) — voor als je zonder factuurbestand boekt.</p>
           <div class="row-2">
             <div>
               <label for="verkoop-bedrag">Bedrag incl. BTW (€)</label>
@@ -298,8 +299,8 @@
       <!-- ============ REISKOSTEN ============ -->
       <section id="panel-reis" class="tab-panel hidden">
         <div class="card">
-          <h2>Vaste bestemmingen</h2>
-          <p class="sub">Tik om in te vullen. Nieuwe ritten kun je hieronder als favoriet opslaan.</p>
+          <h2>Favorieten &amp; eerdere bestemmingen</h2>
+          <p class="sub">Tik om in te vullen. ★ = favoriet; bij een bestemming uit je historie kun je op "☆ favoriet maken" tikken.</p>
           <ul id="reis-fav-list" class="boek-list"></ul>
         </div>
 
@@ -332,7 +333,7 @@
           <input id="reis-project" autocomplete="off" />
           <label class="check-row">
             <input type="checkbox" id="reis-fav-save" />
-            Opslaan als vaste bestemming
+            ★ Opslaan als favoriet
           </label>
           <div class="reis-preview" id="reis-preview">
             <p id="reis-preview-oms" class="sub">—</p>
@@ -466,9 +467,13 @@
           <button type="button" id="btn-bank-m-ingeboekt" class="btn-primary">Markeer ingeboekt</button>
           <button type="button" id="btn-bank-m-save" class="btn-secondary">Opslaan</button>
         </div>
+        <p class="sub">
+          Geen losse factuur bij deze transactie (bankkosten, rente, kleine bon)?
+          Neem datum, omschrijving en bedrag dan direct mee naar het boekformulier:
+        </p>
         <div class="btn-row">
-          <button type="button" id="btn-bank-m-naar-inkoop" class="btn-secondary">Inboeken als inkoop →</button>
-          <button type="button" id="btn-bank-m-naar-verkoop" class="btn-secondary">Als verkoop →</button>
+          <button type="button" id="btn-bank-m-naar-inkoop" class="btn-secondary">→ Boek als kosten (inkoop)</button>
+          <button type="button" id="btn-bank-m-naar-verkoop" class="btn-secondary">→ Als omzet (verkoop)</button>
         </div>
       </div>
     </div>

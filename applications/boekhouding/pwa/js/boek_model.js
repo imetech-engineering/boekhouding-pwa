@@ -445,18 +445,6 @@
     return `${yymmdd} ${clean(bedrijf)} ${clean(factuurnummer)}`.trim() + (ext || "");
   }
 
-  // === FA-nummer suggestie (FAyymmnn) ===
-  function suggestNextFaNummer(verkoopRows, refIso) {
-    const iso = refIso || todayIso();
-    const yymm = iso.slice(2, 4) + iso.slice(5, 7);
-    let maxN = 0;
-    for (const r of verkoopRows) {
-      const m = (r.factuurnummer || "").match(/^FA(\d{4})(\d{2})$/i);
-      if (m && m[1] === yymm) maxN = Math.max(maxN, +m[2]);
-    }
-    return `FA${yymm}${String(maxN + 1).padStart(2, "0")}`;
-  }
-
   // === Reiskosten ===
   function formatKm(km) {
     return km.toLocaleString("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -536,7 +524,6 @@
     bankMatchesForInvoice, invoiceMatchesForBankRow,
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
-    suggestNextFaNummer,
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie,
     kwartaalOverzicht,
   };

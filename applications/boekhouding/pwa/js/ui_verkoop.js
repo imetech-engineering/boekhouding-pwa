@@ -300,13 +300,6 @@
       { title: "Categorie" }
     );
     $("#verkoop-klant").addEventListener("change", applyPartyDefaults);
-    $("#btn-verkoop-fnr-suggest").addEventListener("click", () => {
-      $("#verkoop-fnr").value = M().suggestNextFaNummer(
-        App().state.verkoopRows,
-        $("#verkoop-datum").value
-      );
-      App().haptic(15);
-    });
     $("#btn-verkoop-valuta-toggle").addEventListener("click", () => {
       $("#verkoop-valuta-wrap").classList.toggle("hidden");
     });

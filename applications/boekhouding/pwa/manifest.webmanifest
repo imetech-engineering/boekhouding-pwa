@@ -1,0 +1,26 @@
+{
+  "name": "IMeTech Boekhouding",
+  "short_name": "Boekhouding",
+  "description": "Bankboek, inkoop- en verkoopfacturen en reiskosten — direct in Boekhouding_IMeTech.xlsx via OneDrive.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f7f5",
+  "theme_color": "#0E8A5B",
+  "lang": "nl",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

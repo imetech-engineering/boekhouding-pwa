@@ -1,13 +1,14 @@
 # =============================================================================
-# imetech-engineering/uren-pwa — public repo: PWA + GitHub Pages deploy ONLY
+# imetech-engineering uren-pwa + boekhouding-pwa — public repos: PWA's + Pages deploy ONLY
 # =============================================================================
 # This workspace lives inside a larger Automatisatie folder. Default-deny
 # prevents accidental `git add .` from publishing desktop apps, Excel, secrets,
 # or other local tooling.
 #
 # Allowed in git:
-#   .github/workflows/deploy-uren-pwa.yml
+#   .github/workflows/deploy-*-pwa.yml
 #   applications/uren/pwa/**
+#   applications/boekhouding/pwa/**
 # =============================================================================
 
 # --- Default: ignore everything at repo root ---
@@ -20,6 +21,7 @@
 !/.github/workflows/
 /.github/workflows/*
 !/.github/workflows/deploy-uren-pwa.yml
+!/.github/workflows/deploy-boekhouding-pwa.yml
 
 # --- PWA (sole application artifact) ---
 !/applications/
@@ -27,6 +29,9 @@
 !/applications/uren/
 /applications/uren/*
 !/applications/uren/pwa/
+!/applications/boekhouding/
+/applications/boekhouding/*
+!/applications/boekhouding/pwa/
 
 # --- Never commit secrets or data files (any path) ---
 **/.env

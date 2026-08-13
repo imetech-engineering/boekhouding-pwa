@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0E8A5B" id="meta-theme-color" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>IMeTech Boekhouding</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" href="icons/icon-192.png" type="image/png" />
+  </head>
+  <body>
+    <div id="install-banner" class="install-banner hidden" role="dialog" aria-label="App installeren">
+      <div class="install-banner-inner">
+        <p><strong>Installeer IMeTech Boekhouding</strong> op je startscherm voor snelle toegang.</p>
+        <div class="install-banner-actions">
+          <button type="button" id="btn-install" class="btn-primary">Installeren</button>
+          <button type="button" id="btn-install-dismiss" class="btn-secondary">Later</button>
+        </div>
+      </div>
+    </div>
+
+    <header class="app-header">
+      <div class="header-text">
+        <h1>Boekhouding</h1>
+        <p id="sync-status" class="sub">—</p>
+        <p id="queue-status" class="sub queue-badge hidden" role="status"></p>
+      </div>
+      <img
+        id="header-logo"
+        class="header-logo"
+        src="branding/logo-zwart.png"
+        alt="IMeTech Engineering"
+        width="120"
+        height="28"
+      />
+      <div id="pull-indicator" class="pull-indicator hidden" aria-hidden="true">↓ Loslaten om te verversen</div>
+    </header>
+
+    <main>
+      <!-- ============ BANKBOEK ============ -->
+      <section id="panel-bank" class="tab-panel">
+        <div class="card">
+          <div class="invoer-stats row-2">
+            <div>
+              <span class="stat-label">Actueel saldo</span>
+              <span id="bank-saldo" class="stat-value">—</span>
+            </div>
+            <div>
+              <span class="stat-label">Openstaand (niet ingeboekt)</span>
+              <span id="bank-open-count" class="stat-value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Nieuwe bankregel</h2>
+          <label for="bank-datum">Datum</label>
+          <div class="date-row">
+            <button type="button" id="btn-bank-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
+            <input id="bank-datum" type="date" autocomplete="off" />
+            <button type="button" id="btn-bank-date-next" class="btn-secondary btn-compact" aria-label="Volgende dag">▶</button>
+          </div>
+          <label for="bank-omschrijving">Omschrijving</label>
+          <input id="bank-omschrijving" autocomplete="off" />
+          <div class="row-2">
+            <div>
+              <label for="bank-in">In (€)</label>
+              <input id="bank-in" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+            </div>
+            <div>
+              <label for="bank-uit">Uit (€)</label>
+              <input id="bank-uit" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+            </div>
+          </div>
+          <label for="bank-opmerking">Opmerking</label>
+          <input id="bank-opmerking" autocomplete="off" />
+          <p id="bank-new-match" class="sub hidden"></p>
+          <div class="btn-row">
+            <button type="button" id="btn-bank-save" class="btn-primary">Bankregel opslaan</button>
+            <button type="button" id="btn-bank-clear" class="btn-secondary">Wis</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Openstaande bankregels</h2>
+          <p class="sub">Tik op een regel voor bewerken, matchen en ingeboekt markeren.</p>
+          <ul id="bank-open-list" class="boek-list"></ul>
+        </div>
+
+        <div class="card">
+          <h2>Laatste transacties</h2>
+          <ul id="bank-recent-list" class="boek-list"></ul>
+        </div>
+      </section>
+
+      <!-- ============ INKOOP ============ -->
+      <section id="panel-inkoop" class="tab-panel hidden">
+        <div class="card">
+          <h2>Nog te verwerken <span id="inkoop-files-count" class="count-badge"></span></h2>
+          <ul id="inkoop-files-list" class="file-list"></ul>
+          <p id="inkoop-files-empty" class="sub hidden">Geen facturen in de map.</p>
+        </div>
+
+        <div id="inkoop-preview-card" class="card hidden">
+          <h2>Voorbeeld <span id="inkoop-preview-name" class="preview-name"></span></h2>
+          <div class="pdf-wrap"><canvas id="inkoop-pdf-canvas"></canvas><img id="inkoop-img-preview" class="img-preview hidden" alt="Factuur" /></div>
+          <div class="btn-row">
+            <button type="button" id="btn-inkoop-page-prev" class="btn-secondary btn-compact hidden">◀</button>
+            <span id="inkoop-page-label" class="page-label hidden"></span>
+            <button type="button" id="btn-inkoop-page-next" class="btn-secondary btn-compact hidden">▶</button>
+            <button type="button" id="btn-inkoop-deselect" class="btn-secondary">Deselecteer</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 id="inkoop-form-title">Factuur inboeken</h2>
+          <label for="inkoop-datum">Factuurdatum</label>
+          <input id="inkoop-datum" type="date" autocomplete="off" />
+          <label for="inkoop-leverancier">Leverancier</label>
+          <input id="inkoop-leverancier" autocomplete="off" />
+          <label for="inkoop-omschrijving">Omschrijving</label>
+          <input id="inkoop-omschrijving" autocomplete="off" />
+          <label for="inkoop-fnr">Factuurnr / bon</label>
+          <input id="inkoop-fnr" autocomplete="off" />
+          <div class="row-2">
+            <div>
+              <label for="inkoop-bedrag">Bedrag incl. BTW (€)</label>
+              <input id="inkoop-bedrag" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+            </div>
+            <div>
+              <label for="inkoop-btw">BTW %</label>
+              <input id="inkoop-btw" inputmode="numeric" autocomplete="off" placeholder="21" />
+            </div>
+          </div>
+          <div class="row-2">
+            <div>
+              <label for="inkoop-land">Land</label>
+              <select id="inkoop-land">
+                <option value=""></option>
+                <option value="NL">NL</option>
+                <option value="EU">EU</option>
+                <option value="BuitenEU">BuitenEU</option>
+              </select>
+            </div>
+            <div>
+              <label for="inkoop-categorie">Categorie</label>
+              <input id="inkoop-categorie" autocomplete="off" />
+            </div>
+          </div>
+          <label for="inkoop-project">Project</label>
+          <input id="inkoop-project" autocomplete="off" />
+          <label class="check-row">
+            <input type="checkbox" id="inkoop-verlegd" />
+            BTW verlegd (EU)
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="inkoop-afschrijving" />
+            Afschrijving (&gt; €450 per artikel)
+          </label>
+          <button type="button" id="btn-inkoop-valuta-toggle" class="btn-secondary btn-inline">Vreemde valuta ▾</button>
+          <div id="inkoop-valuta-wrap" class="hidden">
+            <div class="row-2">
+              <div>
+                <label for="inkoop-bedrag-orig">Bedrag origineel</label>
+                <input id="inkoop-bedrag-orig" inputmode="decimal" autocomplete="off" />
+              </div>
+              <div>
+                <label for="inkoop-valuta">Valuta</label>
+                <input id="inkoop-valuta" autocomplete="off" placeholder="USD" />
+              </div>
+            </div>
+            <label for="inkoop-koers">Wisselkoers</label>
+            <input id="inkoop-koers" autocomplete="off" placeholder="0,85 EUR / USD" />
+          </div>
+          <label for="inkoop-opmerking">Opmerking</label>
+          <input id="inkoop-opmerking" autocomplete="off" />
+          <label class="check-row hidden" id="inkoop-bank-check-row">
+            <input type="checkbox" id="inkoop-bank-check" />
+            <span id="inkoop-bank-check-label">Bankregel(s) afvinken</span>
+          </label>
+          <div class="btn-row">
+            <button type="button" id="btn-inkoop-boek" class="btn-primary">Inboeken</button>
+            <button type="button" id="btn-inkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-inkoop-rename" class="btn-secondary hidden">Hernoem bestand</button>
+            <button type="button" id="btn-inkoop-clear" class="btn-secondary">Wis</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Historie</h2>
+          <input id="inkoop-hist-search" type="search" placeholder="Filter historie…" class="hist-search" />
+          <ul id="inkoop-hist-list" class="boek-list"></ul>
+        </div>
+      </section>
+
+      <!-- ============ VERKOOP ============ -->
+      <section id="panel-verkoop" class="tab-panel hidden">
+        <div class="card">
+          <h2>Nog te verwerken <span id="verkoop-files-count" class="count-badge"></span></h2>
+          <ul id="verkoop-files-list" class="file-list"></ul>
+          <p id="verkoop-files-empty" class="sub hidden">Geen facturen in de map.</p>
+        </div>
+
+        <div id="verkoop-preview-card" class="card hidden">
+          <h2>Voorbeeld <span id="verkoop-preview-name" class="preview-name"></span></h2>
+          <div class="pdf-wrap"><canvas id="verkoop-pdf-canvas"></canvas><img id="verkoop-img-preview" class="img-preview hidden" alt="Factuur" /></div>
+          <div class="btn-row">
+            <button type="button" id="btn-verkoop-page-prev" class="btn-secondary btn-compact hidden">◀</button>
+            <span id="verkoop-page-label" class="page-label hidden"></span>
+            <button type="button" id="btn-verkoop-page-next" class="btn-secondary btn-compact hidden">▶</button>
+            <button type="button" id="btn-verkoop-deselect" class="btn-secondary">Deselecteer</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 id="verkoop-form-title">Factuur inboeken</h2>
+          <label for="verkoop-datum">Factuurdatum</label>
+          <input id="verkoop-datum" type="date" autocomplete="off" />
+          <label for="verkoop-klant">Klant</label>
+          <input id="verkoop-klant" autocomplete="off" />
+          <label for="verkoop-omschrijving">Omschrijving</label>
+          <input id="verkoop-omschrijving" autocomplete="off" />
+          <label for="verkoop-fnr">Factuurnr</label>
+          <div class="combo-row">
+            <input id="verkoop-fnr" autocomplete="off" />
+            <button type="button" id="btn-verkoop-fnr-suggest" class="btn-secondary btn-compact" title="Volgend FA-nummer">FA+</button>
+          </div>
+          <div class="row-2">
+            <div>
+              <label for="verkoop-bedrag">Bedrag incl. BTW (€)</label>
+              <input id="verkoop-bedrag" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+            </div>
+            <div>
+              <label for="verkoop-btw">BTW %</label>
+              <input id="verkoop-btw" inputmode="numeric" autocomplete="off" placeholder="21" />
+            </div>
+          </div>
+          <div class="row-2">
+            <div>
+              <label for="verkoop-land">Land afnemer</label>
+              <select id="verkoop-land">
+                <option value=""></option>
+                <option value="NL">NL</option>
+                <option value="EU">EU</option>
+                <option value="BuitenEU">BuitenEU</option>
+              </select>
+            </div>
+            <div>
+              <label for="verkoop-categorie">Categorie</label>
+              <input id="verkoop-categorie" autocomplete="off" />
+            </div>
+          </div>
+          <button type="button" id="btn-verkoop-valuta-toggle" class="btn-secondary btn-inline">Vreemde valuta ▾</button>
+          <div id="verkoop-valuta-wrap" class="hidden">
+            <div class="row-2">
+              <div>
+                <label for="verkoop-bedrag-orig">Bedrag origineel</label>
+                <input id="verkoop-bedrag-orig" inputmode="decimal" autocomplete="off" />
+              </div>
+              <div>
+                <label for="verkoop-valuta">Valuta</label>
+                <input id="verkoop-valuta" autocomplete="off" placeholder="USD" />
+              </div>
+            </div>
+            <label for="verkoop-koers">Wisselkoers</label>
+            <input id="verkoop-koers" autocomplete="off" />
+          </div>
+          <label for="verkoop-opmerking">Opmerking</label>
+          <input id="verkoop-opmerking" autocomplete="off" />
+          <label class="check-row hidden" id="verkoop-bank-check-row">
+            <input type="checkbox" id="verkoop-bank-check" />
+            <span id="verkoop-bank-check-label">Bankregel(s) afvinken</span>
+          </label>
+          <div class="btn-row">
+            <button type="button" id="btn-verkoop-boek" class="btn-primary">Inboeken</button>
+            <button type="button" id="btn-verkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-verkoop-clear" class="btn-secondary">Wis</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Historie</h2>
+          <input id="verkoop-hist-search" type="search" placeholder="Filter historie…" class="hist-search" />
+          <ul id="verkoop-hist-list" class="boek-list"></ul>
+        </div>
+      </section>
+
+      <!-- ============ REISKOSTEN ============ -->
+      <section id="panel-reis" class="tab-panel hidden">
+        <div class="card">
+          <h2>Vaste bestemmingen</h2>
+          <p class="sub">Tik om in te vullen. Nieuwe ritten kun je hieronder als favoriet opslaan.</p>
+          <ul id="reis-fav-list" class="boek-list"></ul>
+        </div>
+
+        <div class="card">
+          <h2>Rit inboeken</h2>
+          <label for="reis-datum">Datum</label>
+          <div class="date-row">
+            <button type="button" id="btn-reis-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
+            <input id="reis-datum" type="date" autocomplete="off" />
+            <button type="button" id="btn-reis-date-next" class="btn-secondary btn-compact" aria-label="Volgende dag">▶</button>
+          </div>
+          <label for="reis-naam">Naam / doel (bijv. "R2R" of "kennismaking MecSo")</label>
+          <input id="reis-naam" autocomplete="off" />
+          <label for="reis-adres">Bestemming (adres zoeken)</label>
+          <input id="reis-adres" autocomplete="off" placeholder="Typ adres of bedrijfsnaam…" />
+          <ul id="reis-adres-results" class="adres-results hidden"></ul>
+          <label for="reis-bestemming">Bestemming-label (komt in de omschrijving)</label>
+          <input id="reis-bestemming" autocomplete="off" placeholder="R2R Engineering Arnhem" />
+          <div class="row-2">
+            <div>
+              <label for="reis-km">Km enkele reis</label>
+              <input id="reis-km" inputmode="decimal" autocomplete="off" />
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <p id="reis-km-status" class="sub reis-km-status">—</p>
+            </div>
+          </div>
+          <label for="reis-project">Project (optioneel)</label>
+          <input id="reis-project" autocomplete="off" />
+          <label class="check-row">
+            <input type="checkbox" id="reis-fav-save" />
+            Opslaan als vaste bestemming
+          </label>
+          <div class="reis-preview" id="reis-preview">
+            <p id="reis-preview-oms" class="sub">—</p>
+            <p id="reis-preview-bedrag" class="stat-value">—</p>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-reis-boek" class="btn-primary">Reiskosten inboeken</button>
+            <button type="button" id="btn-reis-clear" class="btn-secondary">Wis</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Laatste reiskosten</h2>
+          <ul id="reis-hist-list" class="boek-list"></ul>
+        </div>
+      </section>
+
+      <!-- ============ OVERZICHT + INSTELLINGEN ============ -->
+      <section id="panel-overzicht" class="tab-panel hidden">
+        <div class="card">
+          <h2>Kwartaaloverzicht</h2>
+          <div class="year-row">
+            <button type="button" class="btn-secondary btn-compact" id="btn-ovz-year-prev" aria-label="Vorig jaar">◀</button>
+            <input id="ovz-year" type="number" readonly inputmode="none" />
+            <button type="button" class="btn-secondary btn-compact" id="btn-ovz-year-next" aria-label="Volgend jaar">▶</button>
+          </div>
+          <div class="loc-table-wrap">
+            <table class="loc-table" aria-label="Kwartaaloverzicht">
+              <thead>
+                <tr><th>Q</th><th>Omzet</th><th>Kosten</th><th>Resultaat</th><th>BTW-saldo</th></tr>
+              </thead>
+              <tbody id="ovz-kwartaal-body"></tbody>
+            </table>
+          </div>
+          <p class="sub">Netto (excl. BTW), uit de totaal-bladen. BTW-saldo = ontvangen − betaald (verlegd valt weg).</p>
+        </div>
+
+        <div class="card">
+          <h2>Status</h2>
+          <div class="invoer-stats row-2">
+            <div>
+              <span class="stat-label">Open bankregels</span>
+              <span id="ovz-bank-open" class="stat-value">—</span>
+            </div>
+            <div>
+              <span class="stat-label">Facturen te verwerken</span>
+              <span id="ovz-files-open" class="stat-value">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Microsoft-account</h2>
+          <p id="account-label">—</p>
+          <div class="btn-row">
+            <button type="button" id="btn-login" class="btn-primary">Inloggen</button>
+            <button type="button" id="btn-logout" class="btn-secondary">Uitloggen</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>App installeren</h2>
+          <p id="install-manual" class="sub hidden">
+            Geen installatie-knop zichtbaar? In Chrome: menu (⋮) →
+            <strong>Toevoegen aan startscherm</strong> of <strong>App installeren</strong>.
+          </p>
+          <div class="btn-row">
+            <button type="button" id="btn-install-settings" class="btn-primary">Installeren op startscherm</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Reiskosten-instellingen</h2>
+          <label for="set-km-tarief">Km-tarief (€/km)</label>
+          <input id="set-km-tarief" inputmode="decimal" autocomplete="off" />
+          <label for="set-thuis-adres">Thuisadres (vertrekpunt)</label>
+          <input id="set-thuis-adres" autocomplete="off" placeholder="Typ adres…" />
+          <ul id="set-thuis-results" class="adres-results hidden"></ul>
+          <p id="set-thuis-label" class="sub">—</p>
+        </div>
+
+        <div class="card">
+          <h2>Weergave</h2>
+          <label class="check-row toggle-dark">
+            <input type="checkbox" id="toggle-dark-mode" />
+            Donkere modus
+          </label>
+        </div>
+
+        <div class="card">
+          <h2>OneDrive-sync</h2>
+          <p class="sub">
+            Schrijven gaat per cel via de Excel API — formules en opmaak blijven intact.
+            Niet tegelijk schrijven in Excel op de PC en hier.
+          </p>
+          <div class="btn-row">
+            <button type="button" id="btn-refresh" class="btn-primary">Ververs uit OneDrive</button>
+          </div>
+          <a id="onedrive-link" class="link hidden" href="#" target="_blank" rel="noopener"
+            >Open werkboek in OneDrive</a
+          >
+        </div>
+      </section>
+    </main>
+
+    <!-- Bankregel detail-modal -->
+    <div id="bank-modal" class="modal hidden" role="dialog" aria-labelledby="bank-modal-title">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-sheet">
+        <h2 id="bank-modal-title">Bankregel</h2>
+        <p id="bank-modal-info" class="sub">—</p>
+        <label for="bank-m-omschrijving">Omschrijving</label>
+        <input id="bank-m-omschrijving" autocomplete="off" />
+        <div class="row-2">
+          <div>
+            <label for="bank-m-in">In (€)</label>
+            <input id="bank-m-in" inputmode="decimal" autocomplete="off" />
+          </div>
+          <div>
+            <label for="bank-m-uit">Uit (€)</label>
+            <input id="bank-m-uit" inputmode="decimal" autocomplete="off" />
+          </div>
+        </div>
+        <label for="bank-m-opmerking">Opmerking</label>
+        <input id="bank-m-opmerking" autocomplete="off" />
+        <div id="bank-m-matches-wrap" class="hidden">
+          <p class="sub"><strong>Matchende facturen</strong> (zelfde bedrag, datum ±14 dagen):</p>
+          <ul id="bank-m-matches" class="boek-list"></ul>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="btn-bank-m-ingeboekt" class="btn-primary">Markeer ingeboekt</button>
+          <button type="button" id="btn-bank-m-save" class="btn-secondary">Opslaan</button>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="btn-bank-m-naar-inkoop" class="btn-secondary">Inboeken als inkoop →</button>
+          <button type="button" id="btn-bank-m-naar-verkoop" class="btn-secondary">Als verkoop →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bevestigingsmodal (duplicaat / bankmatch) -->
+    <div id="confirm-modal" class="modal hidden" role="alertdialog" aria-labelledby="confirm-title">
+      <div class="modal-backdrop"></div>
+      <div class="modal-sheet modal-sheet-sm">
+        <h2 id="confirm-title">Bevestigen</h2>
+        <p id="confirm-message" class="sub"></p>
+        <div class="btn-row">
+          <button type="button" id="btn-confirm-yes" class="btn-primary">Ja</button>
+          <button type="button" id="btn-confirm-no" class="btn-secondary">Nee</button>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav" aria-label="Hoofdnavigatie">
+      <button type="button" data-tab="bank" class="active">Bank</button>
+      <button type="button" data-tab="inkoop">Inkoop</button>
+      <button type="button" data-tab="verkoop">Verkoop</button>
+      <button type="button" data-tab="reis">Reis</button>
+      <button type="button" data-tab="overzicht">Overzicht</button>
+    </nav>
+
+    <div id="toast" class="hidden" role="status"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.0/lib/msal-browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script src="config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/graph.js"></script>
+    <script src="js/workbook.js"></script>
+    <script src="js/boek_model.js"></script>
+    <script src="js/boek_io.js"></script>
+    <script src="js/pdf_extract.js"></script>
+    <script src="js/reiskosten.js"></script>
+    <script src="js/combobox.js"></script>
+    <script src="js/offline_queue.js"></script>
+    <script src="js/install.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/ui_bank.js"></script>
+    <script src="js/ui_inkoop.js"></script>
+    <script src="js/ui_verkoop.js"></script>
+    <script src="js/ui_reis.js"></script>
+    <script src="js/ui_overzicht.js"></script>
+    <script>window.BoekBoot && window.BoekBoot();</script>
+  </body>
+</html>

@@ -1,0 +1,153 @@
+/**
+ * Microsoft Graph driveItem-laag: paden, mappen, bestanden, settings-JSON.
+ */
+(function (global) {
+  const GRAPH = "https://graph.microsoft.com/v1.0";
+
+  class GraphLockError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "GraphLockError";
+    }
+  }
+
+  class GraphConflictError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "GraphConflictError";
+    }
+  }
+
+  function encodeDrivePath(path) {
+    return path
+      .split("/")
+      .filter(Boolean)
+      .map((seg) => encodeURIComponent(seg))
+      .join("/");
+  }
+
+  function itemUrl(path) {
+    return `${GRAPH}/me/drive/root:/${encodeDrivePath(path)}`;
+  }
+
+  async function graphFetch(url, token, options = {}) {
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    };
+    if (options.body && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    const res = await fetch(url, { ...options, headers });
+    if (!res.ok) {
+      const text = await res.text();
+      if (res.status === 423) {
+        throw new GraphLockError(
+          "Bestand is vergrendeld (Excel open op PC?). Sluit Excel en probeer opnieuw."
+        );
+      }
+      const err = new Error(`Graph API mislukt (${res.status}): ${text}`);
+      err.status = res.status;
+      throw err;
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) return res.json();
+    return res;
+  }
+
+  async function getDriveItemMeta(path, token) {
+    return graphFetch(`${itemUrl(path)}?$select=id,name,lastModifiedDateTime,webUrl,size`, token);
+  }
+
+  /** Lijst bestanden + directe submappen in een OneDrive-map. */
+  async function listFolder(path, token) {
+    const items = [];
+    let url = `${itemUrl(path)}:/children?$select=id,name,folder,file,size,lastModifiedDateTime,parentReference&$top=200&$orderby=name`;
+    while (url) {
+      const data = await graphFetch(url, token);
+      items.push(...(data.value || []));
+      url = data["@odata.nextLink"] || null;
+    }
+    return items;
+  }
+
+  /** Pre-authenticated download-URL van een bestand (geen auth-header nodig, CORS ok). */
+  async function getDownloadUrl(itemId, token) {
+    const data = await graphFetch(
+      `${GRAPH}/me/drive/items/${itemId}?$select=id,@microsoft.graph.downloadUrl`,
+      token
+    );
+    return data["@microsoft.graph.downloadUrl"] || null;
+  }
+
+  async function downloadBytes(itemId, token) {
+    const url = await getDownloadUrl(itemId, token);
+    if (!url) throw new Error("Geen download-URL beschikbaar.");
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Download mislukt (${res.status})`);
+    return res.arrayBuffer();
+  }
+
+  /** Verplaats (en optioneel hernoem) een item naar een andere map. */
+  async function moveItem(itemId, destFolderPath, token, newName) {
+    const destMeta = await getDriveItemMeta(destFolderPath, token);
+    const body = { parentReference: { id: destMeta.id } };
+    if (newName) body.name = newName;
+    return graphFetch(`${GRAPH}/me/drive/items/${itemId}`, token, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function renameItem(itemId, newName, token) {
+    return graphFetch(`${GRAPH}/me/drive/items/${itemId}`, token, {
+      method: "PATCH",
+      body: JSON.stringify({ name: newName }),
+    });
+  }
+
+  /** Settings-JSON in OneDrive (null als het bestand nog niet bestaat). */
+  async function readJsonFile(path, token) {
+    try {
+      const res = await fetch(`${itemUrl(path)}:/content`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`Lezen mislukt (${res.status})`);
+      return await res.json();
+    } catch (e) {
+      if (e instanceof SyntaxError) return null;
+      throw e;
+    }
+  }
+
+  async function writeJsonFile(path, data, token) {
+    const res = await fetch(`${itemUrl(path)}:/content`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data, null, 2),
+    });
+    if (!res.ok) throw new Error(`Opslaan instellingen mislukt (${res.status})`);
+    return res.json();
+  }
+
+  global.BoekGraph = {
+    GRAPH,
+    itemUrl,
+    graphFetch,
+    getDriveItemMeta,
+    listFolder,
+    getDownloadUrl,
+    downloadBytes,
+    moveItem,
+    renameItem,
+    readJsonFile,
+    writeJsonFile,
+    GraphLockError,
+    GraphConflictError,
+  };
+})(window);

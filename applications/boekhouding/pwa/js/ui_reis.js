@@ -1,0 +1,266 @@
+/**
+ * Reiskosten-tab: vaste bestemmingen, adres zoeken (Photon), auto-km (OSRM), inboeken.
+ */
+(function (global) {
+  const App = () => global.BoekApp;
+  const M = () => global.BoekModel;
+  const $ = (s) => document.querySelector(s);
+
+  let gekozenAdres = null; // {label, plaats, lat, lon}
+  let kmAuto = false;
+
+  function escapeHtml(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  function settings() {
+    return App().state.settings;
+  }
+
+  function alleFavorieten() {
+    const opgeslagen = (settings().favorieten || []).map((f) => ({ ...f, bron: "vast" }));
+    const historie = M()
+      .reisFavorietenUitHistorie(App().state.intel.inkoop.history)
+      .filter((h) => !opgeslagen.some((f) => M().partyNamesMatch(f.naam, h.naam)))
+      .map((f) => ({ ...f, bron: "historie" }));
+    return [...opgeslagen, ...historie];
+  }
+
+  function renderFavorieten() {
+    const list = $("#reis-fav-list");
+    list.innerHTML = "";
+    const favs = alleFavorieten();
+    if (!favs.length) {
+      list.innerHTML = '<li class="sub">Nog geen bestemmingen — boek hieronder je eerste rit.</li>';
+      return;
+    }
+    for (const f of favs.slice(0, 15)) {
+      const li = document.createElement("li");
+      li.className = "boek-item";
+      li.innerHTML = `
+        <div class="bi-head">
+          <span class="bi-title">${escapeHtml(f.naam)}</span>
+          <span class="bi-amount">${M().formatKm(f.km)} km</span>
+        </div>
+        <div class="bi-sub">
+          <span>${escapeHtml(f.bestemming)}${f.project ? " · " + escapeHtml(f.project) : ""}</span>
+          <span>${f.bron === "vast" ? "★" : "uit historie"}</span>
+        </div>
+        ${f.bron === "vast" ? '<div class="bi-actions"><button type="button" class="bi-x" aria-label="Verwijder">✕</button></div>' : ""}`;
+      li.addEventListener("click", (e) => {
+        if (e.target.classList.contains("bi-x")) return;
+        vulFavoriet(f);
+      });
+      li.querySelector(".bi-x")?.addEventListener("click", async () => {
+        const ok = await App().showConfirm(`Vaste bestemming "${f.naam}" verwijderen?`, "Verwijderen", "Annuleren");
+        if (ok) {
+          await App().saveSettings({
+            favorieten: (settings().favorieten || []).filter((x) => x.naam !== f.naam),
+          });
+          renderFavorieten();
+        }
+      });
+      list.appendChild(li);
+    }
+  }
+
+  function vulFavoriet(f) {
+    $("#reis-naam").value = f.naam;
+    $("#reis-bestemming").value = f.bestemming;
+    $("#reis-km").value = M().formatKm(f.km);
+    $("#reis-project").value = f.project || "";
+    gekozenAdres = f.lat != null ? { label: f.bestemming, lat: f.lat, lon: f.lon } : null;
+    kmAuto = false;
+    $("#reis-km-status").textContent = "uit favoriet";
+    updatePreview();
+    App().haptic(15);
+  }
+
+  // === Adres zoeken ===
+  const doSearch = global.BoekReis.debounce(async () => {
+    const q = $("#reis-adres").value.trim();
+    const list = $("#reis-adres-results");
+    if (q.length < 3) {
+      list.classList.add("hidden");
+      return;
+    }
+    try {
+      const results = await global.BoekReis.searchAddress(q);
+      if (results === null) return; // vervangen door nieuwere zoekopdracht
+      list.innerHTML = "";
+      list.classList.toggle("hidden", !results.length);
+      for (const r of results) {
+        const li = document.createElement("li");
+        li.textContent = r.label;
+        li.addEventListener("click", () => kiesAdres(r));
+        list.appendChild(li);
+      }
+    } catch (e) {
+      $("#reis-km-status").textContent = "Adreszoeken niet bereikbaar";
+    }
+  }, 350);
+
+  async function kiesAdres(r) {
+    gekozenAdres = r;
+    $("#reis-adres-results").classList.add("hidden");
+    $("#reis-adres").value = r.label;
+    if (!$("#reis-bestemming").value) {
+      const naam = $("#reis-naam").value.trim();
+      $("#reis-bestemming").value = naam && r.plaats ? `${naam} ${r.plaats}` : r.label;
+    }
+    await berekenKm();
+    updatePreview();
+  }
+
+  async function berekenKm() {
+    const thuis = settings().thuisAdres;
+    const status = $("#reis-km-status");
+    if (!gekozenAdres) return;
+    if (!thuis || thuis.lat == null) {
+      status.textContent = "Stel je thuisadres in bij Overzicht → Reiskosten-instellingen";
+      return;
+    }
+    status.textContent = "Route berekenen…";
+    try {
+      const km = await global.BoekReis.routeKm(thuis.lat, thuis.lon, gekozenAdres.lat, gekozenAdres.lon);
+      $("#reis-km").value = M().formatKm(km);
+      kmAuto = true;
+      status.textContent = `✓ auto via route (${M().formatKm(km)} km enkele reis)`;
+    } catch (e) {
+      kmAuto = false;
+      status.textContent = "Route niet beschikbaar — vul km handmatig in";
+    }
+    updatePreview();
+  }
+
+  function huidigeKm() {
+    return M().parseUserAmount($("#reis-km").value);
+  }
+
+  function updatePreview() {
+    const naam = $("#reis-naam").value.trim();
+    const bestemming = $("#reis-bestemming").value.trim();
+    const km = huidigeKm();
+    const tarief = settings().kmTarief || 0.23;
+    const omsEl = $("#reis-preview-oms");
+    const bedragEl = $("#reis-preview-bedrag");
+    if (!naam || !bestemming || km == null) {
+      omsEl.textContent = "—";
+      bedragEl.textContent = "—";
+      return;
+    }
+    const thuisPlaats = settings().thuisAdres?.plaats || "Aalten";
+    omsEl.textContent = M().buildReisOmschrijving({ naam, km, bestemming, thuisPlaats });
+    bedragEl.textContent = `${M().fmtEur(M().reisBedrag(km, tarief))}  (2 × ${M().formatKm(km)} km × € ${String(tarief).replace(".", ",")})`;
+  }
+
+  function clearForm() {
+    $("#reis-naam").value = "";
+    $("#reis-adres").value = "";
+    $("#reis-bestemming").value = "";
+    $("#reis-km").value = "";
+    $("#reis-project").value = "";
+    $("#reis-fav-save").checked = false;
+    $("#reis-adres-results").classList.add("hidden");
+    $("#reis-km-status").textContent = "—";
+    gekozenAdres = null;
+    kmAuto = false;
+    updatePreview();
+  }
+
+  async function boek() {
+    const naam = $("#reis-naam").value.trim();
+    const bestemming = $("#reis-bestemming").value.trim();
+    const km = huidigeKm();
+    const datumIso = $("#reis-datum").value;
+    if (!naam) return App().showToast("Vul een naam/doel in.", true);
+    if (!bestemming) return App().showToast("Vul een bestemming in.", true);
+    if (km == null || km <= 0) return App().showToast("Vul een geldig aantal km in.", true);
+    if (!datumIso) return App().showToast("Vul een datum in.", true);
+
+    const tarief = settings().kmTarief || 0.23;
+    const thuisPlaats = settings().thuisAdres?.plaats || "Aalten";
+    const fields = {
+      datumIso,
+      leverancier: "Ivo Mengerink",
+      omschrijving: M().buildReisOmschrijving({ naam, km, bestemming, thuisPlaats }),
+      factuurnummer: "",
+      bedrag: M().reisBedrag(km, tarief),
+      btw: 0,
+      verlegd: false,
+      afschrijving: false,
+      categorie: "Reiskosten",
+      project: $("#reis-project").value.trim(),
+      opmerking: "Buiten scope BTW",
+      land: "NL",
+    };
+
+    if ($("#reis-fav-save").checked) {
+      const favs = (settings().favorieten || []).filter((x) => x.naam !== naam);
+      favs.unshift({
+        naam,
+        bestemming,
+        km,
+        project: fields.project,
+        lat: gekozenAdres?.lat ?? null,
+        lon: gekozenAdres?.lon ?? null,
+      });
+      App().saveSettings({ favorieten: favs });
+    }
+
+    clearForm();
+    await App().persistMutation(
+      { kind: "inkoop_add", fields },
+      { successMsg: `Reiskosten geboekt: ${M().fmtEur(fields.bedrag)}` }
+    );
+  }
+
+  function renderHistorie() {
+    const list = $("#reis-hist-list");
+    list.innerHTML = "";
+    let shown = 0;
+    for (const h of App().state.intel.inkoop.history) {
+      if (h.categorie !== "Reiskosten" && !/^Transportkosten/i.test(h.omschrijving)) continue;
+      const li = document.createElement("li");
+      li.className = "boek-item";
+      li.innerHTML = `
+        <div class="bi-head">
+          <span class="bi-title">${escapeHtml(h.omschrijving)}</span>
+          <span class="bi-amount uit">${M().fmtEur(h.bedrag)}</span>
+        </div>
+        <div class="bi-sub"><span>${h.project ? escapeHtml(h.project) : ""}</span><span>${h.datumStr}</span></div>`;
+      list.appendChild(li);
+      if (++shown >= 10) break;
+    }
+    if (!shown) list.innerHTML = '<li class="sub">Nog geen reiskosten geboekt.</li>';
+  }
+
+  function render() {
+    renderFavorieten();
+    renderHistorie();
+    updatePreview();
+  }
+
+  function init() {
+    $("#reis-datum").value = M().todayIso();
+    App().bindDateSteppers("reis-datum", "btn-reis-date-prev", "btn-reis-date-next");
+    $("#reis-adres").addEventListener("input", doSearch);
+    global.BoekCombo.createCombo("reis-project", null, () => App().state.intel.inkoop.projecten, null, {
+      title: "Project",
+    });
+    for (const id of ["reis-naam", "reis-bestemming", "reis-km"]) {
+      document.getElementById(id).addEventListener("input", updatePreview);
+    }
+    $("#reis-km").addEventListener("input", () => {
+      kmAuto = false;
+      $("#reis-km-status").textContent = "handmatig";
+    });
+    $("#btn-reis-boek").addEventListener("click", boek);
+    $("#btn-reis-clear").addEventListener("click", clearForm);
+  }
+
+  App().registerTab("reis", { init, render });
+  global.BoekUiReis = { render };
+})(window);

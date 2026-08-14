@@ -54,9 +54,31 @@
       <div class="bi-sub">
         <span>${r.datumStr}${r.ingeboekt ? " · ✓ ingeboekt" : ""}</span>
         ${matchHtml || `<span>saldo ${M().fmtEur(r.saldo)}</span>`}
-      </div>`;
-    li.addEventListener("click", () => openModal(r));
+      </div>
+      ${App().rowActionsHtml()}`;
+    li.addEventListener("click", (ev) => {
+      if (ev.target.closest("button")) return;
+      openModal(r);
+    });
+    li.querySelector('[data-act="edit"]').addEventListener("click", () => openModal(r));
+    li.querySelector('[data-act="del"]').addEventListener("click", () => deleteRow(r));
+    App().bindSwipe(li, { onEdit: () => openModal(r), onDelete: () => deleteRow(r) });
     return li;
+  }
+
+  async function deleteRow(r) {
+    const bedrag = r.in != null ? `+ ${M().fmtEur(r.in)}` : `− ${M().fmtEur(r.uit)}`;
+    const ok = await App().showConfirm(
+      `Bankregel verwijderen?\n${r.datumStr} · ${r.omschrijving} · ${bedrag}`,
+      "Verwijderen",
+      "Annuleren"
+    );
+    if (!ok) return;
+    if (modalRow?.excelRow === r.excelRow) closeModal();
+    await App().persistMutation(
+      { kind: "bank_delete", excelRow: r.excelRow },
+      { successMsg: "Bankregel verwijderd" }
+    );
   }
 
   function escapeHtml(s) {
@@ -278,6 +300,9 @@
     $("#btn-bank-m-ingeboekt").addEventListener("click", modalToggleIngeboekt);
     $("#btn-bank-m-naar-inkoop").addEventListener("click", () => modalNaarBoek(false));
     $("#btn-bank-m-naar-verkoop").addEventListener("click", () => modalNaarBoek(true));
+    $("#btn-bank-m-delete").addEventListener("click", () => {
+      if (modalRow) deleteRow(modalRow);
+    });
   }
 
   App().registerTab("bank", { init, render });

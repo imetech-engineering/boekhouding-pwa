@@ -239,12 +239,22 @@
         return global.BoekIo.addBankRow(token, d.fields);
       case "bank_update":
         return global.BoekIo.updateBankRow(token, d.excelRow, d.fields);
+      case "bank_delete":
+        return global.BoekIo.deleteBankRow(token, d.excelRow);
       case "bank_ingeboekt":
         return global.BoekIo.setBankIngeboekt(token, d.rows, d.value !== false);
       case "inkoop_add":
         return global.BoekIo.addInkoopRow(token, d.fields);
+      case "inkoop_update":
+        return global.BoekIo.updateInkoopRow(token, d.excelRow, d.fields);
+      case "inkoop_delete":
+        return global.BoekIo.deleteInkoopRow(token, d.excelRow);
       case "verkoop_add":
         return global.BoekIo.addVerkoopRow(token, d.fields);
+      case "verkoop_update":
+        return global.BoekIo.updateVerkoopRow(token, d.excelRow, d.fields);
+      case "verkoop_delete":
+        return global.BoekIo.deleteVerkoopRow(token, d.excelRow);
       case "file_move":
         return global.BoekGraph.moveItem(d.itemId, d.destFolder, token, d.newName);
       case "file_rename":
@@ -365,6 +375,81 @@
     });
   }
 
+  // === Iconen ===
+  const ICON_PENCIL =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  const ICON_TRASH =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>' +
+    '<path d="M10 11v6M14 11v6"/></svg>';
+
+  /** Actieknoppen (potlood + prullenbak) voor een lijstitem. */
+  function rowActionsHtml() {
+    return (
+      '<span class="row-actions">' +
+      `<button type="button" class="btn-icon" data-act="edit" aria-label="Bewerken" title="Bewerken">${ICON_PENCIL}</button>` +
+      `<button type="button" class="btn-icon btn-icon-danger" data-act="del" aria-label="Verwijderen" title="Verwijderen">${ICON_TRASH}</button>` +
+      "</span>"
+    );
+  }
+
+  /**
+   * Swipe op een lijstitem: naar rechts = bewerken, naar links = verwijderen.
+   * Verticaal scrollen wint altijd, zodat de lijst normaal blijft scrollen.
+   */
+  function bindSwipe(li, { onEdit, onDelete }) {
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+    const threshold = 72;
+
+    li.addEventListener(
+      "touchstart",
+      (ev) => {
+        if (ev.target.closest("button")) return;
+        const t = ev.touches[0];
+        startX = t.clientX;
+        startY = t.clientY;
+        tracking = true;
+      },
+      { passive: true }
+    );
+
+    li.addEventListener(
+      "touchmove",
+      (ev) => {
+        if (!tracking) return;
+        const t = ev.touches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        if (Math.abs(dy) > Math.abs(dx)) {
+          tracking = false;
+          li.style.transform = "";
+          li.classList.remove("swiping");
+          return;
+        }
+        if (Math.abs(dx) > 8) {
+          li.classList.add("swiping");
+          li.style.transform = `translateX(${dx}px)`;
+        }
+      },
+      { passive: true }
+    );
+
+    li.addEventListener("touchend", (ev) => {
+      if (!tracking) return;
+      tracking = false;
+      const dx = ev.changedTouches[0].clientX - startX;
+      li.style.transform = "";
+      li.classList.remove("swiping");
+      if (dx > threshold) onEdit?.();
+      else if (dx < -threshold) onDelete?.();
+    });
+  }
+
   // === Datum-steppers (generiek) ===
   function bindDateSteppers(inputId, prevId, nextId, onChange) {
     const input = document.getElementById(inputId);
@@ -455,6 +540,10 @@
     applyDarkMode,
     bindDateSteppers,
     isNetworkError,
+    rowActionsHtml,
+    bindSwipe,
+    ICON_PENCIL,
+    ICON_TRASH,
   };
   global.BoekBoot = boot;
 })(window);

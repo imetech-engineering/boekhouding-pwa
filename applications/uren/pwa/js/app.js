@@ -777,9 +777,16 @@
     $("#field-locatie").value = loc;
     $("#field-werk").value = "";
     $("#field-uren").value = "1";
+    // Historie-filter leegmaken zodat de zojuist opgeslagen regel meteen zichtbaar is.
+    const search = $("#history-search");
+    if (search && search.value) {
+      search.value = "";
+      renderHistory();
+    }
     onComboChange("og");
     updateInvoerStats();
-    $("#field-werk")?.focus();
+    // Bewust géén focus: dit draait ná de OneDrive-sync, en dan springt het
+    // toetsenbord onverwacht open terwijl je al iets anders aan het doen bent.
   }
 
   function invoerContext() {
@@ -935,6 +942,16 @@
     }
   }
 
+  const ICON_PENCIL =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+  const ICON_TRASH =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>' +
+    '<path d="M10 11v6M14 11v6"/></svg>';
+
   function renderHistory() {
     const list = $("#history-list");
     if (!list || !state.intel) return;
@@ -959,8 +976,10 @@
       li.innerHTML = `<span class="history-text">${UrenInvoer.formatHistoryLine(e)}</span>
         <span class="history-actions">
           <button type="button" data-act="apply" data-row="${e.row_index}">Overnemen</button>
-          <button type="button" data-act="edit" data-row="${e.row_index}">Bewerk</button>
-          <button type="button" data-act="del" data-row="${e.row_index}">Verwijder</button>
+          <button type="button" class="btn-icon" data-act="edit" data-row="${e.row_index}"
+            aria-label="Bewerken" title="Bewerken">${ICON_PENCIL}</button>
+          <button type="button" class="btn-icon btn-icon-danger" data-act="del" data-row="${e.row_index}"
+            aria-label="Verwijderen" title="Verwijderen">${ICON_TRASH}</button>
         </span>`;
       bindHistorySwipe(li, e);
       li.addEventListener("dblclick", (ev) => {

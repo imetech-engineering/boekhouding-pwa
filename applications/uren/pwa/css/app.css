@@ -560,6 +560,20 @@ button {
   background: var(--bg-hover);
 }
 
+.history-actions .btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  padding: 6px;
+  color: var(--text-secondary);
+}
+
+.history-actions .btn-icon-danger {
+  color: var(--danger);
+  border-color: var(--border);
+}
+
 .analyse-row {
   padding: 12px 0;
   border-bottom: 1px solid var(--border);

@@ -8,6 +8,7 @@
 
   let gekozenAdres = null; // {label, plaats, lat, lon}
   let kmAuto = false;
+  let editRow = null; // Excel-rij die bewerkt wordt (null = nieuwe rit)
 
   function escapeHtml(s) {
     const d = document.createElement("div");
@@ -190,23 +191,18 @@
     $("#reis-km-status").textContent = "—";
     gekozenAdres = null;
     kmAuto = false;
+    setEditRow(null);
     updatePreview();
   }
 
-  async function boek() {
+  function huidigeFields() {
     const naam = $("#reis-naam").value.trim();
     const bestemming = $("#reis-bestemming").value.trim();
     const km = huidigeKm();
-    const datumIso = $("#reis-datum").value;
-    if (!naam) return App().showToast("Vul een naam/doel in.", true);
-    if (!bestemming) return App().showToast("Vul een bestemming in.", true);
-    if (km == null || km <= 0) return App().showToast("Vul een geldig aantal km in.", true);
-    if (!datumIso) return App().showToast("Vul een datum in.", true);
-
     const tarief = settings().kmTarief || 0.23;
     const thuisPlaats = settings().thuisAdres?.plaats || "Aalten";
-    const fields = {
-      datumIso,
+    return {
+      datumIso: $("#reis-datum").value,
       leverancier: "Ivo Mengerink",
       omschrijving: M().buildReisOmschrijving({ naam, km, bestemming, thuisPlaats }),
       factuurnummer: "",
@@ -219,6 +215,43 @@
       opmerking: "Buiten scope BTW",
       land: "NL",
     };
+  }
+
+  async function boek() {
+    const naam = $("#reis-naam").value.trim();
+    const bestemming = $("#reis-bestemming").value.trim();
+    const km = huidigeKm();
+    const datumIso = $("#reis-datum").value;
+    if (!naam) return App().showToast("Vul een naam/doel in.", true);
+    if (!bestemming) return App().showToast("Vul een bestemming in.", true);
+    if (km == null || km <= 0) return App().showToast("Vul een geldig aantal km in.", true);
+    if (!datumIso) return App().showToast("Vul een datum in.", true);
+
+    const fields = huidigeFields();
+
+    if (editRow) {
+      const row = editRow;
+      setEditRow(null);
+      await App().persistMutation(
+        { kind: "inkoop_update", excelRow: row, fields },
+        { successMsg: "Rit bijgewerkt" }
+      );
+      return;
+    }
+
+    // De velden blijven staan voor de volgende dag, dus een dubbele boeking
+    // op dezelfde datum is makkelijk gemaakt — daarom expliciet bevestigen.
+    const dubbel = App().state.intel.inkoop.history.find(
+      (h) => h.omschrijving === fields.omschrijving && h.datum && M().dateToIso(h.datum) === datumIso
+    );
+    if (dubbel) {
+      const doorgaan = await App().showConfirm(
+        `Deze rit staat al op ${dubbel.datumStr}. Nog een keer boeken?`,
+        "Toch boeken",
+        "Annuleren"
+      );
+      if (!doorgaan) return;
+    }
 
     if ($("#reis-fav-save").checked) {
       const favs = (settings().favorieten || []).filter((x) => x.naam !== naam);
@@ -231,12 +264,58 @@
         lon: gekozenAdres?.lon ?? null,
       });
       App().saveSettings({ favorieten: favs });
+      $("#reis-fav-save").checked = false;
     }
 
-    clearForm();
+    // Bewust niet wissen: zelfde rit op een andere dag boeken kost nu alleen
+    // een tik op de datum-stepper en nog een keer "Reiskosten inboeken".
     await App().persistMutation(
       { kind: "inkoop_add", fields },
       { successMsg: `Reiskosten geboekt: ${M().fmtEur(fields.bedrag)}` }
+    );
+  }
+
+  /** Bewerkmodus aan/uit. */
+  function setEditRow(row) {
+    editRow = row;
+    $("#reis-form-title").textContent = row ? `Rit bewerken (rij ${row})` : "Rit inboeken";
+    $("#btn-reis-boek").textContent = row ? "Rit bijwerken" : "Reiskosten inboeken";
+    $("#btn-reis-cancel-edit").classList.toggle("hidden", !row);
+  }
+
+  function startEdit(h) {
+    const parsed = M().parseReisOmschrijving(h.omschrijving);
+    if (!parsed) {
+      App().showToast("Deze regel heeft geen standaard reisomschrijving — bewerk hem op de Inkoop-tab.", true);
+      return;
+    }
+    $("#reis-datum").value = h.datum ? M().dateToIso(h.datum) : M().todayIso();
+    $("#reis-naam").value = parsed.naam;
+    $("#reis-bestemming").value = parsed.bestemming;
+    $("#reis-km").value = M().formatKm(parsed.km);
+    $("#reis-project").value = h.project || "";
+    $("#reis-adres").value = "";
+    $("#reis-adres-results").classList.add("hidden");
+    gekozenAdres = null;
+    kmAuto = false;
+    $("#reis-km-status").textContent = "uit bestaande rit";
+    setEditRow(h.excelRow);
+    updatePreview();
+    App().haptic(15);
+    $("#reis-form-card").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function deleteRit(h) {
+    const ok = await App().showConfirm(
+      `Rit verwijderen?\n${h.datumStr} · ${M().fmtEur(h.bedrag)}\n${h.omschrijving}`,
+      "Verwijderen",
+      "Annuleren"
+    );
+    if (!ok) return;
+    if (editRow === h.excelRow) setEditRow(null);
+    await App().persistMutation(
+      { kind: "inkoop_delete", excelRow: h.excelRow },
+      { successMsg: "Rit verwijderd" }
     );
   }
 
@@ -247,13 +326,17 @@
     for (const h of App().state.intel.inkoop.history) {
       if (h.categorie !== "Reiskosten" && !/^Transportkosten/i.test(h.omschrijving)) continue;
       const li = document.createElement("li");
-      li.className = "boek-item";
+      li.className = "boek-item" + (editRow === h.excelRow ? " selected" : "");
       li.innerHTML = `
         <div class="bi-head">
           <span class="bi-title">${escapeHtml(h.omschrijving)}</span>
           <span class="bi-amount uit">${M().fmtEur(h.bedrag)}</span>
         </div>
-        <div class="bi-sub"><span>${h.project ? escapeHtml(h.project) : ""}</span><span>${h.datumStr}</span></div>`;
+        <div class="bi-sub"><span>${h.project ? escapeHtml(h.project) : ""}</span><span>${h.datumStr}</span></div>
+        ${App().rowActionsHtml()}`;
+      li.querySelector('[data-act="edit"]').addEventListener("click", () => startEdit(h));
+      li.querySelector('[data-act="del"]').addEventListener("click", () => deleteRit(h));
+      App().bindSwipe(li, { onEdit: () => startEdit(h), onDelete: () => deleteRit(h) });
       list.appendChild(li);
       if (++shown >= 10) break;
     }
@@ -282,6 +365,7 @@
     });
     $("#btn-reis-boek").addEventListener("click", boek);
     $("#btn-reis-clear").addEventListener("click", clearForm);
+    $("#btn-reis-cancel-edit").addEventListener("click", clearForm);
   }
 
   App().registerTab("reis", { init, render });

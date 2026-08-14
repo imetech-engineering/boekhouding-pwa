@@ -12,6 +12,7 @@
   let pdfPageNum = 1;
   let bankMatchRows = [];
   let prefillBankRows = [];
+  let editRow = null; // Excel-rij die bewerkt wordt (null = nieuwe regel)
 
   const intel = () => App().state.intel.inkoop;
 
@@ -53,6 +54,7 @@
 
     // Vers formulier voor deze factuur, dan vullen: bestandsnaam → PDF → Excel-historie.
     clearFormFields();
+    setEditRow(null);
 
     // 1. Bestandsnaam parsen (yymmdd bedrijf factuurnummer) — datum uit de naam is leidend
     filenameParsed = M().parseInkoopFilename(item.name);
@@ -238,8 +240,58 @@
 
   function clearForm() {
     clearFormFields();
+    setEditRow(null);
     updateBankCheck();
     updateRenameButton();
+  }
+
+  /** Bewerkmodus aan/uit: knoptekst en titel volgen de stand. */
+  function setEditRow(row) {
+    editRow = row;
+    $("#inkoop-form-title").textContent = row ? `Regel bewerken (rij ${row})` : "Factuur inboeken";
+    $("#btn-inkoop-boek").textContent = row ? "Bijwerken" : "Inboeken";
+    $("#btn-inkoop-boek-move").classList.toggle("hidden", !!row || !selectedFile);
+    $("#btn-inkoop-cancel-edit").classList.toggle("hidden", !row);
+  }
+
+  function startEdit(h) {
+    clearFormFields();
+    $("#inkoop-datum").value = h.datum ? M().dateToIso(h.datum) : M().todayIso();
+    $("#inkoop-leverancier").value = h.partij || "";
+    $("#inkoop-omschrijving").value = h.omschrijving || "";
+    $("#inkoop-fnr").value = h.factuurnummer || "";
+    $("#inkoop-bedrag").value = h.bedrag != null ? M().fmtAmountInput(h.bedrag) : "";
+    $("#inkoop-btw").value = h.btw != null ? String(h.btw).replace(/\.0$/, "") : "";
+    $("#inkoop-land").value = M().normalizeLand(h.land);
+    $("#inkoop-categorie").value = h.categorie || "";
+    $("#inkoop-project").value = h.project || "";
+    $("#inkoop-opmerking").value = h.opmerking || "";
+    $("#inkoop-verlegd").checked = !!h.verlegd;
+    $("#inkoop-afschrijving").checked = !!h.afschrijving;
+    if (h.valuta || h.wisselkoers || h.bedragOrig != null) {
+      $("#inkoop-valuta-wrap").classList.remove("hidden");
+      $("#inkoop-valuta").value = h.valuta || "";
+      $("#inkoop-koers").value = h.wisselkoers || "";
+      $("#inkoop-bedrag-orig").value = h.bedragOrig != null ? M().fmtAmountInput(h.bedragOrig) : "";
+    }
+    setEditRow(h.excelRow);
+    updateBankCheck();
+    App().haptic(15);
+    $("#inkoop-form-title").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function deleteRow(h) {
+    const ok = await App().showConfirm(
+      `Regel verwijderen?\n${h.datumStr} · ${h.partij} · ${M().fmtEur(h.bedrag)}`,
+      "Verwijderen",
+      "Annuleren"
+    );
+    if (!ok) return;
+    if (editRow === h.excelRow) clearForm();
+    await App().persistMutation(
+      { kind: "inkoop_delete", excelRow: h.excelRow },
+      { successMsg: "Regel verwijderd" }
+    );
   }
 
   async function boek(move) {
@@ -247,6 +299,16 @@
     if (!f.leverancier) return App().showToast("Vul de leverancier in.", true);
     if (f.bedrag == null) return App().showToast("Vul een geldig bedrag incl. BTW in.", true);
     if (!f.datumIso) return App().showToast("Vul een geldige factuurdatum in.", true);
+
+    if (editRow) {
+      const row = editRow;
+      clearForm();
+      await App().persistMutation(
+        { kind: "inkoop_update", excelRow: row, fields: f },
+        { successMsg: "Regel bijgewerkt" }
+      );
+      return;
+    }
 
     const dup = M().findDuplicate(intel(), {
       partij: f.leverancier,
@@ -320,14 +382,21 @@
     for (const h of intel().history) {
       if (q && !`${h.partij} ${h.omschrijving} ${h.categorie} ${h.project}`.toLowerCase().includes(q)) continue;
       const li = document.createElement("li");
-      li.className = "boek-item";
+      li.className = "boek-item" + (editRow === h.excelRow ? " selected" : "");
       li.innerHTML = `
         <div class="bi-head">
           <span class="bi-title">${escapeHtml(h.partij)}</span>
           <span class="bi-amount uit">${M().fmtEur(h.bedrag)}</span>
         </div>
-        <div class="bi-sub"><span>${escapeHtml(h.omschrijving).slice(0, 70)}</span><span>${h.datumStr}</span></div>`;
-      li.addEventListener("click", () => applyHistory(h));
+        <div class="bi-sub"><span>${escapeHtml(h.omschrijving).slice(0, 70)}</span><span>${h.datumStr}</span></div>
+        ${App().rowActionsHtml()}`;
+      li.addEventListener("click", (ev) => {
+        if (ev.target.closest("button")) return;
+        applyHistory(h);
+      });
+      li.querySelector('[data-act="edit"]').addEventListener("click", () => startEdit(h));
+      li.querySelector('[data-act="del"]').addEventListener("click", () => deleteRow(h));
+      App().bindSwipe(li, { onEdit: () => startEdit(h), onDelete: () => deleteRow(h) });
       list.appendChild(li);
       if (++shown >= 20) break;
     }
@@ -399,6 +468,7 @@
       deselectFile();
     });
     $("#btn-inkoop-deselect").addEventListener("click", deselectFile);
+    $("#btn-inkoop-cancel-edit").addEventListener("click", clearForm);
     $("#btn-inkoop-page-prev").addEventListener("click", () => {
       if (pdfDoc && pdfPageNum > 1) {
         pdfPageNum--;

@@ -89,7 +89,7 @@
 
         <div class="card">
           <h2>Openstaande bankregels</h2>
-          <p class="sub">Tik op een regel voor bewerken, matchen en ingeboekt markeren.</p>
+          <p class="sub">Tik voor bewerken, matchen en ingeboekt markeren. Vegen kan ook: rechts bewerken, links verwijderen.</p>
           <ul id="bank-open-list" class="boek-list"></ul>
         </div>
 
@@ -189,6 +189,7 @@
             <button type="button" id="btn-inkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
           </div>
           <div class="btn-row">
+            <button type="button" id="btn-inkoop-cancel-edit" class="btn-secondary hidden">Bewerken annuleren</button>
             <button type="button" id="btn-inkoop-rename" class="btn-secondary hidden">Hernoem bestand</button>
             <button type="button" id="btn-inkoop-clear" class="btn-secondary">Wis</button>
           </div>
@@ -196,6 +197,7 @@
 
         <div class="card">
           <h2>Historie</h2>
+          <p class="sub">Tik om over te nemen · veeg rechts = bewerken, links = verwijderen.</p>
           <input id="inkoop-hist-search" type="search" placeholder="Filter historie…" class="hist-search" />
           <ul id="inkoop-hist-list" class="boek-list"></ul>
         </div>
@@ -281,12 +283,14 @@
             <button type="button" id="btn-verkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
           </div>
           <div class="btn-row">
+            <button type="button" id="btn-verkoop-cancel-edit" class="btn-secondary hidden">Bewerken annuleren</button>
             <button type="button" id="btn-verkoop-clear" class="btn-secondary">Wis</button>
           </div>
         </div>
 
         <div class="card">
           <h2>Historie</h2>
+          <p class="sub">Tik om over te nemen · veeg rechts = bewerken, links = verwijderen.</p>
           <input id="verkoop-hist-search" type="search" placeholder="Filter historie…" class="hist-search" />
           <ul id="verkoop-hist-list" class="boek-list"></ul>
         </div>
@@ -301,7 +305,7 @@
         </div>
 
         <div class="card" id="reis-form-card">
-          <h2>Rit inboeken</h2>
+          <h2 id="reis-form-title">Rit inboeken</h2>
           <label for="reis-datum">Datum</label>
           <div class="date-row">
             <button type="button" id="btn-reis-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
@@ -337,12 +341,15 @@
           </div>
           <div class="btn-row">
             <button type="button" id="btn-reis-boek" class="btn-primary">Reiskosten inboeken</button>
+            <button type="button" id="btn-reis-cancel-edit" class="btn-secondary hidden">Annuleren</button>
             <button type="button" id="btn-reis-clear" class="btn-secondary">Wis</button>
           </div>
+          <p class="sub">Na inboeken blijven de gegevens staan — pas alleen de datum aan om dezelfde rit nog een dag te boeken.</p>
         </div>
 
         <div class="card">
           <h2>Laatste reiskosten</h2>
+          <p class="sub">Veeg naar rechts om te bewerken, naar links om te verwijderen.</p>
           <ul id="reis-hist-list" class="boek-list"></ul>
         </div>
       </section>
@@ -462,6 +469,7 @@
         <div class="btn-row">
           <button type="button" id="btn-bank-m-ingeboekt" class="btn-primary">Markeer ingeboekt</button>
           <button type="button" id="btn-bank-m-save" class="btn-secondary">Opslaan</button>
+          <button type="button" id="btn-bank-m-delete" class="btn-secondary btn-danger">Verwijderen</button>
         </div>
         <p class="sub">
           Geen losse factuur bij deze transactie (bankkosten, rente, kleine bon)?

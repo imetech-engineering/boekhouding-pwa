@@ -377,9 +377,37 @@ button {
   font-weight: 600;
 }
 
-.boek-item .bi-actions {
+.boek-item.swiping {
+  transition: transform 0.05s linear;
+}
+
+.boek-item .bi-actions,
+.boek-item .row-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  min-width: 38px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+}
+
+.btn-icon:active {
+  background: var(--bg-hover);
+}
+
+.btn-icon-danger {
+  color: var(--danger);
 }
 
 .boek-item .bi-x {

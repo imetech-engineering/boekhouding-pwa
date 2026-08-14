@@ -459,17 +459,26 @@
     return Math.round(2 * km * tarief * 100) / 100;
   }
 
+  /** Ontleed een geboekte reisomschrijving terug naar naam, km en bestemming. */
+  function parseReisOmschrijving(oms) {
+    const m = String(oms || "").match(
+      /^Transportkosten\s+(.+?)\s*\(2x\s*([\d.,]+)\s*km\s*-\s*[^-]+-\s*(.+?)\s*-\s*[^-]+\)$/i
+    );
+    if (!m) return null;
+    const km = parseUserAmount(m[2]);
+    if (!km) return null;
+    return { naam: m[1].trim(), km, bestemming: m[3].trim() };
+  }
+
   /** Haal eerdere reisbestemmingen uit de inkoop-historie (Transportkosten-patroon). */
   function reisFavorietenUitHistorie(inkoopHistory) {
     const seen = new Map();
     for (const h of inkoopHistory) {
-      const m = (h.omschrijving || "").match(
-        /^Transportkosten\s+(.+?)\s*\(2x\s*([\d.,]+)\s*km\s*-\s*[^-]+-\s*(.+?)\s*-\s*[^-]+\)$/i
-      );
-      if (!m) continue;
-      const naam = m[1].replace(/\b(kennismaking|werkdag)\b/gi, "").replace(/\s+/g, " ").trim();
-      const km = parseUserAmount(m[2]);
-      const bestemming = m[3].trim();
+      const parsed = parseReisOmschrijving(h.omschrijving);
+      if (!parsed) continue;
+      const naam = parsed.naam.replace(/\b(kennismaking|werkdag)\b/gi, "").replace(/\s+/g, " ").trim();
+      const km = parsed.km;
+      const bestemming = parsed.bestemming;
       const key = naam.toLowerCase();
       if (!seen.has(key) && km) {
         seen.set(key, { naam, km, bestemming, project: h.project || "", count: 1 });
@@ -524,7 +533,7 @@
     bankMatchesForInvoice, invoiceMatchesForBankRow,
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
-    formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie,
+    formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,
     kwartaalOverzicht,
   };
 })(window);

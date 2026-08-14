@@ -127,7 +127,85 @@
     });
   }
 
+  /**
+   * Bankregel leegmaken. De saldo-formule van de eerstvolgende gevulde regel
+   * verwijst naar deze rij, dus die wordt opnieuw gekoppeld aan de regel ervóór —
+   * anders staat er na het verwijderen #WAARDE! in de saldokolom.
+   */
+  async function deleteBankRow(token, excelRow) {
+    const path = drivePath();
+    return W().withSession(path, token, async (sid) => {
+      const sheet = M().SHEET_BANK;
+      const bank = await W().readTableRange(path, token, M().TABLE_BANK, sid);
+      const rows = M().parseBankRows(bank.values, bank.headerRow);
+      const prev = M().lastFilledBankRowBefore(rows, excelRow);
+      const next = rows.find((r) => r.excelRow > excelRow && !r.isEmpty);
+      await W().patchValues(path, token, sid, sheet, `A${excelRow}:G${excelRow}`, [
+        ["", "", "", "", "", false, ""],
+      ]);
+      if (next) {
+        await W().patchFormulas(path, token, sid, sheet, `E${next.excelRow}`, [
+          [M().saldoFormula(prev ? prev.excelRow : null)],
+        ]);
+      }
+    });
+  }
+
   // === Inkoopboek ===
+
+  /** Waardekolommen D..V van één inkooprij; M..P (formules) en Q (keuzelijst) blijven ongemoeid. */
+  function inkoopRowValues(fields) {
+    const land = M().normalizeLand(fields.land);
+    return [
+      fields.leverancier || "",
+      fields.omschrijving || "",
+      fields.factuurnummer || "",
+      fields.bedrag != null ? fields.bedrag : "",
+      fields.bedragOrig != null ? fields.bedragOrig : "",
+      fields.valuta || "",
+      fields.wisselkoers || "",
+      fields.btw != null ? fields.btw : "",
+      !!fields.verlegd,
+      null, null, null, null, // M, N, O, P (formules)
+      null, // Q (keuzelijst)
+      fields.categorie || "",
+      !!fields.afschrijving,
+      fields.opmerking || "",
+      land || "",
+      fields.project || "",
+    ];
+  }
+
+  async function writeInkoopRow(path, token, sid, excelRow, fields) {
+    const sheet = M().SHEET_INKOOP;
+    await W().patchValues(path, token, sid, sheet, `A${excelRow}`, [[fields.datumIso]]);
+    await W().patchValues(path, token, sid, sheet, `D${excelRow}:V${excelRow}`, [
+      inkoopRowValues(fields),
+    ]);
+  }
+
+  /** Bestaande inkooprij overschrijven (bewerken). */
+  async function updateInkoopRow(token, excelRow, fields) {
+    const path = drivePath();
+    return W().withSession(path, token, (sid) =>
+      writeInkoopRow(path, token, sid, excelRow, fields)
+    );
+  }
+
+  /** Rij leegmaken i.p.v. verwijderen — zo blijven formules en rij-indexen intact. */
+  async function deleteInkoopRow(token, excelRow) {
+    const path = drivePath();
+    return W().withSession(path, token, async (sid) => {
+      const sheet = M().SHEET_INKOOP;
+      await W().patchValues(path, token, sid, sheet, `A${excelRow}`, [[""]]);
+      await W().patchValues(path, token, sid, sheet, `D${excelRow}:L${excelRow}`, [
+        ["", "", "", "", "", "", "", "", ""],
+      ]);
+      await W().patchValues(path, token, sid, sheet, `R${excelRow}:V${excelRow}`, [
+        ["", "", "", "", ""],
+      ]);
+    });
+  }
 
   /**
    * fields: {datumIso, leverancier, omschrijving, factuurnummer, bedrag, btw, verlegd,
@@ -156,34 +234,59 @@
         ]);
         return { excelRow: null };
       }
-      const sheet = M().SHEET_INKOOP;
-      await W().patchValues(path, token, sid, sheet, `A${targetRow}`, [[fields.datumIso]]);
-      // D..V in één patch; formulekolommen M..P en keuzelijst Q blijven null (= onaangeroerd)
-      await W().patchValues(path, token, sid, sheet, `D${targetRow}:V${targetRow}`, [
-        [
-          fields.leverancier || "",
-          fields.omschrijving || "",
-          fields.factuurnummer || "",
-          fields.bedrag != null ? fields.bedrag : "",
-          fields.bedragOrig != null ? fields.bedragOrig : "",
-          fields.valuta || "",
-          fields.wisselkoers || "",
-          fields.btw != null ? fields.btw : "",
-          !!fields.verlegd,
-          null, null, null, null, // M, N, O, P (formules)
-          null, // Q (keuzelijst)
-          fields.categorie || "",
-          !!fields.afschrijving,
-          fields.opmerking || "",
-          land || "",
-          fields.project || "",
-        ],
-      ]);
+      await writeInkoopRow(path, token, sid, targetRow, fields);
       return { excelRow: targetRow };
     });
   }
 
   // === Verkoopboek ===
+
+  /** Waardekolommen D..Q van één verkooprij; M/N (formules) en O (keuzelijst) blijven ongemoeid. */
+  function verkoopRowValues(fields) {
+    const land = M().normalizeLand(fields.land);
+    return [
+      fields.klant || "",
+      fields.omschrijving || "",
+      fields.factuurnummer || "",
+      fields.bedrag != null ? fields.bedrag : "",
+      land || "",
+      fields.bedragOrig != null ? fields.bedragOrig : "",
+      fields.valuta || "",
+      fields.wisselkoers || "",
+      fields.btw != null ? fields.btw : "",
+      null, null, // M, N (formules)
+      null, // O (keuzelijst)
+      fields.categorie || "",
+      fields.opmerking || "",
+    ];
+  }
+
+  async function writeVerkoopRow(path, token, sid, excelRow, fields) {
+    const sheet = M().SHEET_VERKOOP;
+    await W().patchValues(path, token, sid, sheet, `A${excelRow}`, [[fields.datumIso]]);
+    await W().patchValues(path, token, sid, sheet, `D${excelRow}:Q${excelRow}`, [
+      verkoopRowValues(fields),
+    ]);
+  }
+
+  async function updateVerkoopRow(token, excelRow, fields) {
+    const path = drivePath();
+    return W().withSession(path, token, (sid) =>
+      writeVerkoopRow(path, token, sid, excelRow, fields)
+    );
+  }
+
+  async function deleteVerkoopRow(token, excelRow) {
+    const path = drivePath();
+    return W().withSession(path, token, async (sid) => {
+      const sheet = M().SHEET_VERKOOP;
+      await W().patchValues(path, token, sid, sheet, `A${excelRow}`, [[""]]);
+      await W().patchValues(path, token, sid, sheet, `D${excelRow}:L${excelRow}`, [
+        ["", "", "", "", "", "", "", "", ""],
+      ]);
+      await W().patchValues(path, token, sid, sheet, `P${excelRow}:Q${excelRow}`, [["", ""]]);
+    });
+  }
 
   /**
    * fields: {datumIso, klant, omschrijving, factuurnummer, bedrag, land, btw,
@@ -211,25 +314,7 @@
         ]);
         return { excelRow: null };
       }
-      const sheet = M().SHEET_VERKOOP;
-      await W().patchValues(path, token, sid, sheet, `A${targetRow}`, [[fields.datumIso]]);
-      await W().patchValues(path, token, sid, sheet, `D${targetRow}:Q${targetRow}`, [
-        [
-          fields.klant || "",
-          fields.omschrijving || "",
-          fields.factuurnummer || "",
-          fields.bedrag != null ? fields.bedrag : "",
-          land || "",
-          fields.bedragOrig != null ? fields.bedragOrig : "",
-          fields.valuta || "",
-          fields.wisselkoers || "",
-          fields.btw != null ? fields.btw : "",
-          null, null, // M, N (formules)
-          null, // O (keuzelijst)
-          fields.categorie || "",
-          fields.opmerking || "",
-        ],
-      ]);
+      await writeVerkoopRow(path, token, sid, targetRow, fields);
       return { excelRow: targetRow };
     });
   }
@@ -239,8 +324,13 @@
     loadAll,
     addBankRow,
     updateBankRow,
+    deleteBankRow,
     setBankIngeboekt,
     addInkoopRow,
+    updateInkoopRow,
+    deleteInkoopRow,
     addVerkoopRow,
+    updateVerkoopRow,
+    deleteVerkoopRow,
   };
 })(window);

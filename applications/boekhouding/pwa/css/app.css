@@ -404,16 +404,30 @@ button {
   padding: 0;
 }
 
+/* Tekst links, knoppen rechts ernaast — scheelt een hele regel per item. */
 .boek-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head actions"
+    "sub  actions";
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 1px;
+  padding: 7px 10px;
   margin: 0 -10px;
   border-bottom: 1px solid var(--border);
   font-size: 0.8125rem;
   border-radius: var(--radius-md);
   cursor: pointer;
+}
+
+.boek-item .bi-head {
+  grid-area: head;
+}
+
+.boek-item .bi-sub {
+  grid-area: sub;
 }
 
 .boek-item:active {
@@ -460,6 +474,18 @@ button {
   gap: 8px;
 }
 
+/* Lange omschrijvingen aflopen met puntjes, zodat elk item precies twee regels blijft. */
+.boek-item .bi-sub > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boek-item .bi-sub > span:last-child {
+  flex: 0 0 auto;
+}
+
 .boek-item .bi-match {
   color: var(--warn);
   font-weight: 600;
@@ -469,21 +495,20 @@ button {
   transition: transform 0.05s linear;
 }
 
-.boek-item .bi-actions,
 .boek-item .row-actions {
+  grid-area: actions;
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 2px;
+  align-items: center;
+  gap: 6px;
 }
 
 .btn-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
-  min-width: 38px;
-  padding: 4px 8px;
+  min-height: 32px;
+  min-width: 34px;
+  padding: 4px 6px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

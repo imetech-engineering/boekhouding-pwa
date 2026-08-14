@@ -942,6 +942,11 @@
     }
   }
 
+  const ICON_APPLY =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M12 3v10"/><path d="m8 11 4 4 4-4"/>' +
+    '<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>';
   const ICON_PENCIL =
     '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -951,6 +956,20 @@
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>' +
     '<path d="M10 11v6M14 11v6"/></svg>';
+
+  function esc(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  // Twee regels per item: wie/wat + uren boven, de rest eronder.
+  const historyTitel = (e) =>
+    [e.opdrachtgever, e.project].filter(Boolean).join(" · ") || "(geen project)";
+  const historyUren = (e) =>
+    `${String(e.uren).replace(".", ",")} u × €${String(e.tarief).replace(".", ",")}`;
+  const historySub = (e) =>
+    [e.datumStr, e.locatie, e.werkzaamheden].filter(Boolean).join(" · ");
 
   function renderHistory() {
     const list = $("#history-list");
@@ -973,9 +992,16 @@
       li.className = "history-item";
       if (e.row_index === state.selectedHistoryRow) li.classList.add("selected");
       li.dataset.row = String(e.row_index);
-      li.innerHTML = `<span class="history-text">${UrenInvoer.formatHistoryLine(e)}</span>
+      li.innerHTML = `<span class="history-text">
+          <span class="hi-head">
+            <span class="hi-title">${esc(historyTitel(e))}</span>
+            <span class="hi-uren">${esc(historyUren(e))}</span>
+          </span>
+          <span class="hi-sub">${esc(historySub(e))}</span>
+        </span>
         <span class="history-actions">
-          <button type="button" data-act="apply" data-row="${e.row_index}">Overnemen</button>
+          <button type="button" class="btn-icon" data-act="apply" data-row="${e.row_index}"
+            aria-label="Overnemen in formulier" title="Overnemen">${ICON_APPLY}</button>
           <button type="button" class="btn-icon" data-act="edit" data-row="${e.row_index}"
             aria-label="Bewerken" title="Bewerken">${ICON_PENCIL}</button>
           <button type="button" class="btn-icon btn-icon-danger" data-act="del" data-row="${e.row_index}"

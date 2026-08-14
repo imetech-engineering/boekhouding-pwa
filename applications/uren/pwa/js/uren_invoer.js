@@ -77,7 +77,7 @@
 
   function formatHistoryLine(entry) {
     const wz = (entry.werkzaamheden || "").slice(0, 36);
-    return `${entry.datumStr} | ${entry.opdrachtgever} | ${entry.project} | ${entry.locatie} | ${wz} | ${entry.uren} u × €${entry.tarief}`;
+    return `${entry.datumStr} · ${entry.opdrachtgever} · ${entry.project} · ${entry.locatie} · ${wz} · ${entry.uren} u × €${entry.tarief}`;
   }
 
   function sortContextValues(bucket, key) {

@@ -353,16 +353,52 @@ button {
   padding: 0;
 }
 
+/* Tekst links, knoppen rechts ernaast — scheelt een hele regel per item. */
 .history-item {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 8px;
-  padding: 10px;
+  padding: 7px 10px;
   margin: 0 -10px;
   border-bottom: 1px solid var(--border);
   font-size: 0.8125rem;
   border-radius: var(--radius-md);
   cursor: pointer;
+}
+
+.history-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.hi-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hi-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.hi-uren {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.hi-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
 }
 
 .history-item.selected {
@@ -544,11 +580,12 @@ button {
 
 .history-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
 }
 
 .history-actions button {
-  min-height: 36px;
+  min-height: 32px;
   font-size: 0.75rem;
   padding: 6px 10px;
   background: var(--bg-tertiary);
@@ -564,8 +601,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 38px;
-  padding: 6px;
+  min-width: 34px;
+  padding: 4px 6px;
   color: var(--text-secondary);
 }
 

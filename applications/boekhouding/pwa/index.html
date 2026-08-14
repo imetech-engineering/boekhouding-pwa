@@ -105,6 +105,12 @@
           <h2>Nog te verwerken <span id="inkoop-files-count" class="count-badge"></span></h2>
           <ul id="inkoop-files-list" class="file-list"></ul>
           <p id="inkoop-files-empty" class="sub hidden">Geen facturen in de map.</p>
+          <div class="btn-row">
+            <button type="button" id="btn-scan-camera" class="btn-primary">＋ Bon fotograferen</button>
+            <button type="button" id="btn-scan-gallery" class="btn-secondary">Uit galerij</button>
+          </div>
+          <input type="file" id="scan-input-camera" accept="image/*" capture="environment" class="hidden" />
+          <input type="file" id="scan-input-gallery" accept="image/*" class="hidden" />
         </div>
 
         <div id="inkoop-preview-card" class="card hidden">
@@ -482,6 +488,55 @@
       </div>
     </div>
 
+    <!-- Bon scannen -->
+    <div id="scan-modal" class="modal hidden" role="dialog" aria-label="Bon scannen">
+      <div class="modal-backdrop"></div>
+      <div class="modal-sheet modal-sheet-tall">
+        <p id="scan-busy" class="scan-busy hidden">Bezig…</p>
+
+        <div id="scan-step-crop" class="hidden">
+          <h2>Hoeken bijstellen</h2>
+          <p class="sub">De rand is automatisch gezocht. Sleep de punten als het niet klopt.</p>
+          <div id="scan-crop-wrap" class="scan-crop-wrap">
+            <canvas id="scan-crop-canvas"></canvas>
+            <canvas id="scan-crop-overlay"></canvas>
+            <div class="scan-handle" data-i="0"></div>
+            <div class="scan-handle" data-i="1"></div>
+            <div class="scan-handle" data-i="2"></div>
+            <div class="scan-handle" data-i="3"></div>
+            <canvas id="scan-loupe" class="scan-loupe hidden"></canvas>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-scan-auto" class="btn-secondary">Opnieuw zoeken</button>
+            <button type="button" id="btn-scan-full" class="btn-secondary">Hele foto</button>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-scan-crop-ok" class="btn-primary">Rechttrekken →</button>
+            <button type="button" id="btn-scan-crop-cancel" class="btn-secondary">Annuleren</button>
+          </div>
+        </div>
+
+        <div id="scan-step-save" class="hidden">
+          <h2>Toevoegen aan nog te verwerken</h2>
+          <div id="scan-pages" class="scan-pages"></div>
+          <div class="btn-row">
+            <button type="button" id="btn-scan-page-add" class="btn-secondary">＋ Pagina toevoegen</button>
+          </div>
+          <label for="scan-datum">Factuurdatum</label>
+          <input id="scan-datum" type="date" autocomplete="off" />
+          <label for="scan-leverancier">Leverancier</label>
+          <input id="scan-leverancier" autocomplete="off" placeholder="Leeg = Onbekend" />
+          <label for="scan-fnr">Factuurnr / bon (optioneel)</label>
+          <input id="scan-fnr" autocomplete="off" />
+          <p id="scan-filename" class="sub"></p>
+          <div class="btn-row">
+            <button type="button" id="btn-scan-save" class="btn-primary">Opslaan in OneDrive</button>
+            <button type="button" id="btn-scan-cancel" class="btn-secondary">Annuleren</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Bevestigingsmodal (duplicaat / bankmatch) -->
     <div id="confirm-modal" class="modal hidden" role="alertdialog" aria-labelledby="confirm-title">
       <div class="modal-backdrop"></div>
@@ -514,6 +569,7 @@
     <script src="js/boek_model.js"></script>
     <script src="js/boek_io.js"></script>
     <script src="js/pdf_extract.js"></script>
+    <script src="js/scanner.js"></script>
     <script src="js/reiskosten.js"></script>
     <script src="js/combobox.js"></script>
     <script src="js/offline_queue.js"></script>
@@ -521,6 +577,7 @@
     <script src="js/app.js"></script>
     <script src="js/ui_bank.js"></script>
     <script src="js/ui_inkoop.js"></script>
+    <script src="js/ui_scan.js"></script>
     <script src="js/ui_verkoop.js"></script>
     <script src="js/ui_reis.js"></script>
     <script src="js/ui_overzicht.js"></script>

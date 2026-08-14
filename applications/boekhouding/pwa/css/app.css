@@ -743,6 +743,137 @@ button {
   max-width: 360px;
 }
 
+.modal-sheet-tall {
+  max-height: 96dvh;
+}
+
+/* ===== Bon scannen ===== */
+.scan-busy {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.scan-crop-wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: 8px 0;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  touch-action: none;
+}
+
+.scan-crop-wrap canvas {
+  display: block;
+}
+
+#scan-crop-overlay {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.scan-handle {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  background: rgba(14, 138, 91, 0.22);
+  border: 2px solid #0e8a5b;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+  touch-action: none;
+  cursor: grab;
+}
+
+.scan-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: #0e8a5b;
+}
+
+.scan-loupe {
+  position: absolute;
+  top: 8px;
+  z-index: 4;
+  width: 104px;
+  height: 104px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  background: #fff;
+  pointer-events: none;
+}
+
+.scan-pages {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+}
+
+.scan-page {
+  position: relative;
+  flex: 0 0 auto;
+  width: 132px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+
+.scan-page img {
+  display: block;
+  width: 100%;
+  height: 168px;
+  object-fit: cover;
+}
+
+.scan-page-nr {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.scan-page-tools {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  padding: 6px 4px;
+  background: var(--bg-primary);
+}
+
+.scan-page-tools .btn-icon {
+  min-width: 34px;
+  font-size: 1rem;
+}
+
 /* ===== Install banner ===== */
 .install-banner {
   position: fixed;

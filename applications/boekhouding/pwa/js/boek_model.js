@@ -442,7 +442,8 @@
   function buildInkoopFilename(datumIso, bedrijf, factuurnummer, ext) {
     const clean = (s) => String(s || "").replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim();
     const yymmdd = isoToYymmdd(datumIso);
-    return `${yymmdd} ${clean(bedrijf)} ${clean(factuurnummer)}`.trim() + (ext || "");
+    const base = `${yymmdd} ${clean(bedrijf)} ${clean(factuurnummer)}`.replace(/\s+/g, " ").trim();
+    return base + (ext || "");
   }
 
   // === Reiskosten ===

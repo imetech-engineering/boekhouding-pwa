@@ -5,7 +5,8 @@ Standalone Progressive Web App: leest en schrijft **Boekhouding_IMeTech.xlsx** d
 ## Functies
 
 - **Bankboek** — regels toevoegen/bewerken, saldo als zelf-herstellende formule, ingeboekt markeren, automatische matching met facturen (zelfde bedrag, datum ±14 dagen).
-- **Inkoop & verkoop** — facturen uit de OneDrive-mappen "nog te verwerken", PDF-preview + automatische extractie (bedrijf/bedrag/datum/BTW/land), suggesties uit de Excel-historie per leverancier/klant, duplicaatcontrole, bankregels afvinken, na inboeken bestand verplaatsen naar "verwerkt".
+- **Inkoop & verkoop** — facturen uit de OneDrive-mappen "nog te verwerken", PDF-preview + automatische extractie (bedrijf/bedrag/datum/BTW/land), suggesties uit de Excel-historie per leverancier/klant, duplicaatcontrole, bankregels afvinken, na inboeken bestand verplaatsen naar "verwerkt". Regels zijn te bewerken en te verwijderen (potlood/prullenbak of swipe).
+- **Bon fotograferen** — plus-knop bij inkoop opent de camera van de telefoon. De app zoekt zelf de rand van de bon, je kunt de vier hoeken bijslepen (met loep), trekt het beeld recht en zet het als JPEG in "nog te verwerken". Meerdere pagina's worden een map met dezelfde naam. Daarna boek je hem via de gewone weg in.
 - **Reiskosten** — vaste bestemmingen, adres zoeken (Photon), automatische km via route (OSRM), boekt als inkoopregel (€/km instelbaar, standaard € 0,23).
 - **Overzicht** — kwartaaldashboard (omzet/kosten/resultaat/BTW-saldo), instellingen.
 - Offline queue (IndexedDB), donkere modus, installeerbaar op het startscherm.
@@ -49,6 +50,11 @@ zelfde registratie, dus login werkt direct).
 - **OSRM demo** (router.project-osrm.org) — route-km, gratis, geen uptime-garantie;
   km-veld blijft altijd handmatig aanpasbaar.
 - **CDN**: MSAL (login) en pdf.js (PDF-preview/extractie) via jsDelivr.
+
+De documentscanner draait volledig lokaal in de browser (`js/scanner.js`): Otsu-drempel,
+grootste aaneengesloten vlak, convexe omhulling en de grootste vierhoek daarbinnen,
+gevolgd door een homografie met bilineaire bemonstering. Geen externe bibliotheek,
+geen upload naar derden.
 
 Instellingen (km-tarief, thuisadres, vaste bestemmingen) staan in
 `02 Boekhouding/boekhouding_pwa_settings.json` in OneDrive en syncen dus mee tussen apparaten.

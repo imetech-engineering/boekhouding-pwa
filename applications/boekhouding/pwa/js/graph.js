@@ -102,6 +102,33 @@
     });
   }
 
+  /** Klein bestand (<4 MB) uploaden; OneDrive hernoemt zelf bij een naamconflict. */
+  async function uploadFile(path, blob, token) {
+    const res = await fetch(`${itemUrl(path)}:/content?@microsoft.graph.conflictBehavior=rename`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": blob.type || "application/octet-stream",
+      },
+      body: blob,
+    });
+    if (!res.ok) {
+      throw new Error(`Uploaden mislukt (${res.status}): ${await res.text()}`);
+    }
+    return res.json();
+  }
+
+  async function createFolder(parentPath, name, token) {
+    return graphFetch(`${itemUrl(parentPath)}:/children`, token, {
+      method: "POST",
+      body: JSON.stringify({
+        name,
+        folder: {},
+        "@microsoft.graph.conflictBehavior": "rename",
+      }),
+    });
+  }
+
   async function renameItem(itemId, newName, token) {
     return graphFetch(`${GRAPH}/me/drive/items/${itemId}`, token, {
       method: "PATCH",
@@ -147,6 +174,8 @@
     downloadObjectUrl,
     moveItem,
     renameItem,
+    uploadFile,
+    createFolder,
     readJsonFile,
     writeJsonFile,
     GraphLockError,

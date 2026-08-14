@@ -439,6 +439,7 @@
 
   function init() {
     $("#inkoop-datum").value = M().todayIso();
+    App().bindDateSteppers("inkoop-datum", "btn-inkoop-date-prev", "btn-inkoop-date-next");
     global.BoekCombo.createCombo("inkoop-leverancier", null, () => intel().partijen, applyPartyDefaults, {
       title: "Leverancier",
     });

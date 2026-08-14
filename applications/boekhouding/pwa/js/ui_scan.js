@@ -73,7 +73,9 @@
     const wrap = $("#scan-crop-wrap");
     const canvas = $("#scan-crop-canvas");
     const overlay = $("#scan-crop-overlay");
-    const maxW = Math.max(240, wrap.clientWidth || Math.min(global.innerWidth - 48, 520));
+    // Meten aan de omliggende kolom: het kader zelf krimpt mee met het canvas.
+    const host = wrap.parentElement;
+    const maxW = Math.max(240, host?.clientWidth || Math.min(global.innerWidth - 48, 520));
     const maxH = Math.max(220, (global.innerHeight || 800) * 0.5);
     viewScale = Math.min(maxW / page.src.width, maxH / page.src.height);
     const w = Math.max(1, Math.round(page.src.width * viewScale));
@@ -365,6 +367,7 @@
 
   function init() {
     $("#scan-datum").value = M().todayIso();
+    App().bindDateSteppers("scan-datum", "btn-scan-date-prev", "btn-scan-date-next");
     global.BoekCombo.createCombo(
       "scan-leverancier",
       null,

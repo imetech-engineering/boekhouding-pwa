@@ -352,6 +352,7 @@
 
   function init() {
     $("#verkoop-datum").value = M().todayIso();
+    App().bindDateSteppers("verkoop-datum", "btn-verkoop-date-prev", "btn-verkoop-date-next");
     global.BoekCombo.createCombo("verkoop-klant", null, () => intel().partijen, applyPartyDefaults, {
       title: "Klant",
     });

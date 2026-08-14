@@ -762,14 +762,14 @@ button {
   text-align: center;
 }
 
+/* Het kader valt precies om het canvas, zodat de handgrepen op dezelfde
+   nulpunt staan als de getekende hoeken. */
 .scan-crop-wrap {
   position: relative;
-  display: flex;
-  justify-content: center;
-  margin: 8px 0;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px auto;
   touch-action: none;
 }
 
@@ -777,11 +777,15 @@ button {
   display: block;
 }
 
+#scan-crop-canvas {
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+}
+
 #scan-crop-overlay {
   position: absolute;
-  left: 50%;
+  left: 0;
   top: 0;
-  transform: translateX(-50%);
   pointer-events: none;
 }
 

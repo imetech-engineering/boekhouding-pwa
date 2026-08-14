@@ -127,7 +127,11 @@
         <div class="card">
           <h2 id="inkoop-form-title">Factuur inboeken</h2>
           <label for="inkoop-datum">Factuurdatum</label>
-          <input id="inkoop-datum" type="date" autocomplete="off" />
+          <div class="date-row">
+            <button type="button" id="btn-inkoop-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
+            <input id="inkoop-datum" type="date" autocomplete="off" />
+            <button type="button" id="btn-inkoop-date-next" class="btn-secondary btn-compact" aria-label="Volgende dag">▶</button>
+          </div>
           <label for="inkoop-leverancier">Leverancier</label>
           <input id="inkoop-leverancier" autocomplete="off" />
           <label for="inkoop-omschrijving">Omschrijving</label>
@@ -231,7 +235,11 @@
         <div class="card">
           <h2 id="verkoop-form-title">Factuur inboeken</h2>
           <label for="verkoop-datum">Factuurdatum</label>
-          <input id="verkoop-datum" type="date" autocomplete="off" />
+          <div class="date-row">
+            <button type="button" id="btn-verkoop-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
+            <input id="verkoop-datum" type="date" autocomplete="off" />
+            <button type="button" id="btn-verkoop-date-next" class="btn-secondary btn-compact" aria-label="Volgende dag">▶</button>
+          </div>
           <label for="verkoop-klant">Klant</label>
           <input id="verkoop-klant" autocomplete="off" />
           <label for="verkoop-omschrijving">Omschrijving</label>
@@ -523,7 +531,11 @@
             <button type="button" id="btn-scan-page-add" class="btn-secondary">＋ Pagina toevoegen</button>
           </div>
           <label for="scan-datum">Factuurdatum</label>
-          <input id="scan-datum" type="date" autocomplete="off" />
+          <div class="date-row">
+            <button type="button" id="btn-scan-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
+            <input id="scan-datum" type="date" autocomplete="off" />
+            <button type="button" id="btn-scan-date-next" class="btn-secondary btn-compact" aria-label="Volgende dag">▶</button>
+          </div>
           <label for="scan-leverancier">Leverancier</label>
           <input id="scan-leverancier" autocomplete="off" placeholder="Leeg = Onbekend" />
           <label for="scan-fnr">Factuurnr / bon (optioneel)</label>

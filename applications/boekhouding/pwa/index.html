@@ -199,7 +199,6 @@
             <button type="button" id="btn-inkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
           </div>
           <div class="btn-row">
-            <button type="button" id="btn-inkoop-view-doc" class="btn-secondary hidden">Factuur bekijken</button>
             <button type="button" id="btn-inkoop-cancel-edit" class="btn-secondary hidden">Bewerken annuleren</button>
             <button type="button" id="btn-inkoop-rename" class="btn-secondary hidden">Hernoem bestand</button>
             <button type="button" id="btn-inkoop-clear" class="btn-secondary">Wis</button>
@@ -298,7 +297,6 @@
             <button type="button" id="btn-verkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
           </div>
           <div class="btn-row">
-            <button type="button" id="btn-verkoop-view-doc" class="btn-secondary hidden">Factuur bekijken</button>
             <button type="button" id="btn-verkoop-cancel-edit" class="btn-secondary hidden">Bewerken annuleren</button>
             <button type="button" id="btn-verkoop-clear" class="btn-secondary">Wis</button>
           </div>
@@ -560,32 +558,6 @@
       </div>
     </div>
 
-    <!-- Factuur bekijken bij een geboekte regel -->
-    <div id="doc-modal" class="modal hidden" role="dialog" aria-labelledby="doc-title">
-      <div class="modal-backdrop" data-close-modal></div>
-      <div class="modal-sheet modal-sheet-tall">
-        <h2 id="doc-title">Factuur</h2>
-        <p id="doc-status" class="sub hidden">Laden…</p>
-        <div class="pdf-wrap">
-          <canvas id="doc-canvas"></canvas>
-          <img id="doc-img" class="img-preview hidden" alt="Factuur" />
-        </div>
-        <div class="btn-row" id="doc-page-nav">
-          <button type="button" id="btn-doc-page-prev" class="btn-secondary btn-compact" aria-label="Vorige pagina">◀</button>
-          <span id="doc-page-label" class="page-label"></span>
-          <button type="button" id="btn-doc-page-next" class="btn-secondary btn-compact" aria-label="Volgende pagina">▶</button>
-        </div>
-        <div class="btn-row hidden" id="doc-file-nav">
-          <button type="button" id="btn-doc-file-prev" class="btn-secondary btn-compact" aria-label="Vorig bestand">◀</button>
-          <span id="doc-file-label" class="page-label"></span>
-          <button type="button" id="btn-doc-file-next" class="btn-secondary btn-compact" aria-label="Volgend bestand">▶</button>
-        </div>
-        <div class="btn-row">
-          <button type="button" id="btn-doc-close" class="btn-primary">Sluiten</button>
-        </div>
-      </div>
-    </div>
-
     <!-- Bon scannen -->
     <div id="scan-modal" class="modal hidden" role="dialog" aria-label="Bon scannen">
       <div class="modal-backdrop"></div>
@@ -671,6 +643,7 @@
     <script src="js/boek_model.js"></script>
     <script src="js/boek_io.js"></script>
     <script src="js/pdf_extract.js"></script>
+    <script src="js/doc_finder.js"></script>
     <script src="js/scanner.js"></script>
     <script src="js/reiskosten.js"></script>
     <script src="js/combobox.js"></script>
@@ -680,7 +653,6 @@
     <script src="js/ui_bank.js"></script>
     <script src="js/ui_inkoop.js"></script>
     <script src="js/ui_scan.js"></script>
-    <script src="js/ui_docview.js"></script>
     <script src="js/ui_verkoop.js"></script>
     <script src="js/ui_reis.js"></script>
     <script src="js/ui_overzicht.js"></script>

@@ -12,7 +12,6 @@
   let bankMatchRows = [];
   let prefillBankRows = [];
   let editRow = null; // Excel-rij die bewerkt wordt (null = nieuwe regel)
-  let docItem = null; // gevonden factuurbestand bij de regel die bewerkt wordt
 
   const intel = () => App().state.intel.verkoop;
 
@@ -39,17 +38,49 @@
     }
   }
 
-  async function selectFile(item) {
-    selectedFile = item;
+  /**
+   * Toont een bestand in het voorbeeldvenster; bij een map het eerste bestand
+   * erin. Geeft het PDF-document terug (of null bij een foto).
+   */
+  async function toonVoorbeeld(item, parentFolder) {
     pdfDoc = null;
     pdfPageNum = 1;
-    renderFiles();
     $("#verkoop-preview-card").classList.remove("hidden");
     $("#verkoop-preview-name").textContent = item.name;
-    $("#btn-verkoop-boek-move").classList.remove("hidden");
     $("#verkoop-img-preview").classList.add("hidden");
     $("#verkoop-pdf-canvas").classList.remove("hidden");
     hidePdfNav();
+    const token = await App().ensureLoggedIn();
+    let fileItem = item;
+    if (item.folder) {
+      const parent = parentFolder || item._folder || global.BOEK_CONFIG.graph.folders.verkoopNieuw;
+      const children = await global.BoekGraph.listFolder(`${parent}/${item.name}`, token);
+      fileItem = children.find((c) => c.file) || null;
+      if (!fileItem) return null;
+    }
+    if (fileItem.name.toLowerCase().endsWith(".pdf")) {
+      const bytes = await global.BoekGraph.downloadBytes(fileItem.id, token);
+      pdfDoc = await global.BoekPdf.loadPdf(bytes);
+      await renderPdfPage();
+      return pdfDoc;
+    }
+    const url = await global.BoekGraph.downloadObjectUrl(fileItem.id, token);
+    const img = $("#verkoop-img-preview");
+    img.src = url;
+    img.classList.remove("hidden");
+    $("#verkoop-pdf-canvas").classList.add("hidden");
+    return null;
+  }
+
+  function verbergVoorbeeld() {
+    pdfDoc = null;
+    $("#verkoop-preview-card").classList.add("hidden");
+  }
+
+  async function selectFile(item) {
+    selectedFile = item;
+    renderFiles();
+    $("#btn-verkoop-boek-move").classList.remove("hidden");
 
     // Vers formulier voor deze factuur, dan vullen: bestandsnaam → PDF → Excel-historie.
     clearFormFields();
@@ -62,24 +93,14 @@
     if (parsed.type) $("#verkoop-land").value = parsed.type;
 
     try {
-      const token = await App().ensureLoggedIn();
-      const lower = item.name.toLowerCase();
-      if (lower.endsWith(".pdf")) {
-        const bytes = await global.BoekGraph.downloadBytes(item.id, token);
-        pdfDoc = await global.BoekPdf.loadPdf(bytes);
-        await renderPdfPage();
-        const text = await global.BoekPdf.extractText(pdfDoc);
+      const doc = await toonVoorbeeld(item, global.BOEK_CONFIG.graph.folders.verkoopNieuw);
+      if (doc) {
+        const text = await global.BoekPdf.extractText(doc);
         const ex = global.BoekPdf.extractInvoiceData(text);
         // Datum en bedrag staan bij verkoop in de factuur zelf
         if (ex.datum) $("#verkoop-datum").value = ex.datum;
         if (ex.bedrag != null) $("#verkoop-bedrag").value = M().fmtAmountInput(ex.bedrag);
         if (ex.btw != null) $("#verkoop-btw").value = String(ex.btw);
-      } else if (!item.folder) {
-        const url = await global.BoekGraph.downloadObjectUrl(item.id, token);
-        const img = $("#verkoop-img-preview");
-        img.src = url;
-        img.classList.remove("hidden");
-        $("#verkoop-pdf-canvas").classList.add("hidden");
       }
     } catch (e) {
       App().showToast(`Voorbeeld laden mislukt: ${e.message || e}`, true);
@@ -90,8 +111,7 @@
 
   function deselectFile() {
     selectedFile = null;
-    pdfDoc = null;
-    $("#verkoop-preview-card").classList.add("hidden");
+    verbergVoorbeeld();
     $("#btn-verkoop-boek-move").classList.add("hidden");
     renderFiles();
   }
@@ -197,14 +217,15 @@
     $("#btn-verkoop-boek").textContent = row ? "Bijwerken" : "Inboeken";
     $("#btn-verkoop-boek-move").classList.toggle("hidden", !!row || !selectedFile);
     $("#btn-verkoop-cancel-edit").classList.toggle("hidden", !row);
-    if (!row) {
-      docItem = null;
-      $("#btn-verkoop-view-doc").classList.add("hidden");
-    }
+    // Bewerken verlaten zonder gekozen bestand → voorbeeld weg.
+    if (!row && !selectedFile) verbergVoorbeeld();
   }
 
   function startEdit(h) {
     clearFormFields();
+    // Bewerken staat los van een factuur uit de te-verwerken-lijst.
+    selectedFile = null;
+    renderFiles();
     $("#verkoop-datum").value = h.datum ? M().dateToIso(h.datum) : M().todayIso();
     $("#verkoop-klant").value = h.partij || "";
     $("#verkoop-omschrijving").value = h.omschrijving || "";
@@ -224,18 +245,20 @@
     updateBankCheck();
     App().haptic(15);
     $("#verkoop-form-title").scrollIntoView({ behavior: "smooth", block: "start" });
-    zoekBijbehorendeFactuur(h);
+    toonBijbehorendeFactuur(h);
   }
 
-  /** Bijbehorend bestand opzoeken; knop verschijnt alleen bij een overtuigende match. */
-  async function zoekBijbehorendeFactuur(h) {
-    const btn = $("#btn-verkoop-view-doc");
-    btn.classList.add("hidden");
-    docItem = null;
-    const gevonden = await global.BoekDocView.findFor("verkoop", h);
+  /** Bijbehorend bestand opzoeken en meteen tonen, net als bij het inboeken. */
+  async function toonBijbehorendeFactuur(h) {
+    verbergVoorbeeld();
+    const gevonden = await global.BoekDocFinder.findFor("verkoop", h);
+    // Ondertussen kan er al een andere regel gekozen zijn.
     if (!gevonden || editRow !== h.excelRow) return;
-    docItem = gevonden;
-    btn.classList.remove("hidden");
+    try {
+      await toonVoorbeeld(gevonden);
+    } catch (e) {
+      App().showToast(`Factuur laden mislukt: ${e.message || e}`, true);
+    }
   }
 
   async function deleteRow(h) {
@@ -396,9 +419,6 @@
     });
     $("#btn-verkoop-deselect").addEventListener("click", deselectFile);
     $("#btn-verkoop-cancel-edit").addEventListener("click", clearForm);
-    $("#btn-verkoop-view-doc").addEventListener("click", () => {
-      if (docItem) global.BoekDocView.open(docItem);
-    });
     $("#btn-verkoop-page-prev").addEventListener("click", () => {
       if (pdfDoc && pdfPageNum > 1) {
         pdfPageNum--;

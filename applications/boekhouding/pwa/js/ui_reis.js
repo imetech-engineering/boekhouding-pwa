@@ -94,9 +94,11 @@
     $("#reis-project").value = f.project || "";
     gekozenAdres = f.lat != null ? { label: f.bestemming, lat: f.lat, lon: f.lon } : null;
     kmAuto = false;
-    $("#reis-km-status").textContent = "uit favoriet";
+    $("#reis-km-status").textContent = f.bron === "vast" ? "uit favoriet" : "uit historie";
     updatePreview();
     App().haptic(15);
+    // Direct naar het ingevulde formulier — scheelt handmatig scrollen.
+    $("#reis-form-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   // === Adres zoeken ===

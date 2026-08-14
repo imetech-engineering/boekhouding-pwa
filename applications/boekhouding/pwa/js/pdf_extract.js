@@ -50,19 +50,48 @@
           if (Math.abs(k - y) <= 2) { key = k; break; }
         }
         if (key == null) { key = y; linesMap.set(key, []); }
-        linesMap.get(key).push({ x: item.transform[4], str: item.str });
+        linesMap.get(key).push({
+          x: item.transform[4],
+          w: item.width || 0,
+          h: item.height || Math.abs(item.transform[3]) || 10,
+          str: item.str,
+        });
       }
       const ys = [...linesMap.keys()].sort((a, b) => b - a);
       for (const y of ys) {
-        const parts = linesMap.get(y).sort((a, b) => a.x - b.x).map((i) => i.str);
-        fullText += parts.join(" ") + "\n";
+        // Fragmenten aan elkaar plakken op basis van de werkelijke tussenruimte:
+        // zonder gat aaneen (anders wordt "03-08-2026" tot "03 - 08 - 2026"),
+        // groot gat → dubbele spatie zodat tabelkolommen te splitsen zijn.
+        const parts = linesMap.get(y).sort((a, b) => a.x - b.x);
+        let line = "";
+        let prevEnd = null;
+        for (const it of parts) {
+          if (prevEnd != null) {
+            const gap = it.x - prevEnd;
+            const spaceW = (it.h || 10) * 0.22;
+            if (gap >= spaceW * 4) line += "  ";
+            else if (gap >= spaceW * 0.6) line += " ";
+          }
+          line += it.str;
+          prevEnd = it.x + it.w;
+        }
+        fullText += line + "\n";
       }
       fullText += "\n";
     }
     return fullText;
   }
 
+  /** PDF's die elk teken los plaatsen ("F a c t u u r") — alleen dán spaties weghalen. */
+  function looksSpacedOut(t) {
+    const tokens = t.split(/\s+/).filter(Boolean);
+    if (tokens.length < 20) return false;
+    const singles = tokens.filter((x) => x.length === 1).length;
+    return singles / tokens.length > 0.4;
+  }
+
   function collapseSpacedChars(t) {
+    if (!looksSpacedOut(t)) return t;
     for (;;) {
       const next = t.replace(/(?<=[\w.])\s+(?=[\w.]\s)/g, "");
       if (next === t) break;
@@ -97,7 +126,24 @@
     fullText = collapseSpacedChars(fullText);
     const fullTextNorm = fullText.replace(/[ \t]+/g, " ");
     const lines = fullTextNorm.split("\n").map((l) => l.trim()).filter(Boolean);
+    // Zelfde regels, maar met de kolomafstand intact (voor tabel-layouts).
+    const linesRaw = fullText.split("\n").map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim());
     const lowerFull = fullTextNorm.toLowerCase();
+
+    // Datums mogen spaties rond de scheidingstekens hebben, maar nooit over regels heen.
+    const DATE_ONE = /(\d{1,2})[ \t]*[-/.][ \t]*(\d{1,2})[ \t]*[-/.][ \t]*(\d{4})/;
+    const DATE_ALL = new RegExp(DATE_ONE.source, "g");
+    const datesIn = (s) =>
+      [...s.matchAll(DATE_ALL)].map((m) => ({ d: +m[1], mo: +m[2], y: +m[3] }));
+    const splitCols = (s) => s.split(/\s{2,}/).map((x) => x.trim()).filter(Boolean);
+    /** Eerste token dat op een nummer lijkt (geen datum, geen los cijfer). */
+    const pickNumber = (cell) => {
+      for (const tok of String(cell).split(/\s+/)) {
+        const t = tok.replace(/^[\s:.,-]+|[\s:.,-]+$/g, "");
+        if (t.length >= 3 && /\d/.test(t) && !DATE_ONE.test(t) && !/^\d{1,2}$/.test(t)) return t;
+      }
+      return null;
+    };
 
     // Bedrijf
     for (let i = 0; i < lines.length; i++) {
@@ -123,31 +169,46 @@
       }
     }
 
-    // Factuurnummer
-    outerFnr:
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const lower = line.toLowerCase();
-      if (lower.includes("factuurnummer") || lower.includes("factuurnr") || lower.includes("factuur nr") || lower.includes("invoice no") || (lower.includes("invoice") && lower.includes("number"))) {
-        if (line.includes(":")) {
-          const part = line.split(":").slice(1).join(":").trim();
-          if (part) { result.factuurnummer = part.replace(/\s+/g, " ").slice(0, 50); break; }
-        }
-        const nums = line.match(/[A-Za-z0-9\-/]+/g) || [];
-        for (const n of nums) {
-          if (n.length >= 2 && /\d/.test(n)) {
-            result.factuurnummer = n.replace(/^[\s:.-]+|[\s:.-]+$/g, "").slice(0, 50);
-            break outerFnr;
-          }
-        }
-        if (i + 1 < lines.length && /^[A-Za-z0-9\-/]+$/.test(lines[i + 1].trim())) {
-          result.factuurnummer = lines[i + 1].trim().slice(0, 50);
+    // Ons eigen briefhoofd/adres is nooit de tegenpartij.
+    if (OWN_ADDRESS_KEYWORDS.some((kw) => result.bedrijf.toLowerCase().includes(kw))) {
+      result.bedrijf = "";
+    }
+
+    // Factuurnummer: eerst het expliciete label (ook als de waarde in een
+    // tabel op de regel eronder staat), pas daarna een losse "nr."-vermelding.
+    const FNR_LABEL = /factuur\s*nummer|factuurnr|invoice\s*(no|nr|number|#)/i;
+    const JUNK_NR = /(kvk|btw|iban|bic|rekening|telefoon|tel\.|vat\b|postcode)/i;
+    for (let i = 0; i < linesRaw.length && !result.factuurnummer; i++) {
+      const line = linesRaw[i];
+      if (!FNR_LABEL.test(line)) continue;
+      const tail = line.includes(":") ? line.split(":").slice(1).join(":") : line.replace(FNR_LABEL, "");
+      const inline = (tail.match(/\b[A-Za-z0-9][A-Za-z0-9\-/]*\d[A-Za-z0-9\-/]*\b/) || [])[0];
+      if (inline && !DATE_ONE.test(inline)) {
+        result.factuurnummer = inline.slice(0, 50);
+        break;
+      }
+      const cols = splitCols(line);
+      const idx = cols.findIndex((c) => FNR_LABEL.test(c));
+      for (let j = i + 1; j <= i + 2 && j < linesRaw.length; j++) {
+        const vals = splitCols(linesRaw[j]);
+        if (!vals.length) continue;
+        const cell =
+          cols.length > 1 && idx >= 0 && vals.length === cols.length ? vals[idx] : linesRaw[j];
+        const cand = pickNumber(cell);
+        if (cand) {
+          result.factuurnummer = cand.slice(0, 50);
           break;
         }
       }
-      if (!result.factuurnummer) {
+    }
+    if (!result.factuurnummer) {
+      for (const line of lines) {
+        if (JUNK_NR.test(line)) continue;
         const m = line.match(/(?:nr\.?|nummer|invoice\s*#?)\s*:?\s*([A-Za-z0-9\-/]+)/i);
-        if (m) { result.factuurnummer = m[1].trim().slice(0, 50); break; }
+        if (m && /\d/.test(m[1])) {
+          result.factuurnummer = m[1].replace(/^[\s:.-]+|[\s:.-]+$/g, "").slice(0, 50);
+          break;
+        }
       }
     }
 
@@ -200,18 +261,26 @@
       }
       return false;
     };
-    for (const line of lines) {
-      const lower = line.toLowerCase();
-      if (lower.includes("factuurdatum") || lower.includes("factuur datum")) {
-        const m = line.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
-        if (m && setDatum(+m[1], +m[2], +m[3])) break;
+    // Datum bij het label "Factuurdatum": op dezelfde regel, of — bij een tabel —
+    // op de waarderegel eronder. Daar staan meerdere datums (factuur-, vervaldatum),
+    // dus kies de kolom die overeenkomt met de plek van het label in de kop.
+    for (let i = 0; i < linesRaw.length && !result.datum; i++) {
+      const lower = linesRaw[i].toLowerCase();
+      if (!/factuur\s*datum|invoice date/.test(lower)) continue;
+      const own = datesIn(linesRaw[i]);
+      if (own.length && setDatum(own[0].d, own[0].mo, own[0].y)) break;
+      const labels = lower.match(/[a-z]*datum|invoice date/g) || [];
+      const col = Math.max(0, labels.findIndex((l) => /factuurdatum|invoice date/.test(l)));
+      for (let j = i + 1; j <= i + 2 && j < linesRaw.length; j++) {
+        const ds = datesIn(linesRaw[j]);
+        if (!ds.length) continue;
+        const pick = ds[Math.min(col, ds.length - 1)];
+        if (setDatum(pick.d, pick.mo, pick.y)) break;
       }
     }
     if (!result.datum) {
-      let m;
-      const re = /(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/g;
-      while ((m = re.exec(fullTextNorm)) !== null) {
-        if (setDatum(+m[1], +m[2], +m[3])) break;
+      for (const dt of datesIn(fullTextNorm)) {
+        if (setDatum(dt.d, dt.mo, dt.y)) break;
       }
     }
     if (!result.datum) {
@@ -219,6 +288,15 @@
       const re = /(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/g;
       while ((m = re.exec(fullTextNorm)) !== null) {
         if (setDatum(+m[3], +m[2], +m[1])) break;
+      }
+    }
+    if (!result.datum) {
+      // Afgekorte maand, o.a. Mouser: "30-JUL-26"
+      const mon3 = { jan: 1, feb: 2, mar: 3, mrt: 3, apr: 4, may: 5, mei: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, okt: 10, nov: 11, dec: 12 };
+      const m = lowerFull.match(/\b(\d{1,2})[-\s]([a-z]{3})[a-z]*[-\s](\d{2,4})\b/);
+      if (m && mon3[m[2]]) {
+        const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+        setDatum(+m[1], mon3[m[2]], y);
       }
     }
     if (!result.datum) {

@@ -139,17 +139,21 @@
     updateBankCheck();
   }
 
-  /** Excel-historie: vult alléén lege velden aan (zelfde regel als desktop). */
+  /**
+   * Excel-historie vult lege velden aan. Voor een bekende leverancier zijn
+   * BTW%, land en BTW-verlegd leidend boven wat uit de PDF is geraden — zelfde
+   * regel als de XLOOKUP-formules in het werkboek, en ze bepalen je aangifte.
+   */
   function applyPartyDefaults() {
     const partij = $("#inkoop-leverancier").value.trim();
     if (!partij) return;
     const d = M().partyDefaults(intel(), partij);
-    if (!$("#inkoop-btw").value && d.btw != null) $("#inkoop-btw").value = String(d.btw).replace(/\.0$/, "");
-    if (!$("#inkoop-land").value && d.land) $("#inkoop-land").value = M().normalizeLand(d.land);
+    if (d.btw != null) $("#inkoop-btw").value = String(d.btw).replace(/\.0$/, "");
+    if (d.land) $("#inkoop-land").value = M().normalizeLand(d.land);
     if (!$("#inkoop-categorie").value && d.categorie) $("#inkoop-categorie").value = d.categorie;
     if (!$("#inkoop-project").value && d.project) $("#inkoop-project").value = d.project;
     if (!$("#inkoop-omschrijving").value && d.omschrijving) $("#inkoop-omschrijving").value = d.omschrijving;
-    if (d.verlegd === true) $("#inkoop-verlegd").checked = true;
+    if (d.verlegd !== undefined) $("#inkoop-verlegd").checked = d.verlegd === true;
     if (!$("#inkoop-valuta").value && d.valuta) {
       $("#inkoop-valuta").value = d.valuta;
       $("#inkoop-valuta-wrap").classList.remove("hidden");

@@ -111,12 +111,13 @@
     $("#verkoop-page-label").classList.add("hidden");
   }
 
+  /** Voor een bekende klant zijn BTW% en land uit de historie leidend (aangifte). */
   function applyPartyDefaults() {
     const partij = $("#verkoop-klant").value.trim();
     if (!partij) return;
     const d = M().partyDefaults(intel(), partij);
-    if (!$("#verkoop-btw").value && d.btw != null) $("#verkoop-btw").value = String(d.btw).replace(/\.0$/, "");
-    if (!$("#verkoop-land").value && d.land) $("#verkoop-land").value = M().normalizeLand(d.land);
+    if (d.btw != null) $("#verkoop-btw").value = String(d.btw).replace(/\.0$/, "");
+    if (d.land) $("#verkoop-land").value = M().normalizeLand(d.land);
     if (!$("#verkoop-categorie").value && d.categorie) $("#verkoop-categorie").value = d.categorie;
     if (!$("#verkoop-valuta").value && d.valuta) {
       $("#verkoop-valuta").value = d.valuta;

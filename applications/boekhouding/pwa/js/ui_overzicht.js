@@ -9,6 +9,42 @@
   let jaar = new Date().getFullYear();
   let thuisKeuze = null;
 
+  const MAANDEN = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+
+  function escapeHtml(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  function renderKerncijfers() {
+    const st = App().state;
+    const c = M().maandCijfers(st.inkoopRows, st.verkoopRows, jaar);
+    $("#kpi-omzet").textContent = M().fmtEur(c.omzet);
+    $("#kpi-kosten").textContent = M().fmtEur(c.kosten);
+    const res = $("#kpi-resultaat");
+    res.textContent = M().fmtEur(c.resultaat);
+    res.classList.toggle("neg", c.resultaat < 0);
+
+    // Maandstaafjes, geschaald op de hoogste waarde van dat jaar
+    const max = Math.max(1, ...c.maanden.map((m) => Math.max(m.omzet, m.kosten)));
+    const wrap = $("#ovz-maanden");
+    wrap.innerHTML = "";
+    c.maanden.forEach((m, i) => {
+      const col = document.createElement("div");
+      col.className = "ovz-month";
+      col.title =
+        `${MAANDEN[i]}: omzet ${M().fmtEur(m.omzet)}, kosten ${M().fmtEur(m.kosten)}`;
+      col.innerHTML = `
+        <span class="ovz-pair">
+          <i class="b-omzet" style="height:${(m.omzet / max) * 100}%"></i>
+          <i class="b-kosten" style="height:${(m.kosten / max) * 100}%"></i>
+        </span>
+        <span class="ovz-month-label">${MAANDEN[i]}</span>`;
+      wrap.appendChild(col);
+    });
+  }
+
   function renderKwartalen() {
     $("#ovz-year").value = String(jaar);
     const body = $("#ovz-kwartaal-body");
@@ -17,18 +53,15 @@
     const data = M().kwartaalOverzicht(st.inkoopRows, st.verkoopRows, jaar);
     let totOmzet = 0;
     let totKosten = 0;
-    let totBtw = 0;
     for (const s of data) {
       totOmzet += s.omzet;
       totKosten += s.kosten;
-      totBtw += s.btwSaldo;
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${s.q}</td>
         <td class="num">${M().fmtEur(s.omzet)}</td>
         <td class="num">${M().fmtEur(s.kosten)}</td>
-        <td class="num ${s.resultaat >= 0 ? "pos" : "neg"}">${M().fmtEur(s.resultaat)}</td>
-        <td class="num ${s.btwSaldo >= 0 ? "" : "pos"}">${M().fmtEur(s.btwSaldo)}</td>`;
+        <td class="num ${s.resultaat >= 0 ? "pos" : "neg"}">${M().fmtEur(s.resultaat)}</td>`;
       body.appendChild(tr);
     }
     const tr = document.createElement("tr");
@@ -36,9 +69,86 @@
       <td><strong>${jaar}</strong></td>
       <td class="num"><strong>${M().fmtEur(totOmzet)}</strong></td>
       <td class="num"><strong>${M().fmtEur(totKosten)}</strong></td>
-      <td class="num ${totOmzet - totKosten >= 0 ? "pos" : "neg"}"><strong>${M().fmtEur(totOmzet - totKosten)}</strong></td>
-      <td class="num"><strong>${M().fmtEur(totBtw)}</strong></td>`;
+      <td class="num ${totOmzet - totKosten >= 0 ? "pos" : "neg"}"><strong>${M().fmtEur(totOmzet - totKosten)}</strong></td>`;
     body.appendChild(tr);
+  }
+
+  function renderBtw() {
+    const st = App().state;
+    const data = M().btwAangifte(st.inkoopRows, st.verkoopRows, jaar);
+    const body = $("#ovz-btw-body");
+    body.innerHTML = "";
+    let verlegd = 0;
+    let omzetNul = 0;
+    let totSaldo = 0;
+    for (const s of data) {
+      verlegd += s.verlegdBedrag;
+      omzetNul += s.omzetNul;
+      totSaldo += s.saldo;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${s.q}</td>
+        <td class="num">${M().fmtEur(s.verschuldigd)}</td>
+        <td class="num">${M().fmtEur(s.terugTeVragen)}</td>
+        <td class="num ${s.saldo > 0 ? "neg" : "pos"}">${M().fmtEur(s.saldo)}</td>`;
+      body.appendChild(tr);
+    }
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><strong>${jaar}</strong></td><td class="num"></td><td class="num"></td>
+      <td class="num ${totSaldo > 0 ? "neg" : "pos"}"><strong>${M().fmtEur(totSaldo)}</strong></td>`;
+    body.appendChild(tr);
+    $("#ovz-btw-detail").textContent =
+      `Te betalen = BTW op omzet − voorbelasting. Verlegde EU-inkopen dit jaar: ` +
+      `${M().fmtEur(verlegd)} (staat in 5a én 5b, dus per saldo nul). ` +
+      `Omzet 0%/vrijgesteld: ${M().fmtEur(omzetNul)}.`;
+  }
+
+  function renderRank(elId, items, kleur) {
+    const wrap = $(elId);
+    wrap.innerHTML = "";
+    if (!items.length) {
+      wrap.innerHTML = '<p class="sub">Nog niets geboekt dit jaar.</p>';
+      return;
+    }
+    const max = Math.max(...items.map((i) => Math.abs(i.bedrag)), 1);
+    for (const it of items) {
+      const row = document.createElement("div");
+      row.className = "ovz-rank-row";
+      row.innerHTML = `
+        <span class="r-naam">${escapeHtml(it.naam)}</span>
+        <span class="r-bar"><i class="${kleur}" style="width:${(Math.abs(it.bedrag) / max) * 100}%"></i></span>
+        <span class="r-bedrag">${M().fmtEur(it.bedrag)}</span>`;
+      wrap.appendChild(row);
+    }
+  }
+
+  function renderRanglijsten() {
+    const st = App().state;
+    renderRank(
+      "#ovz-klanten",
+      M().topGroepen(st.verkoopRows, jaar, (r) => r.partij, (r) => r.netto),
+      "b-omzet"
+    );
+    renderRank(
+      "#ovz-categorieen",
+      M().topGroepen(st.inkoopRows, jaar, (r) => r.categorie, (r) => r.netto),
+      "b-kosten"
+    );
+    renderRank(
+      "#ovz-projecten",
+      M().topGroepen(st.inkoopRows, jaar, (r) => r.project, (r) => r.netto),
+      "b-kosten"
+    );
+    renderRank(
+      "#ovz-leveranciers",
+      M().topGroepen(st.inkoopRows, jaar, (r) => r.partij, (r) => r.netto),
+      "b-kosten"
+    );
+
+    const reis = M().reisTotaal(st.inkoopRows, jaar);
+    $("#kpi-ritten").textContent = String(reis.ritten);
+    $("#kpi-km").textContent = `${Math.round(reis.km).toLocaleString("nl-NL")} km`;
+    $("#kpi-reis").textContent = M().fmtEur(reis.bedrag);
   }
 
   function renderStatus() {
@@ -70,7 +180,11 @@
   }
 
   function render() {
+    $("#ovz-year").value = String(jaar);
+    renderKerncijfers();
     renderKwartalen();
+    renderBtw();
+    renderRanglijsten();
     renderStatus();
     renderAccount();
     renderSettings();
@@ -111,11 +225,11 @@
   function init() {
     $("#btn-ovz-year-prev").addEventListener("click", () => {
       jaar -= 1;
-      renderKwartalen();
+      render();
     });
     $("#btn-ovz-year-next").addEventListener("click", () => {
       jaar += 1;
-      renderKwartalen();
+      render();
     });
 
     $("#btn-login").addEventListener("click", async () => {

@@ -163,6 +163,94 @@ main {
   font-weight: 600;
 }
 
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.card-head h2 {
+  margin: 0;
+}
+
+.card-head .btn-inline {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+/* ===== Compacte bestemmingenlijst (reis) ===== */
+.reis-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.reis-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.reis-row:last-child {
+  border-bottom: none;
+}
+
+.reis-row:active {
+  background: var(--bg-hover);
+}
+
+.reis-star {
+  flex: 0 0 auto;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  font-size: 1.05rem;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+}
+
+.reis-star.is-fav {
+  color: #e0a800;
+}
+
+.reis-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.reis-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.reis-km {
+  flex: 0 0 auto;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+#reis-all-wrap {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
 .sub {
   font-size: 0.8125rem;
   color: var(--text-secondary);
@@ -701,6 +789,142 @@ button {
 
 .loc-table td.num.neg {
   color: var(--danger);
+}
+
+/* ===== Overzicht ===== */
+.kpi-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.kpi {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  text-align: center;
+}
+
+.kpi-label {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.kpi-value {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-value.neg {
+  color: var(--danger);
+}
+
+.ovz-months {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px;
+  margin: 6px 0 4px;
+}
+
+.ovz-month {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.ovz-pair {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+}
+
+.ovz-pair i {
+  display: block;
+  width: 6px;
+  min-height: 2px;
+  border-radius: 2px 2px 0 0;
+}
+
+.b-omzet {
+  background: var(--accent);
+}
+
+.b-kosten {
+  background: #d1785a;
+}
+
+.ovz-month-label {
+  margin-top: 4px;
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+
+.legend-omzet {
+  background: var(--accent);
+}
+
+.legend-kosten {
+  background: #d1785a;
+}
+
+.ovz-rank-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 0.8125rem;
+}
+
+.r-naam {
+  flex: 0 0 34%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.r-bar {
+  flex: 1;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.r-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.r-bedrag {
+  flex: 0 0 auto;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-secondary);
 }
 
 /* ===== Modals ===== */

@@ -199,6 +199,7 @@
             <button type="button" id="btn-inkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
           </div>
           <div class="btn-row">
+            <button type="button" id="btn-inkoop-view-doc" class="btn-secondary hidden">Factuur bekijken</button>
             <button type="button" id="btn-inkoop-cancel-edit" class="btn-secondary hidden">Bewerken annuleren</button>
             <button type="button" id="btn-inkoop-rename" class="btn-secondary hidden">Hernoem bestand</button>
             <button type="button" id="btn-inkoop-clear" class="btn-secondary">Wis</button>
@@ -297,6 +298,7 @@
             <button type="button" id="btn-verkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
           </div>
           <div class="btn-row">
+            <button type="button" id="btn-verkoop-view-doc" class="btn-secondary hidden">Factuur bekijken</button>
             <button type="button" id="btn-verkoop-cancel-edit" class="btn-secondary hidden">Bewerken annuleren</button>
             <button type="button" id="btn-verkoop-clear" class="btn-secondary">Wis</button>
           </div>
@@ -313,9 +315,15 @@
       <!-- ============ REISKOSTEN ============ -->
       <section id="panel-reis" class="tab-panel hidden">
         <div class="card">
-          <h2>Favorieten &amp; eerdere bestemmingen</h2>
-          <p class="sub">Tik om in te vullen. ★ = favoriet; bij een bestemming uit je historie kun je op "☆ favoriet maken" tikken.</p>
-          <ul id="reis-fav-list" class="boek-list"></ul>
+          <div class="card-head">
+            <h2>Bestemmingen</h2>
+            <button type="button" id="btn-reis-toggle-all" class="btn-secondary btn-inline">Alle ▾</button>
+          </div>
+          <ul id="reis-fav-list" class="reis-list"></ul>
+          <div id="reis-all-wrap" class="hidden">
+            <input id="reis-all-search" type="search" placeholder="Zoek in eerdere bestemmingen…" />
+            <ul id="reis-all-list" class="reis-list"></ul>
+          </div>
         </div>
 
         <div class="card" id="reis-form-card">
@@ -371,25 +379,81 @@
       <!-- ============ OVERZICHT + INSTELLINGEN ============ -->
       <section id="panel-overzicht" class="tab-panel hidden">
         <div class="card">
-          <h2>Kwartaaloverzicht</h2>
           <div class="year-row">
             <button type="button" class="btn-secondary btn-compact" id="btn-ovz-year-prev" aria-label="Vorig jaar">◀</button>
             <input id="ovz-year" type="number" readonly inputmode="none" />
             <button type="button" class="btn-secondary btn-compact" id="btn-ovz-year-next" aria-label="Volgend jaar">▶</button>
           </div>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Omzet</span><span id="kpi-omzet" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Kosten</span><span id="kpi-kosten" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Resultaat</span><span id="kpi-resultaat" class="kpi-value">—</span></div>
+          </div>
+          <p class="sub">Netto bedragen, exclusief BTW.</p>
+        </div>
+
+        <div class="card">
+          <h2>Verloop per maand</h2>
+          <div id="ovz-maanden" class="ovz-months"></div>
+          <p class="sub"><span class="legend-dot legend-omzet"></span> omzet &nbsp; <span class="legend-dot legend-kosten"></span> kosten</p>
+        </div>
+
+        <div class="card">
+          <h2>Per kwartaal</h2>
           <div class="loc-table-wrap">
             <table class="loc-table" aria-label="Kwartaaloverzicht">
               <thead>
-                <tr><th>Q</th><th>Omzet</th><th>Kosten</th><th>Resultaat</th><th>BTW-saldo</th></tr>
+                <tr><th>Q</th><th>Omzet</th><th>Kosten</th><th>Resultaat</th></tr>
               </thead>
               <tbody id="ovz-kwartaal-body"></tbody>
             </table>
           </div>
-          <p class="sub">Netto (excl. BTW), uit de totaal-bladen. BTW-saldo = ontvangen − betaald (verlegd valt weg).</p>
         </div>
 
         <div class="card">
-          <h2>Status</h2>
+          <h2>BTW per kwartaal</h2>
+          <div class="loc-table-wrap">
+            <table class="loc-table" aria-label="BTW per kwartaal">
+              <thead>
+                <tr><th>Q</th><th>Verschuldigd</th><th>Voorbelasting</th><th>Te betalen</th></tr>
+              </thead>
+              <tbody id="ovz-btw-body"></tbody>
+            </table>
+          </div>
+          <p class="sub" id="ovz-btw-detail">—</p>
+        </div>
+
+        <div class="card">
+          <h2>Omzet per klant</h2>
+          <div id="ovz-klanten" class="ovz-rank"></div>
+        </div>
+
+        <div class="card">
+          <h2>Kosten per categorie</h2>
+          <div id="ovz-categorieen" class="ovz-rank"></div>
+        </div>
+
+        <div class="card">
+          <h2>Kosten per project</h2>
+          <div id="ovz-projecten" class="ovz-rank"></div>
+        </div>
+
+        <div class="card">
+          <h2>Grootste leveranciers</h2>
+          <div id="ovz-leveranciers" class="ovz-rank"></div>
+        </div>
+
+        <div class="card">
+          <h2>Reiskosten</h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Ritten</span><span id="kpi-ritten" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Kilometers</span><span id="kpi-km" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Kosten</span><span id="kpi-reis" class="kpi-value">—</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Nog te doen</h2>
           <div class="invoer-stats row-2">
             <div>
               <span class="stat-label">Open bankregels</span>
@@ -496,6 +560,32 @@
       </div>
     </div>
 
+    <!-- Factuur bekijken bij een geboekte regel -->
+    <div id="doc-modal" class="modal hidden" role="dialog" aria-labelledby="doc-title">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-sheet modal-sheet-tall">
+        <h2 id="doc-title">Factuur</h2>
+        <p id="doc-status" class="sub hidden">Laden…</p>
+        <div class="pdf-wrap">
+          <canvas id="doc-canvas"></canvas>
+          <img id="doc-img" class="img-preview hidden" alt="Factuur" />
+        </div>
+        <div class="btn-row" id="doc-page-nav">
+          <button type="button" id="btn-doc-page-prev" class="btn-secondary btn-compact" aria-label="Vorige pagina">◀</button>
+          <span id="doc-page-label" class="page-label"></span>
+          <button type="button" id="btn-doc-page-next" class="btn-secondary btn-compact" aria-label="Volgende pagina">▶</button>
+        </div>
+        <div class="btn-row hidden" id="doc-file-nav">
+          <button type="button" id="btn-doc-file-prev" class="btn-secondary btn-compact" aria-label="Vorig bestand">◀</button>
+          <span id="doc-file-label" class="page-label"></span>
+          <button type="button" id="btn-doc-file-next" class="btn-secondary btn-compact" aria-label="Volgend bestand">▶</button>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="btn-doc-close" class="btn-primary">Sluiten</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Bon scannen -->
     <div id="scan-modal" class="modal hidden" role="dialog" aria-label="Bon scannen">
       <div class="modal-backdrop"></div>
@@ -590,6 +680,7 @@
     <script src="js/ui_bank.js"></script>
     <script src="js/ui_inkoop.js"></script>
     <script src="js/ui_scan.js"></script>
+    <script src="js/ui_docview.js"></script>
     <script src="js/ui_verkoop.js"></script>
     <script src="js/ui_reis.js"></script>
     <script src="js/ui_overzicht.js"></script>

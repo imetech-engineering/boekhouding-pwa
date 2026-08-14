@@ -522,6 +522,110 @@
     return out;
   }
 
+  // === Overzichten ===
+
+  function inJaar(r, jaar) {
+    return !r.isEmpty && r.datum && r.datum.getUTCFullYear() === jaar;
+  }
+
+  /** Alle jaren waarin iets geboekt is, nieuwste eerst. */
+  function beschikbareJaren(inkoopRows, verkoopRows) {
+    const set = new Set();
+    for (const r of [...inkoopRows, ...verkoopRows]) {
+      if (!r.isEmpty && r.datum) set.add(r.datum.getUTCFullYear());
+    }
+    if (!set.size) set.add(new Date().getFullYear());
+    return [...set].sort((a, b) => b - a);
+  }
+
+  /** Omzet, kosten en resultaat per maand (netto, dus exclusief BTW). */
+  function maandCijfers(inkoopRows, verkoopRows, jaar) {
+    const maanden = Array.from({ length: 12 }, () => ({ omzet: 0, kosten: 0 }));
+    for (const r of verkoopRows) {
+      if (inJaar(r, jaar)) maanden[r.datum.getUTCMonth()].omzet += r.netto || 0;
+    }
+    for (const r of inkoopRows) {
+      if (inJaar(r, jaar)) maanden[r.datum.getUTCMonth()].kosten += r.netto || 0;
+    }
+    const omzet = maanden.reduce((s, m) => s + m.omzet, 0);
+    const kosten = maanden.reduce((s, m) => s + m.kosten, 0);
+    return { maanden, omzet, kosten, resultaat: omzet - kosten };
+  }
+
+  /**
+   * BTW per kwartaal in aangifte-termen.
+   * Verlegde BTW (EU) staat zowel bij het verschuldigde als bij de voorbelasting,
+   * precies zoals de toelichting in het werkboek beschrijft — per saldo nul.
+   */
+  function btwAangifte(inkoopRows, verkoopRows, jaar) {
+    const q = Array.from({ length: 4 }, () => ({
+      omzetBelast: 0,
+      btwOmzet: 0,
+      omzetNul: 0,
+      verlegdBedrag: 0,
+      btwVerlegd: 0,
+      voorbelasting: 0,
+    }));
+    for (const r of verkoopRows) {
+      if (!inJaar(r, jaar)) continue;
+      const s = q[Math.floor(r.datum.getUTCMonth() / 3)];
+      if ((r.btw || 0) > 0) {
+        s.omzetBelast += r.netto || 0;
+        s.btwOmzet += r.btwBedrag || 0;
+      } else {
+        s.omzetNul += r.netto || 0;
+      }
+    }
+    for (const r of inkoopRows) {
+      if (!inJaar(r, jaar)) continue;
+      const s = q[Math.floor(r.datum.getUTCMonth() / 3)];
+      s.voorbelasting += r.btwBedrag || 0;
+      if (r.verlegd) {
+        s.verlegdBedrag += r.bedrag || 0;
+        s.btwVerlegd += r.btwTeBetalen || 0;
+      }
+    }
+    return q.map((s, i) => ({
+      q: `Q${i + 1}`,
+      ...s,
+      verschuldigd: s.btwOmzet + s.btwVerlegd,
+      terugTeVragen: s.voorbelasting + s.btwVerlegd,
+      saldo: s.btwOmzet - s.voorbelasting,
+    }));
+  }
+
+  /** Top-N groepering, bijvoorbeeld omzet per klant of kosten per categorie. */
+  function topGroepen(rows, jaar, keyFn, valFn, n = 8) {
+    const map = new Map();
+    for (const r of rows) {
+      if (!inJaar(r, jaar)) continue;
+      const k = (keyFn(r) || "").trim();
+      if (!k) continue;
+      map.set(k, (map.get(k) || 0) + (valFn(r) || 0));
+    }
+    return [...map.entries()]
+      .map(([naam, bedrag]) => ({ naam, bedrag }))
+      .filter((x) => Math.abs(x.bedrag) >= 0.01)
+      .sort((a, b) => b.bedrag - a.bedrag)
+      .slice(0, n);
+  }
+
+  /** Kilometers en kosten uit de geboekte reisregels van een jaar. */
+  function reisTotaal(inkoopRows, jaar) {
+    let km = 0;
+    let bedrag = 0;
+    let ritten = 0;
+    for (const r of inkoopRows) {
+      if (!inJaar(r, jaar)) continue;
+      const p = parseReisOmschrijving(r.omschrijving);
+      if (!p) continue;
+      km += p.km * 2; // heen en terug
+      bedrag += r.bedrag || 0;
+      ritten++;
+    }
+    return { km, bedrag, ritten };
+  }
+
   global.BoekModel = {
     SHEET_BANK, SHEET_VERKOOP, SHEET_INKOOP,
     TABLE_BANK, TABLE_VERKOOP, TABLE_INKOOP,
@@ -536,5 +640,6 @@
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,
     kwartaalOverzicht,
+    beschikbareJaren, maandCijfers, btwAangifte, topGroepen, reisTotaal,
   };
 })(window);

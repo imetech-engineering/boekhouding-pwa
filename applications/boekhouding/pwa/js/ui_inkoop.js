@@ -13,6 +13,7 @@
   let bankMatchRows = [];
   let prefillBankRows = [];
   let editRow = null; // Excel-rij die bewerkt wordt (null = nieuwe regel)
+  let docItem = null; // gevonden factuurbestand bij de regel die bewerkt wordt
 
   const intel = () => App().state.intel.inkoop;
 
@@ -252,6 +253,10 @@
     $("#btn-inkoop-boek").textContent = row ? "Bijwerken" : "Inboeken";
     $("#btn-inkoop-boek-move").classList.toggle("hidden", !!row || !selectedFile);
     $("#btn-inkoop-cancel-edit").classList.toggle("hidden", !row);
+    if (!row) {
+      docItem = null;
+      $("#btn-inkoop-view-doc").classList.add("hidden");
+    }
   }
 
   function startEdit(h) {
@@ -278,6 +283,18 @@
     updateBankCheck();
     App().haptic(15);
     $("#inkoop-form-title").scrollIntoView({ behavior: "smooth", block: "start" });
+    zoekBijbehorendeFactuur(h);
+  }
+
+  /** Bijbehorend bestand opzoeken; knop verschijnt alleen bij een overtuigende match. */
+  async function zoekBijbehorendeFactuur(h) {
+    const btn = $("#btn-inkoop-view-doc");
+    btn.classList.add("hidden");
+    docItem = null;
+    const gevonden = await global.BoekDocView.findFor("inkoop", h);
+    if (!gevonden || editRow !== h.excelRow) return;
+    docItem = gevonden;
+    btn.classList.remove("hidden");
   }
 
   async function deleteRow(h) {
@@ -470,6 +487,9 @@
     });
     $("#btn-inkoop-deselect").addEventListener("click", deselectFile);
     $("#btn-inkoop-cancel-edit").addEventListener("click", clearForm);
+    $("#btn-inkoop-view-doc").addEventListener("click", () => {
+      if (docItem) global.BoekDocView.open(docItem);
+    });
     $("#btn-inkoop-page-prev").addEventListener("click", () => {
       if (pdfDoc && pdfPageNum > 1) {
         pdfPageNum--;

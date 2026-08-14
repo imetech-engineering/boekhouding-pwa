@@ -29,63 +29,78 @@
     return [...opgeslagen, ...historie];
   }
 
-  async function maakFavoriet(f) {
-    const favs = (settings().favorieten || []).filter((x) => x.naam !== f.naam);
-    favs.unshift({
-      naam: f.naam,
-      bestemming: f.bestemming,
-      km: f.km,
-      project: f.project || "",
-      lat: f.lat ?? null,
-      lon: f.lon ?? null,
-    });
+  /** Ster aan of uit zetten voor een bestemming. */
+  async function toggleFavoriet(f) {
+    const huidige = settings().favorieten || [];
+    const isFav = huidige.some((x) => x.naam === f.naam);
+    const favs = huidige.filter((x) => x.naam !== f.naam);
+    if (!isFav) {
+      favs.unshift({
+        naam: f.naam,
+        bestemming: f.bestemming,
+        km: f.km,
+        project: f.project || "",
+        lat: f.lat ?? null,
+        lon: f.lon ?? null,
+      });
+    }
+    App().haptic(15);
     await App().saveSettings({ favorieten: favs });
-    renderFavorieten();
-    App().showToast(`★ "${f.naam}" opgeslagen als favoriet`);
+    renderBestemmingen();
   }
 
-  function renderFavorieten() {
-    const list = $("#reis-fav-list");
-    list.innerHTML = "";
-    const favs = alleFavorieten();
+  /** Compacte regel: ster, naam, afstand — alles op één rij. */
+  function bestemmingRij(f, isFav) {
+    const li = document.createElement("li");
+    li.className = "reis-row";
+    li.innerHTML = `
+      <button type="button" class="reis-star${isFav ? " is-fav" : ""}"
+        aria-label="${isFav ? "Favoriet uitzetten" : "Favoriet maken"}"
+        title="${isFav ? "Favoriet uitzetten" : "Favoriet maken"}">${isFav ? "★" : "☆"}</button>
+      <span class="reis-name">${escapeHtml(f.naam)}
+        <span class="reis-sub">· ${escapeHtml(f.bestemming)}</span>
+      </span>
+      <span class="reis-km">${M().formatKm(f.km)} km</span>`;
+    li.addEventListener("click", (e) => {
+      if (e.target.closest(".reis-star")) return;
+      vulFavoriet(f);
+    });
+    li.querySelector(".reis-star").addEventListener("click", () => toggleFavoriet(f));
+    return li;
+  }
+
+  function renderBestemmingen() {
+    const favList = $("#reis-fav-list");
+    const allList = $("#reis-all-list");
+    const alle = alleFavorieten();
+    const favs = alle.filter((f) => f.bron === "vast");
+    const overig = alle.filter((f) => f.bron !== "vast");
+
+    favList.innerHTML = "";
     if (!favs.length) {
-      list.innerHTML = '<li class="sub">Nog geen bestemmingen — boek hieronder je eerste rit.</li>';
-      return;
+      favList.innerHTML =
+        '<li class="sub">Nog geen favorieten — open "Alle" en tik op ☆ bij een bestemming.</li>';
+    } else {
+      favs.forEach((f) => favList.appendChild(bestemmingRij(f, true)));
     }
-    for (const f of favs.slice(0, 15)) {
-      const isFav = f.bron === "vast";
-      const li = document.createElement("li");
-      li.className = "boek-item";
-      li.innerHTML = `
-        <div class="bi-head">
-          <span class="bi-title">${isFav ? "★ " : ""}${escapeHtml(f.naam)}</span>
-          <span class="bi-amount">${M().formatKm(f.km)} km</span>
-        </div>
-        <div class="bi-sub">
-          <span>${escapeHtml(f.bestemming)}${f.project ? " · " + escapeHtml(f.project) : ""}</span>
-          <span>${isFav ? "favoriet" : "uit historie"}</span>
-        </div>
-        <div class="bi-actions">
-          ${isFav
-            ? '<button type="button" class="bi-x" aria-label="Favoriet verwijderen" title="Favoriet verwijderen">✕</button>'
-            : '<button type="button" class="bi-star" aria-label="Maak favoriet" title="Maak favoriet">☆ favoriet maken</button>'}
-        </div>`;
-      li.addEventListener("click", (e) => {
-        if (e.target.closest(".bi-x") || e.target.closest(".bi-star")) return;
-        vulFavoriet(f);
-      });
-      li.querySelector(".bi-star")?.addEventListener("click", () => maakFavoriet(f));
-      li.querySelector(".bi-x")?.addEventListener("click", async () => {
-        const ok = await App().showConfirm(`Favoriet "${f.naam}" verwijderen?`, "Verwijderen", "Annuleren");
-        if (ok) {
-          await App().saveSettings({
-            favorieten: (settings().favorieten || []).filter((x) => x.naam !== f.naam),
-          });
-          renderFavorieten();
-        }
-      });
-      list.appendChild(li);
+
+    const q = ($("#reis-all-search")?.value || "").trim().toLowerCase();
+    allList.innerHTML = "";
+    const zichtbaar = overig.filter(
+      (f) => !q || `${f.naam} ${f.bestemming}`.toLowerCase().includes(q)
+    );
+    if (!zichtbaar.length) {
+      allList.innerHTML = `<li class="sub">${
+        overig.length ? "Geen bestemming gevonden." : "Nog geen eerdere ritten."
+      }</li>`;
+    } else {
+      zichtbaar.slice(0, 40).forEach((f) => allList.appendChild(bestemmingRij(f, false)));
     }
+    $("#btn-reis-toggle-all").textContent = allOpen() ? "Alle ▴" : `Alle (${overig.length}) ▾`;
+  }
+
+  function allOpen() {
+    return !$("#reis-all-wrap").classList.contains("hidden");
   }
 
   function vulFavoriet(f) {
@@ -344,7 +359,7 @@
   }
 
   function render() {
-    renderFavorieten();
+    renderBestemmingen();
     renderHistorie();
     updatePreview();
   }
@@ -366,6 +381,11 @@
     $("#btn-reis-boek").addEventListener("click", boek);
     $("#btn-reis-clear").addEventListener("click", clearForm);
     $("#btn-reis-cancel-edit").addEventListener("click", clearForm);
+    $("#btn-reis-toggle-all").addEventListener("click", () => {
+      $("#reis-all-wrap").classList.toggle("hidden");
+      renderBestemmingen();
+    });
+    $("#reis-all-search").addEventListener("input", renderBestemmingen);
   }
 
   App().registerTab("reis", { init, render });

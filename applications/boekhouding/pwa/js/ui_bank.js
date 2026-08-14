@@ -32,18 +32,25 @@
     return [...set].sort((a, b) => a.localeCompare(b));
   }
 
-  function rowLine(r, { showMatch = false } = {}) {
+  /** facturen wordt door render() eenmalig meegegeven; scheelt werk per regel. */
+  function rowLine(r, { showMatch = false, facturen = null } = {}) {
     const li = document.createElement("li");
     li.className = "boek-item";
     const bedragHtml =
       r.in != null
         ? `<span class="bi-amount in">+ ${M().fmtEur(r.in)}</span>`
         : `<span class="bi-amount uit">− ${M().fmtEur(r.uit)}</span>`;
+
+    // De match meteen uitschrijven, zodat je zonder tikken ziet wélke factuur erbij hoort.
     let matchHtml = "";
     if (showMatch) {
-      const matches = M().invoiceMatchesForBankRow(recenteFacturen(), r);
+      const matches = M().invoiceMatchesForBankRow(facturen || recenteFacturen(), r);
       if (matches.length) {
-        matchHtml = `<span class="bi-match">⚡ ${matches.length} factuur-match</span>`;
+        const m = matches[0];
+        const extra = matches.length > 1 ? ` +${matches.length - 1} meer` : "";
+        const nr = m.factuurnummer ? ` · ${escapeHtml(m.factuurnummer)}` : "";
+        li.classList.add("has-match");
+        matchHtml = `<div class="bi-match-line">⚡ ${escapeHtml(m.boek)}: ${escapeHtml(m.partij)}${nr} · ${m.datumStr}${extra}</div>`;
       }
     }
     li.innerHTML = `
@@ -53,8 +60,9 @@
       </div>
       <div class="bi-sub">
         <span>${r.datumStr}${r.ingeboekt ? " · ✓ ingeboekt" : ""}</span>
-        ${matchHtml || `<span>saldo ${M().fmtEur(r.saldo)}</span>`}
+        <span>saldo ${M().fmtEur(r.saldo)}</span>
       </div>
+      ${matchHtml}
       ${App().rowActionsHtml()}`;
     li.addEventListener("click", (ev) => {
       if (ev.target.closest("button")) return;
@@ -95,13 +103,25 @@
     $("#bank-saldo").textContent = last ? M().fmtEur(last.saldo) : "—";
     $("#bank-open-count").textContent = String(open.length);
 
+    const facturen = recenteFacturen();
     const openList = $("#bank-open-list");
     openList.innerHTML = "";
+    let metMatch = 0;
     for (const r of open.slice().reverse().slice(0, 50)) {
-      openList.appendChild(rowLine(r, { showMatch: true }));
+      const li = rowLine(r, { showMatch: true, facturen });
+      if (li.classList.contains("has-match")) metMatch++;
+      openList.appendChild(li);
     }
     if (!open.length) {
       openList.innerHTML = '<li class="sub">Alles is ingeboekt 🎉</li>';
+    }
+    const hint = $("#bank-match-hint");
+    hint.classList.toggle("hidden", metMatch === 0);
+    if (metMatch) {
+      hint.textContent =
+        metMatch === 1
+          ? "⚡ 1 regel heeft een matchende factuur."
+          : `⚡ ${metMatch} regels hebben een matchende factuur.`;
     }
 
     const recentList = $("#bank-recent-list");

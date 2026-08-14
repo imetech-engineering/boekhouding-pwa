@@ -409,8 +409,9 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    "head actions"
-    "sub  actions";
+    "head  actions"
+    "sub   actions"
+    "match match";
   align-items: center;
   column-gap: 8px;
   row-gap: 1px;
@@ -487,6 +488,28 @@ button {
 }
 
 .boek-item .bi-match {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* Bankregel met een factuur ernaast: eigen regel plus een randje om op te vallen. */
+.boek-item.has-match {
+  border-left: 3px solid var(--warn);
+  padding-left: 7px;
+}
+
+.boek-item .bi-match-line {
+  grid-area: match;
+  margin-top: 2px;
+  color: var(--warn);
+  font-weight: 600;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bank-match-hint {
   color: var(--warn);
   font-weight: 600;
 }

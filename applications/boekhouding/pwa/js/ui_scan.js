@@ -10,7 +10,11 @@
   const S = () => global.BoekScanner;
   const $ = (s) => document.querySelector(s);
 
-  /** pages: [{ src: canvas, corners: [{x,y}×4], out: canvas }] */
+  /**
+   * pages bevat twee soorten items:
+   *   { kind:"scan", src: canvas, corners: [{x,y}×4], out: canvas }  — gefotografeerd
+   *   { kind:"file", file: File, naam: string, ext: string }         — bestaand bestand
+   */
   let pages = [];
   let cropIndex = -1; // pagina die nu bijgesneden wordt
   let dragHandle = -1;
@@ -31,6 +35,12 @@
     input.click();
   }
 
+  function pickFile() {
+    const input = $("#scan-input-file");
+    input.value = "";
+    input.click();
+  }
+
   async function onPhotoChosen(ev) {
     const file = ev.target.files?.[0];
     if (!file) return;
@@ -39,8 +49,38 @@
       const img = await S().fileToImage(file);
       const src = S().toSourceCanvas(img);
       const corners = S().detectCorners(src) || S().fullFrameCorners(src);
-      pages.push({ src, corners, out: null });
+      pages.push({ kind: "scan", src, corners, out: null });
       openCrop(pages.length - 1);
+    } catch (e) {
+      App().showToast(e.message || String(e), true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Bestaand bestand toevoegen: gaat ongewijzigd mee, geen bijsnijden. */
+  async function onFilesChosen(ev) {
+    const gekozen = [...(ev.target.files || [])];
+    if (!gekozen.length) return;
+    setBusy(true, "Bestand toevoegen…");
+    try {
+      for (const file of gekozen) {
+        const ext = (file.name.match(/\.[^.]+$/) || [".pdf"])[0].toLowerCase();
+        pages.push({ kind: "file", file, naam: file.name, ext });
+        // Uit een PDF halen we alvast leverancier, datum en factuurnummer.
+        if (ext === ".pdf" && !$("#scan-leverancier").value) {
+          try {
+            const pdf = await global.BoekPdf.loadPdf(await file.arrayBuffer());
+            const ex = global.BoekPdf.extractInvoiceData(await global.BoekPdf.extractText(pdf));
+            if (ex.datum) $("#scan-datum").value = ex.datum;
+            if (ex.bedrijf) $("#scan-leverancier").value = ex.bedrijf;
+            if (ex.factuurnummer && !$("#scan-fnr").value) $("#scan-fnr").value = ex.factuurnummer;
+          } catch (_) {
+            /* gegevens uitlezen is meegenomen, geen reden om te stoppen */
+          }
+        }
+      }
+      showSaveStep();
     } catch (e) {
       App().showToast(e.message || String(e), true);
     } finally {
@@ -230,10 +270,11 @@
   }
 
   function cancelCrop() {
-    // Een pagina die nog geen resultaat heeft, hoort niet in de lijst thuis.
-    if (pages[cropIndex] && !pages[cropIndex].out) pages.splice(cropIndex, 1);
+    // Een foto die nog niet rechtgetrokken is, hoort niet in de lijst thuis.
+    const p = pages[cropIndex];
+    if (p && p.kind === "scan" && !p.out) pages.splice(cropIndex, 1);
     cropIndex = -1;
-    if (pages.length) showSaveStep();
+    if (pages.some(bruikbaar)) showSaveStep();
     else closeModal();
   }
 
@@ -248,17 +289,29 @@
     updateFilenamePreview();
   }
 
+  const bruikbaar = (p) => (p.kind === "file" ? true : !!p.out);
+
   function renderPages() {
     const wrap = $("#scan-pages");
     wrap.innerHTML = "";
     pages.forEach((page, i) => {
-      if (!page.out) return;
+      if (!bruikbaar(page)) return;
       const item = document.createElement("div");
       item.className = "scan-page";
-      const img = document.createElement("img");
-      img.alt = `Pagina ${i + 1}`;
-      img.src = page.out.toDataURL("image/jpeg", 0.5);
-      item.appendChild(img);
+
+      if (page.kind === "file") {
+        const doc = document.createElement("div");
+        doc.className = "scan-page-doc";
+        const isPdf = page.ext === ".pdf";
+        doc.innerHTML = `<span class="scan-doc-icon">${isPdf ? "📄" : "🖼️"}</span>
+          <span class="scan-doc-naam">${escapeHtml(page.naam)}</span>`;
+        item.appendChild(doc);
+      } else {
+        const img = document.createElement("img");
+        img.alt = `Pagina ${i + 1}`;
+        img.src = page.out.toDataURL("image/jpeg", 0.5);
+        item.appendChild(img);
+      }
 
       const label = document.createElement("span");
       label.className = "scan-page-nr";
@@ -268,18 +321,23 @@
       const tools = document.createElement("div");
       tools.className = "scan-page-tools";
       tools.innerHTML =
-        '<button type="button" class="btn-icon" data-a="crop" aria-label="Opnieuw bijsnijden" title="Opnieuw bijsnijden">✎</button>' +
-        '<button type="button" class="btn-icon" data-a="rot" aria-label="Draaien" title="Draaien">⟳</button>' +
-        '<button type="button" class="btn-icon btn-icon-danger" data-a="del" aria-label="Pagina verwijderen" title="Verwijderen">✕</button>';
-      tools.querySelector('[data-a="crop"]').addEventListener("click", () => openCrop(i));
-      tools.querySelector('[data-a="rot"]').addEventListener("click", () => {
+        (page.kind === "scan"
+          ? '<button type="button" class="btn-icon" data-a="crop" aria-label="Opnieuw bijsnijden" title="Opnieuw bijsnijden">✎</button>' +
+            '<button type="button" class="btn-icon" data-a="rot" aria-label="Draaien" title="Draaien">⟳</button>'
+          : "") +
+        '<button type="button" class="btn-icon btn-icon-danger" data-a="del" aria-label="Verwijderen" title="Verwijderen">✕</button>';
+      tools.querySelector('[data-a="crop"]')?.addEventListener("click", () => openCrop(i));
+      tools.querySelector('[data-a="rot"]')?.addEventListener("click", () => {
         page.out = S().rotate90(page.out);
         renderPages();
       });
       tools.querySelector('[data-a="del"]').addEventListener("click", () => {
         pages.splice(i, 1);
         if (!pages.length) closeModal();
-        else renderPages();
+        else {
+          renderPages();
+          updateFilenamePreview();
+        }
       });
       item.appendChild(tools);
       wrap.appendChild(item);
@@ -296,18 +354,22 @@
   function updateFilenamePreview() {
     const { datumIso, leverancier, fnr } = scanFields();
     const base = M().buildInkoopFilename(datumIso, leverancier, fnr, "");
-    const meerdere = pages.filter((p) => p.out).length > 1;
-    const aantal = pages.filter((p) => p.out).length;
-    $("#scan-filename").textContent = meerdere
-      ? `Wordt map "${base}" met ${aantal} foto's`
-      : `Wordt bestand "${base}.jpg"`;
+    const bruikbare = pages.filter(bruikbaar);
+    if (!bruikbare.length) {
+      $("#scan-filename").textContent = "";
+      return;
+    }
+    $("#scan-filename").textContent =
+      bruikbare.length > 1
+        ? `Wordt map "${base}" met ${bruikbare.length} bestanden`
+        : `Wordt bestand "${base}${bruikbare[0].kind === "file" ? bruikbare[0].ext : ".jpg"}"`;
   }
 
   async function save() {
-    const usable = pages.filter((p) => p.out);
-    if (!usable.length) return App().showToast("Nog geen pagina om op te slaan.", true);
+    const usable = pages.filter(bruikbaar);
+    if (!usable.length) return App().showToast("Nog niets om op te slaan.", true);
     if (!global.BoekOfflineQueue.isOnline()) {
-      return App().showToast("Geen verbinding — foto's worden niet opgeslagen. Probeer het zo opnieuw.", true);
+      return App().showToast("Geen verbinding — nog niet opgeslagen. Probeer het zo opnieuw.", true);
     }
     const { datumIso, leverancier, fnr } = scanFields();
     const base = M().buildInkoopFilename(datumIso, leverancier, fnr, "");
@@ -316,30 +378,35 @@
     setBusy(true, "Opslaan in OneDrive…");
     try {
       const token = await App().ensureLoggedIn();
-      const blobs = [];
-      for (const p of usable) blobs.push(await S().toJpeg(p.out, 0.85));
+      const delen = [];
+      for (const p of usable) {
+        if (p.kind === "file") delen.push({ blob: p.file, ext: p.ext });
+        else delen.push({ blob: await S().toJpeg(p.out, 0.85), ext: ".jpg" });
+      }
 
-      if (blobs.length === 1) {
-        await global.BoekGraph.uploadFile(`${folder}/${base}.jpg`, blobs[0], token);
+      if (delen.length === 1) {
+        await global.BoekGraph.uploadFile(`${folder}/${base}${delen[0].ext}`, delen[0].blob, token);
       } else {
-        // Meerdere pagina's → map met dezelfde naam, zoals de desktop-app die verwacht.
+        // Meerdere bestanden → map met dezelfde naam, zoals de desktop-app die verwacht.
         const made = await global.BoekGraph.createFolder(folder, base, token);
         const folderName = made?.name || base;
-        for (let i = 0; i < blobs.length; i++) {
+        for (let i = 0; i < delen.length; i++) {
           await global.BoekGraph.uploadFile(
-            `${folder}/${folderName}/${base} ${i + 1}.jpg`,
-            blobs[i],
+            `${folder}/${folderName}/${base} ${i + 1}${delen[i].ext}`,
+            delen[i].blob,
             token
           );
         }
       }
       App().showToast(
-        blobs.length === 1 ? "Foto opgeslagen bij nog te verwerken" : `${blobs.length} pagina's opgeslagen`
+        delen.length === 1
+          ? "Opgeslagen bij nog te verwerken"
+          : `${delen.length} bestanden opgeslagen`
       );
       closeModal();
       App().refreshQuiet();
     } catch (e) {
-      // Modal blijft open zodat de foto's niet verloren gaan.
+      // Modal blijft open zodat het werk niet verloren gaat.
       App().showToast(e.message || String(e), true);
     } finally {
       setBusy(false);
@@ -377,8 +444,11 @@
     );
     $("#btn-scan-camera").addEventListener("click", () => pickPhoto(true));
     $("#btn-scan-gallery").addEventListener("click", () => pickPhoto(false));
+    $("#btn-scan-file").addEventListener("click", pickFile);
+    $("#btn-scan-page-file").addEventListener("click", pickFile);
     $("#scan-input-camera").addEventListener("change", onPhotoChosen);
     $("#scan-input-gallery").addEventListener("change", onPhotoChosen);
+    $("#scan-input-file").addEventListener("change", onFilesChosen);
     $("#btn-scan-auto").addEventListener("click", autoDetect);
     $("#btn-scan-full").addEventListener("click", useFullFrame);
     $("#btn-scan-crop-ok").addEventListener("click", confirmCrop);

@@ -102,8 +102,37 @@
     });
   }
 
-  /** Klein bestand (<4 MB) uploaden; OneDrive hernoemt zelf bij een naamconflict. */
+  const SIMPLE_UPLOAD_MAX = 4 * 1024 * 1024;
+  const UPLOAD_CHUNK = 5 * 1024 * 1024; // veelvoud van 320 KiB, zoals Graph vereist
+
+  /** Groot bestand in blokken uploaden via een uploadsessie. */
+  async function uploadLarge(path, blob, token) {
+    const res = await fetch(`${itemUrl(path)}:/createUploadSession`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "rename" } }),
+    });
+    if (!res.ok) throw new Error(`Uploadsessie mislukt (${res.status}): ${await res.text()}`);
+    const { uploadUrl } = await res.json();
+    let start = 0;
+    let laatste = null;
+    while (start < blob.size) {
+      const end = Math.min(start + UPLOAD_CHUNK, blob.size);
+      const r = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Range": `bytes ${start}-${end - 1}/${blob.size}` },
+        body: blob.slice(start, end),
+      });
+      if (!r.ok) throw new Error(`Uploaden mislukt (${r.status})`);
+      if (r.status === 200 || r.status === 201) laatste = await r.json();
+      start = end;
+    }
+    return laatste;
+  }
+
+  /** Bestand uploaden; OneDrive hernoemt zelf bij een naamconflict. */
   async function uploadFile(path, blob, token) {
+    if (blob.size > SIMPLE_UPLOAD_MAX) return uploadLarge(path, blob, token);
     const res = await fetch(`${itemUrl(path)}:/content?@microsoft.graph.conflictBehavior=rename`, {
       method: "PUT",
       headers: {

@@ -509,9 +509,21 @@ button {
   white-space: nowrap;
 }
 
-.bank-match-hint {
+.btn-match-all {
+  display: block;
+  width: 100%;
+  margin: 2px 0 10px;
+  padding: 10px 12px;
+  font-size: 0.8125rem;
+  text-align: left;
   color: var(--warn);
-  font-weight: 600;
+  background: var(--bg-secondary);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-md);
+}
+
+.btn-match-all:active {
+  background: var(--bg-hover);
 }
 
 .boek-item.swiping {
@@ -1121,6 +1133,31 @@ button {
   width: 100%;
   height: 168px;
   object-fit: cover;
+}
+
+.scan-page-doc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 168px;
+  padding: 8px;
+  text-align: center;
+}
+
+.scan-doc-icon {
+  font-size: 2rem;
+}
+
+.scan-doc-naam {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 
 .scan-page-nr {

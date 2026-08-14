@@ -7,6 +7,7 @@
   const $ = (s) => document.querySelector(s);
 
   let modalRow = null; // geselecteerde bankregel in de modal
+  let gematchteRijen = []; // openstaande regels waarvoor een factuur gevonden is
 
   function recenteFacturen() {
     const st = App().state;
@@ -74,6 +75,30 @@
     return li;
   }
 
+  /**
+   * Alle regels met een gevonden factuur in één keer afvinken. Die facturen
+   * staan al in het inkoop- of verkoopboek, dus de bankregel hoort ingeboekt.
+   */
+  async function markeerAlleMatches() {
+    if (!gematchteRijen.length) return;
+    const rijen = gematchteRijen.slice();
+    const voorbeeld = rijen
+      .slice(0, 4)
+      .map((r) => `• ${r.datumStr} ${r.omschrijving} — ${M().fmtEur(r.in != null ? r.in : r.uit)}`)
+      .join("\n");
+    const rest = rijen.length > 4 ? `\n… en nog ${rijen.length - 4}` : "";
+    const ok = await App().showConfirm(
+      `${rijen.length} bankregel${rijen.length === 1 ? "" : "s"} als ingeboekt markeren?\n${voorbeeld}${rest}`,
+      "Markeren",
+      "Annuleren"
+    );
+    if (!ok) return;
+    await App().persistMutation(
+      { kind: "bank_ingeboekt", rows: rijen.map((r) => r.excelRow), value: true },
+      { successMsg: `${rijen.length} bankregel${rijen.length === 1 ? "" : "s"} afgevinkt` }
+    );
+  }
+
   async function deleteRow(r) {
     const bedrag = r.in != null ? `+ ${M().fmtEur(r.in)}` : `− ${M().fmtEur(r.uit)}`;
     const ok = await App().showConfirm(
@@ -106,22 +131,22 @@
     const facturen = recenteFacturen();
     const openList = $("#bank-open-list");
     openList.innerHTML = "";
-    let metMatch = 0;
+    gematchteRijen = [];
     for (const r of open.slice().reverse().slice(0, 50)) {
       const li = rowLine(r, { showMatch: true, facturen });
-      if (li.classList.contains("has-match")) metMatch++;
+      if (li.classList.contains("has-match")) gematchteRijen.push(r);
       openList.appendChild(li);
     }
     if (!open.length) {
       openList.innerHTML = '<li class="sub">Alles is ingeboekt 🎉</li>';
     }
-    const hint = $("#bank-match-hint");
-    hint.classList.toggle("hidden", metMatch === 0);
-    if (metMatch) {
-      hint.textContent =
-        metMatch === 1
-          ? "⚡ 1 regel heeft een matchende factuur."
-          : `⚡ ${metMatch} regels hebben een matchende factuur.`;
+    const knop = $("#btn-bank-match-all");
+    knop.classList.toggle("hidden", gematchteRijen.length === 0);
+    if (gematchteRijen.length) {
+      knop.textContent =
+        gematchteRijen.length === 1
+          ? "✓ 1 regel met factuur ingeboekt markeren"
+          : `✓ Alle ${gematchteRijen.length} regels met factuur ingeboekt markeren`;
     }
 
     const recentList = $("#bank-recent-list");
@@ -316,6 +341,7 @@
       document.getElementById(id).addEventListener("input", updateNewRowMatchHint);
       document.getElementById(id).addEventListener("change", updateNewRowMatchHint);
     }
+    $("#btn-bank-match-all").addEventListener("click", markeerAlleMatches);
     $("#btn-bank-m-save").addEventListener("click", modalSave);
     $("#btn-bank-m-ingeboekt").addEventListener("click", modalToggleIngeboekt);
     $("#btn-bank-m-naar-inkoop").addEventListener("click", () => modalNaarBoek(false));

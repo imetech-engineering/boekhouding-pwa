@@ -89,7 +89,7 @@
 
         <div class="card">
           <h2>Openstaande bankregels</h2>
-          <p id="bank-match-hint" class="sub bank-match-hint hidden"></p>
+          <button type="button" id="btn-bank-match-all" class="btn-match-all hidden"></button>
           <p class="sub">Tik voor bewerken, matchen en ingeboekt markeren. Vegen kan ook: rechts bewerken, links verwijderen.</p>
           <ul id="bank-open-list" class="boek-list"></ul>
         </div>
@@ -108,10 +108,15 @@
           <p id="inkoop-files-empty" class="sub hidden">Geen facturen in de map.</p>
           <div class="btn-row">
             <button type="button" id="btn-scan-camera" class="btn-primary">＋ Bon fotograferen</button>
-            <button type="button" id="btn-scan-gallery" class="btn-secondary">Uit galerij</button>
           </div>
+          <div class="btn-row">
+            <button type="button" id="btn-scan-gallery" class="btn-secondary">Foto uit galerij</button>
+            <button type="button" id="btn-scan-file" class="btn-secondary">Bestand toevoegen</button>
+          </div>
+          <p class="sub">Foto's worden rechtgetrokken; een bestand (PDF of afbeelding) gaat ongewijzigd naar de map.</p>
           <input type="file" id="scan-input-camera" accept="image/*" capture="environment" class="hidden" />
           <input type="file" id="scan-input-gallery" accept="image/*" class="hidden" />
+          <input type="file" id="scan-input-file" accept="application/pdf,image/*" multiple class="hidden" />
         </div>
 
         <div id="inkoop-preview-card" class="card hidden">
@@ -591,7 +596,8 @@
           <h2>Toevoegen aan nog te verwerken</h2>
           <div id="scan-pages" class="scan-pages"></div>
           <div class="btn-row">
-            <button type="button" id="btn-scan-page-add" class="btn-secondary">＋ Pagina toevoegen</button>
+            <button type="button" id="btn-scan-page-add" class="btn-secondary">＋ Foto</button>
+            <button type="button" id="btn-scan-page-file" class="btn-secondary">＋ Bestand</button>
           </div>
           <label for="scan-datum">Factuurdatum</label>
           <div class="date-row">

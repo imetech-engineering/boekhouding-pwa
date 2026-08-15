@@ -296,26 +296,58 @@
     return { ...saldi, zonderRekening: zonder };
   }
 
-  /** Privé-opnames en -stortingen van een jaar, herkend aan de omschrijving/opmerking. */
-  const PRIVE_RE = /priv[eéè]|opstartbudget/i;
+  /**
+   * Privé-opnames en -stortingen van een jaar.
+   *
+   * Alleen échte overboekingen van/naar privé tellen mee in de hoofdcijfers:
+   * "Privé opname", opstartbudget (heen en retour) en "… vanuit privé".
+   * Regels die alleen het wóórd privé bevatten (zoals "30% telefoon-privégebruik")
+   * zijn aankopen, geen opnames — die komen apart terug in `overig`, met het
+   * privé-deel uit de opmerking als daar een €-bedrag in staat.
+   */
+  const PRIVE_WOORD = /priv[eéè]/i;
+  const PRIVE_TRANSFER = [
+    /^priv[eéè]\s*opname/i, // omschrijving
+    /opstartbudget/i, // omschrijving (heen én retour)
+    /vanuit\s+priv[eéè]/i, // storting, in omschrijving of opmerking
+    /overgemaakt\s+(naar|vanuit)\s+priv[eéè]?rekening/i, // opmerking
+  ];
+
+  function isPriveTransfer(r) {
+    return PRIVE_TRANSFER.some((re) => re.test(r.omschrijving) || re.test(r.opmerking));
+  }
 
   function priveOverzicht(bankRows, jaar) {
     let opgenomen = 0;
     let gestort = 0;
     let regels = 0;
+    const overig = [];
     for (const r of bankRows) {
       if (r.isEmpty || !r.datum || r.datum.getUTCFullYear() !== jaar) continue;
       if (!r.rekening) continue; // 'privé betaald'-regels raken geen rekening
-      if (!PRIVE_RE.test(`${r.omschrijving} ${r.opmerking}`)) continue;
-      opgenomen += r.uit || 0;
-      gestort += r.in || 0;
-      regels++;
+      if (isPriveTransfer(r)) {
+        opgenomen += r.uit || 0;
+        gestort += r.in || 0;
+        regels++;
+      } else if (PRIVE_WOORD.test(`${r.omschrijving} ${r.opmerking}`)) {
+        // Privé-deel uit de opmerking (bijv. "€247,67 niet ingeboekt"), anders het hele bedrag
+        const m = r.opmerking.match(/€\s*([\d.,]+)/);
+        const deel = m ? parseUserAmount(m[1]) : null;
+        overig.push({
+          excelRow: r.excelRow,
+          datumStr: r.datumStr,
+          omschrijving: r.omschrijving,
+          bedrag: deel != null ? deel : (r.uit || r.in || 0),
+        });
+      }
     }
     return {
       opgenomen: Math.round(opgenomen * 100) / 100,
       gestort: Math.round(gestort * 100) / 100,
       netto: Math.round((opgenomen - gestort) * 100) / 100,
       regels,
+      overig,
+      overigTotaal: Math.round(overig.reduce((s, o) => s + o.bedrag, 0) * 100) / 100,
     };
   }
 

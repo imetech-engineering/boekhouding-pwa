@@ -58,8 +58,14 @@
           <h2>Nieuwe bankregel</h2>
           <label>Rekening</label>
           <div id="bank-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
-            <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">Rabobank</button>
-            <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">Knab</button>
+            <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
+              <svg class="rek-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#FF6600"/><text x="12" y="17" text-anchor="middle" font-size="13.5" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">R</text></svg>
+              <span>Rabobank</span>
+            </button>
+            <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">
+              <svg class="rek-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#2438E8"/><text x="12" y="15.5" text-anchor="middle" font-size="8.4" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
+              <span>Knab</span>
+            </button>
           </div>
           <label for="bank-datum">Datum</label>
           <div class="date-row">
@@ -467,7 +473,8 @@
             <div class="kpi"><span class="kpi-label">Gestort</span><span id="kpi-prive-in" class="kpi-value">—</span></div>
             <div class="kpi"><span class="kpi-label">Netto opgenomen</span><span id="kpi-prive-netto" class="kpi-value">—</span></div>
           </div>
-          <p class="sub">Herkend aan "privé" of "opstartbudget" in de omschrijving/opmerking van bankregels — handig voor het jaaroverzicht.</p>
+          <div id="prive-overig"></div>
+          <p class="sub">Telt alleen échte overboekingen van/naar privé ("Privé opname", opstartbudget, "vanuit privé"). Aankopen met een privé-deel staan er los onder.</p>
         </div>
 
         <div class="card">
@@ -555,8 +562,14 @@
         <p id="bank-modal-info" class="sub">—</p>
         <label>Rekening</label>
         <div id="bank-m-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
-          <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">Rabobank</button>
-          <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">Knab</button>
+          <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
+            <svg class="rek-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#FF6600"/><text x="12" y="17" text-anchor="middle" font-size="13.5" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">R</text></svg>
+            <span>Rabobank</span>
+          </button>
+          <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">
+            <svg class="rek-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#2438E8"/><text x="12" y="15.5" text-anchor="middle" font-size="8.4" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
+            <span>Knab</span>
+          </button>
         </div>
         <label for="bank-m-omschrijving">Omschrijving</label>
         <input id="bank-m-omschrijving" autocomplete="off" />

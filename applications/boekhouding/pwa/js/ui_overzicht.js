@@ -154,6 +154,20 @@
     $("#kpi-prive-op").textContent = M().fmtEur(prive.opgenomen);
     $("#kpi-prive-in").textContent = M().fmtEur(prive.gestort);
     $("#kpi-prive-netto").textContent = M().fmtEur(prive.netto);
+    const overigEl = $("#prive-overig");
+    overigEl.innerHTML = "";
+    if (prive.overig.length) {
+      const kop = document.createElement("p");
+      kop.className = "sub";
+      kop.innerHTML = `<strong>Daarnaast ${M().fmtEur(prive.overigTotaal)} privé betaald van de zaak</strong> (geen opname, telt hierboven niet mee):`;
+      overigEl.appendChild(kop);
+      for (const o of prive.overig) {
+        const p = document.createElement("p");
+        p.className = "sub";
+        p.textContent = `• ${o.datumStr} — ${o.omschrijving}: ${M().fmtEur(o.bedrag)}`;
+        overigEl.appendChild(p);
+      }
+    }
   }
 
   function renderStatus() {

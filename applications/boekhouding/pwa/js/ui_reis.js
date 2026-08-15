@@ -358,9 +358,68 @@
     if (!shown) list.innerHTML = '<li class="sub">Nog geen reiskosten geboekt.</li>';
   }
 
+  // === Voorstellen: gewerkt volgens de uren, maar geen rit geboekt ===
+  let urenGeladen = false;
+
+  async function laadVoorstellen() {
+    const cfg = global.BOEK_CONFIG.graph;
+    if (urenGeladen || !cfg.urenPath || !App().state.loaded) return;
+    urenGeladen = true;
+    try {
+      const token = await App().ensureLoggedIn();
+      const uren = await global.BoekWorkbook.readTableRange(cfg.urenPath, token, cfg.urenTable);
+      App().state.urenRows = M().parseUrenRows(uren.values, uren.headerRow);
+      renderVoorstellen();
+    } catch (_) {
+      urenGeladen = false; // volgende keer opnieuw proberen
+    }
+  }
+
+  function renderVoorstellen() {
+    const card = $("#reis-voorstel-card");
+    const list = $("#reis-voorstel-list");
+    const urenRows = App().state.urenRows || [];
+    if (!urenRows.length) {
+      card.classList.add("hidden");
+      return;
+    }
+    const voorstellen = M().reisVoorstellen(
+      urenRows,
+      App().state.intel.inkoop.history,
+      alleFavorieten(),
+      settings().thuisAdres?.plaats || "Aalten"
+    );
+    card.classList.toggle("hidden", !voorstellen.length);
+    list.innerHTML = "";
+    for (const v of voorstellen) {
+      const li = document.createElement("li");
+      li.className = "reis-row";
+      li.innerHTML = `
+        <span class="reis-name">${v.datumStr}
+          <span class="reis-sub">· ${escapeHtml(v.fav.naam)} (${M().formatKm(v.fav.km)} km)</span>
+        </span>
+        <button type="button" class="btn-icon voorstel-boek">Boek</button>`;
+      li.addEventListener("click", (e) => {
+        if (e.target.closest("button")) return;
+        vulFavoriet(v.fav);
+        $("#reis-datum").value = v.datumIso;
+        updatePreview();
+      });
+      li.querySelector(".voorstel-boek").addEventListener("click", async () => {
+        vulFavoriet(v.fav);
+        $("#reis-datum").value = v.datumIso;
+        updatePreview();
+        await boek();
+        renderVoorstellen();
+      });
+      list.appendChild(li);
+    }
+  }
+
   function render() {
     renderBestemmingen();
     renderHistorie();
+    renderVoorstellen();
     updatePreview();
   }
 
@@ -388,6 +447,6 @@
     $("#reis-all-search").addEventListener("input", renderBestemmingen);
   }
 
-  App().registerTab("reis", { init, render });
+  App().registerTab("reis", { init, render, onShow: laadVoorstellen });
   global.BoekUiReis = { render };
 })(window);

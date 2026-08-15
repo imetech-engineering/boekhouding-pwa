@@ -284,6 +284,58 @@
     else closeModal();
   }
 
+  // === OCR: tekst uit de bon lezen en velden vullen ===
+  let ocrBezig = false;
+
+  async function laadTesseract() {
+    if (global.Tesseract) return global.Tesseract;
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
+      s.onload = res;
+      s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    return global.Tesseract;
+  }
+
+  /** Leest de eerste gescande pagina en vult lege velden. Stil bij fouten. */
+  async function ocrVulVelden() {
+    if (ocrBezig) return;
+    const page = pages.find((p) => p.kind === "scan" && p.out);
+    if (!page) return;
+    if ($("#scan-leverancier").value && $("#scan-fnr").value) return;
+    ocrBezig = true;
+    const status = $("#scan-ocr-status");
+    status.classList.remove("hidden");
+    status.textContent = "🔍 Bon lezen…";
+    try {
+      const T = await laadTesseract();
+      const { data } = await T.recognize(page.out, "nld");
+      const ex = global.BoekPdf.extractInvoiceData(data.text || "");
+      let gevuld = 0;
+      if (ex.datum && $("#scan-datum").value === M().todayIso()) {
+        $("#scan-datum").value = ex.datum;
+        gevuld++;
+      }
+      if (ex.bedrijf && !$("#scan-leverancier").value) {
+        $("#scan-leverancier").value = ex.bedrijf;
+        gevuld++;
+      }
+      if (ex.factuurnummer && !$("#scan-fnr").value) {
+        $("#scan-fnr").value = ex.factuurnummer;
+        gevuld++;
+      }
+      updateFilenamePreview();
+      status.textContent = gevuld ? "🔍 Gegevens uit de bon gelezen — controleer even." : "";
+      if (!gevuld) status.classList.add("hidden");
+    } catch (_) {
+      status.classList.add("hidden");
+    } finally {
+      ocrBezig = false;
+    }
+  }
+
   // === Stap 2: pagina's + gegevens ===
 
   function showSaveStep() {
@@ -293,6 +345,7 @@
     $("#scan-modal").classList.remove("hidden");
     renderPages();
     updateFilenamePreview();
+    ocrVulVelden();
   }
 
   const bruikbaar = (p) => (p.kind === "file" ? true : !!p.out);
@@ -438,9 +491,54 @@
     if (ok) closeModal();
   }
 
+  /** Vanuit Android gedeelde bestanden (share target) ophalen en verwerken. */
+  async function laadGedeeld() {
+    try {
+      const cache = await caches.open("share-inbox");
+      const keys = await cache.keys();
+      if (!keys.length) return;
+      const files = [];
+      for (const req of keys) {
+        const res = await cache.match(req);
+        if (!res) continue;
+        const blob = await res.blob();
+        const naam = decodeURIComponent(res.headers.get("X-File-Name") || "gedeeld");
+        files.push(new File([blob], naam, { type: blob.type }));
+        await cache.delete(req);
+      }
+      if (!files.length) return;
+      App().switchTab("inkoop");
+      const eerste = files[0];
+      if (files.length === 1 && eerste.type.startsWith("image/")) {
+        // Eén foto → gewoon door de scanner (randdetectie + bijsnijden)
+        setBusy(true, "Gedeelde foto verwerken…");
+        try {
+          const img = await S().fileToImage(eerste);
+          const src = S().toSourceCanvas(img);
+          pages.push({ kind: "scan", src, corners: S().detectCorners(src) || S().fullFrameCorners(src), out: null });
+          openCrop(pages.length - 1);
+        } finally {
+          setBusy(false);
+        }
+      } else {
+        // Meerdere bestanden of een PDF → ongewijzigd toevoegen
+        for (const f of files) {
+          const ext = (f.name.match(/\.[^.]+$/) || [f.type.includes("pdf") ? ".pdf" : ".jpg"])[0].toLowerCase();
+          pages.push({ kind: "file", file: f, naam: f.name, ext });
+        }
+        showSaveStep();
+      }
+    } catch (_) {
+      /* geen gedeelde bestanden */
+    }
+  }
+
   function init() {
     $("#scan-datum").value = M().todayIso();
     App().bindDateSteppers("scan-datum", "btn-scan-date-prev", "btn-scan-date-next");
+    if (new URLSearchParams(location.search).has("shared")) {
+      setTimeout(laadGedeeld, 300);
+    }
     global.BoekCombo.createCombo(
       "scan-leverancier",
       null,

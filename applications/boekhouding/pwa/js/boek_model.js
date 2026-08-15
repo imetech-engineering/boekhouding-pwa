@@ -568,6 +568,71 @@
     return [...seen.values()].sort((a, b) => b.count - a.count);
   }
 
+  // === Reis-voorstellen uit de urenregistratie ===
+
+  /** Urenregels: alleen datum, opdrachtgever en locatie zijn hier interessant. */
+  function parseUrenRows(values, headerRow) {
+    const rows = [];
+    for (let i = 1; i < values.length; i++) {
+      const v = values[i];
+      const datum = serialToDate(v[0]);
+      if (!datum) continue;
+      rows.push({
+        excelRow: headerRow + i,
+        datum,
+        datumStr: formatDateNl(datum),
+        opdrachtgever: cellText(v[3]),
+        project: cellText(v[4]),
+        locatie: cellText(v[6]),
+      });
+    }
+    return rows;
+  }
+
+  /**
+   * Dagen waarop je volgens de uren op een bekende bestemming werkte,
+   * maar waarvoor (nog) geen rit geboekt is.
+   */
+  function reisVoorstellen(urenRows, inkoopHistory, bestemmingen, thuisPlaats, maxDagen = 60) {
+    const thuis = normalizeParty(thuisPlaats || "Aalten");
+    const nu = new Date();
+    const cutoff = new Date(nu.getTime() - maxDagen * 86400000);
+
+    // Al geboekte ritten per dag: datumIso -> [naam...]
+    const geboekt = new Map();
+    for (const h of inkoopHistory) {
+      const p = parseReisOmschrijving(h.omschrijving);
+      if (!p || !h.datum) continue;
+      const key = dateToIso(h.datum);
+      if (!geboekt.has(key)) geboekt.set(key, []);
+      geboekt.get(key).push(p.naam);
+    }
+
+    const voorstellen = [];
+    const gezien = new Set();
+    for (const u of urenRows) {
+      if (u.datum < cutoff || u.datum > nu) continue;
+      const loc = normalizeParty(u.locatie);
+      if (!loc || loc === thuis || loc.includes(thuis)) continue;
+      const best = bestemmingen.find(
+        (b) => partyNamesMatch(b.naam, u.locatie) || partyNamesMatch(b.naam, u.opdrachtgever)
+      );
+      if (!best) continue;
+      const key = `${dateToIso(u.datum)}|${best.naam.toLowerCase()}`;
+      if (gezien.has(key)) continue;
+      gezien.add(key);
+      const ritten = geboekt.get(dateToIso(u.datum)) || [];
+      if (ritten.some((naam) => partyNamesMatch(naam, best.naam))) continue;
+      voorstellen.push({
+        datumIso: dateToIso(u.datum),
+        datumStr: u.datumStr,
+        fav: best,
+      });
+    }
+    voorstellen.sort((a, b) => (a.datumIso < b.datumIso ? 1 : -1));
+    return voorstellen.slice(0, 12);
+  }
+
   // === Dashboard: kwartaal-aggregatie ===
   function kwartaalOverzicht(inkoopRows, verkoopRows, jaar) {
     const out = [];
@@ -718,6 +783,7 @@
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,
+    parseUrenRows, reisVoorstellen,
     kwartaalOverzicht,
     beschikbareJaren, maandCijfers, btwAangifte, topGroepen, reisTotaal,
   };

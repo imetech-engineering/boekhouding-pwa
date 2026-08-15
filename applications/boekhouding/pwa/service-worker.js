@@ -2,7 +2,7 @@
  * Service worker — network-first voor same-origin (updates komen direct door),
  * cache als offline-fallback. Verbetering t.o.v. uren-PWA (cache-first + handmatige bump).
  */
-const CACHE = "imtech-boekhouding-pwa-v13";
+const CACHE = "imtech-boekhouding-pwa-v14";
 const ASSETS = [
   "./",
   "./index.html",
@@ -56,6 +56,37 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return; // Graph/CDN altijd netwerk
+
+  // Share target: gedeelde bestanden parkeren en doorsturen naar de app
+  if (event.request.method === "POST" && url.pathname.endsWith("/share-target")) {
+    event.respondWith(
+      (async () => {
+        try {
+          const formData = await event.request.formData();
+          const files = formData.getAll("media").filter((f) => f && f.size);
+          const cache = await caches.open("share-inbox");
+          await Promise.all(
+            files.map((f, i) =>
+              cache.put(
+                `/share-inbox/${Date.now()}-${i}`,
+                new Response(f, {
+                  headers: {
+                    "Content-Type": f.type || "application/octet-stream",
+                    "X-File-Name": encodeURIComponent(f.name || `gedeeld-${i}`),
+                  },
+                })
+              )
+            )
+          );
+        } catch (_) {
+          /* dan opent de app gewoon leeg */
+        }
+        return Response.redirect("./index.html?shared=1", 303);
+      })()
+    );
+    return;
+  }
+
   if (event.request.method !== "GET") return;
   event.respondWith(
     fetch(event.request)

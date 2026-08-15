@@ -22,6 +22,9 @@ window.BOEK_CONFIG = {
     scopes: ["User.Read", "Files.ReadWrite"],
     /** Paden relatief t.o.v. OneDrive-root (Graph /me/drive/root:/…). */
     workbookPath: "02 Boekhouding/Boekhouding_IMeTech.xlsx",
+    /** Urenwerkboek — voor reiskosten-voorstellen op basis van waar je gewerkt hebt. */
+    urenPath: "02 Boekhouding/04 Urenadministratie/urenadministratie_2025.xlsx",
+    urenTable: "Tabel13",
     settingsPath: "02 Boekhouding/boekhouding_pwa_settings.json",
     folders: {
       verkoopNieuw: "02 Boekhouding/01 Verkoop facturen/Facturen verkoop nog te verwerken",

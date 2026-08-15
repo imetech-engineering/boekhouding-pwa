@@ -59,7 +59,7 @@
           <label>Rekening</label>
           <div id="bank-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
             <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
-              <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Rabobank"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#fff" stroke="#d9d7d2" stroke-width="1"/><path d="M6.6 20.6 L11.2 7.0 L13.7 7.0 L9.1 20.6 Z" fill="#000099"/><path d="M11.9 7.6 C13.4 3.6 18.2 2.4 20.6 4.4 C17.2 5.0 14.6 7.6 13.5 11.4 L11.0 11.4 Z" fill="#FF6600"/></svg>
+              <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Rabobank"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#FF6600"/><text x="12" y="15.6" text-anchor="middle" font-size="8.6" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">Rabo</text></svg>
             </button>
             <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">
               <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Knab"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#2103F5"/><text x="12" y="15.8" text-anchor="middle" font-size="9.2" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
@@ -323,6 +323,11 @@
 
       <!-- ============ REISKOSTEN ============ -->
       <section id="panel-reis" class="tab-panel hidden">
+        <div id="reis-voorstel-card" class="card hidden">
+          <h2>Gewerkt, nog geen rit geboekt</h2>
+          <ul id="reis-voorstel-list" class="reis-list"></ul>
+        </div>
+
         <div class="card">
           <div class="card-head">
             <h2>Bestemmingen</h2>
@@ -549,7 +554,7 @@
         <label>Rekening</label>
         <div id="bank-m-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
           <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
-            <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Rabobank"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#fff" stroke="#d9d7d2" stroke-width="1"/><path d="M6.6 20.6 L11.2 7.0 L13.7 7.0 L9.1 20.6 Z" fill="#000099"/><path d="M11.9 7.6 C13.4 3.6 18.2 2.4 20.6 4.4 C17.2 5.0 14.6 7.6 13.5 11.4 L11.0 11.4 Z" fill="#FF6600"/></svg>
+            <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Rabobank"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#FF6600"/><text x="12" y="15.6" text-anchor="middle" font-size="8.6" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">Rabo</text></svg>
           </button>
           <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">
             <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Knab"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#2103F5"/><text x="12" y="15.8" text-anchor="middle" font-size="9.2" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
@@ -639,6 +644,7 @@
 
         <div id="scan-step-save" class="hidden">
           <h2>Toevoegen aan nog te verwerken</h2>
+          <p id="scan-ocr-status" class="sub hidden"></p>
           <div id="scan-pages" class="scan-pages"></div>
           <div class="btn-row">
             <button type="button" id="btn-scan-page-add" class="btn-secondary">＋ Foto</button>

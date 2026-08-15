@@ -59,12 +59,10 @@
           <label>Rekening</label>
           <div id="bank-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
             <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
-              <svg class="rek-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#FF6600"/><text x="12" y="17" text-anchor="middle" font-size="13.5" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">R</text></svg>
-              <span>Rabobank</span>
+              <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Rabobank"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#fff" stroke="#d9d7d2" stroke-width="1"/><path d="M6.6 20.6 L11.2 7.0 L13.7 7.0 L9.1 20.6 Z" fill="#000099"/><path d="M11.9 7.6 C13.4 3.6 18.2 2.4 20.6 4.4 C17.2 5.0 14.6 7.6 13.5 11.4 L11.0 11.4 Z" fill="#FF6600"/></svg>
             </button>
             <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">
-              <svg class="rek-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#2438E8"/><text x="12" y="15.5" text-anchor="middle" font-size="8.4" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
-              <span>Knab</span>
+              <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Knab"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#2103F5"/><text x="12" y="15.8" text-anchor="middle" font-size="9.2" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
             </button>
           </div>
           <label for="bank-datum">Datum</label>
@@ -119,19 +117,7 @@
           <ul id="inkoop-files-list" class="file-list"></ul>
           <p id="inkoop-files-empty" class="sub hidden">Geen facturen in de map.</p>
           <div class="btn-row">
-            <button type="button" id="btn-scan-toggle" class="btn-primary" aria-expanded="false" aria-controls="scan-add-options">＋ Factuur toevoegen</button>
-          </div>
-          <div id="scan-add-options" class="scan-add-options hidden">
-            <button type="button" id="btn-scan-camera" class="scan-opt">
-              <span class="opt-icon">📷</span><span>Camera</span>
-            </button>
-            <button type="button" id="btn-scan-gallery" class="scan-opt">
-              <span class="opt-icon">🖼️</span><span>Galerij</span>
-            </button>
-            <button type="button" id="btn-scan-file" class="scan-opt">
-              <span class="opt-icon">📄</span><span>Bestand</span>
-            </button>
-            <p class="sub scan-add-hint">Foto's worden rechtgetrokken; een bestand (PDF of afbeelding) gaat ongewijzigd mee.</p>
+            <button type="button" id="btn-scan-toggle" class="btn-primary">＋ Factuur toevoegen</button>
           </div>
           <input type="file" id="scan-input-camera" accept="image/*" capture="environment" class="hidden" />
           <input type="file" id="scan-input-gallery" accept="image/*" class="hidden" />
@@ -563,12 +549,10 @@
         <label>Rekening</label>
         <div id="bank-m-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
           <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
-            <svg class="rek-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#FF6600"/><text x="12" y="17" text-anchor="middle" font-size="13.5" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">R</text></svg>
-            <span>Rabobank</span>
+            <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Rabobank"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#fff" stroke="#d9d7d2" stroke-width="1"/><path d="M6.6 20.6 L11.2 7.0 L13.7 7.0 L9.1 20.6 Z" fill="#000099"/><path d="M11.9 7.6 C13.4 3.6 18.2 2.4 20.6 4.4 C17.2 5.0 14.6 7.6 13.5 11.4 L11.0 11.4 Z" fill="#FF6600"/></svg>
           </button>
           <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">
-            <svg class="rek-logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="5.5" fill="#2438E8"/><text x="12" y="15.5" text-anchor="middle" font-size="8.4" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
-            <span>Knab</span>
+            <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Knab"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#2103F5"/><text x="12" y="15.8" text-anchor="middle" font-size="9.2" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
           </button>
         </div>
         <label for="bank-m-omschrijving">Omschrijving</label>
@@ -602,6 +586,26 @@
           <button type="button" id="btn-bank-m-naar-inkoop" class="btn-secondary">→ Boek als kosten (inkoop)</button>
           <button type="button" id="btn-bank-m-naar-verkoop" class="btn-secondary">→ Als omzet (verkoop)</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Keuze: hoe factuur toevoegen -->
+    <div id="scan-choice-modal" class="modal hidden" role="dialog" aria-label="Factuur toevoegen">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-sheet modal-sheet-sm">
+        <h2>Factuur toevoegen</h2>
+        <div class="scan-add-options">
+          <button type="button" id="btn-scan-camera" class="scan-opt">
+            <span class="opt-icon">📷</span><span>Camera</span>
+          </button>
+          <button type="button" id="btn-scan-gallery" class="scan-opt">
+            <span class="opt-icon">🖼️</span><span>Galerij</span>
+          </button>
+          <button type="button" id="btn-scan-file" class="scan-opt">
+            <span class="opt-icon">📄</span><span>Bestand</span>
+          </button>
+        </div>
+        <p class="sub">Foto's worden rechtgetrokken; een bestand (PDF of afbeelding) gaat ongewijzigd mee.</p>
       </div>
     </div>
 

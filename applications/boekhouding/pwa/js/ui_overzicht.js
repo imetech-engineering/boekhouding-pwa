@@ -149,6 +149,11 @@
     $("#kpi-ritten").textContent = String(reis.ritten);
     $("#kpi-km").textContent = `${Math.round(reis.km).toLocaleString("nl-NL")} km`;
     $("#kpi-reis").textContent = M().fmtEur(reis.bedrag);
+
+    const prive = M().priveOverzicht(st.bankRows, jaar);
+    $("#kpi-prive-op").textContent = M().fmtEur(prive.opgenomen);
+    $("#kpi-prive-in").textContent = M().fmtEur(prive.gestort);
+    $("#kpi-prive-netto").textContent = M().fmtEur(prive.netto);
   }
 
   function renderStatus() {

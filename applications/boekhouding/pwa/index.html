@@ -46,20 +46,21 @@
       <!-- ============ BANKBOEK ============ -->
       <section id="panel-bank" class="tab-panel">
         <div class="card">
-          <div class="invoer-stats row-2">
-            <div>
-              <span class="stat-label">Actueel saldo</span>
-              <span id="bank-saldo" class="stat-value">—</span>
-            </div>
-            <div>
-              <span class="stat-label">Openstaand (niet ingeboekt)</span>
-              <span id="bank-open-count" class="stat-value">—</span>
-            </div>
+          <div class="kpi-row">
+            <div class="kpi kpi-rabo"><span class="kpi-label">Rabo</span><span id="bank-saldo-rabo" class="kpi-value">—</span></div>
+            <div class="kpi kpi-knab"><span class="kpi-label">Knab</span><span id="bank-saldo-knab" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Openstaand</span><span id="bank-open-count" class="kpi-value">—</span></div>
           </div>
+          <p id="bank-zonder-rek" class="sub hidden"></p>
         </div>
 
         <div class="card">
           <h2>Nieuwe bankregel</h2>
+          <label>Rekening</label>
+          <div id="bank-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
+            <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">Rabobank</button>
+            <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">Knab</button>
+          </div>
           <label for="bank-datum">Datum</label>
           <div class="date-row">
             <button type="button" id="btn-bank-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
@@ -89,6 +90,11 @@
 
         <div class="card">
           <h2>Openstaande bankregels</h2>
+          <div id="bank-filter" class="rek-filter">
+            <button type="button" data-f="Alles" class="chip active">Alles</button>
+            <button type="button" data-f="Rabo" class="chip">Rabo</button>
+            <button type="button" data-f="Knab" class="chip">Knab</button>
+          </div>
           <button type="button" id="btn-bank-match-all" class="btn-match-all hidden"></button>
           <p class="sub">Tik voor bewerken, matchen en ingeboekt markeren. Vegen kan ook: rechts bewerken, links verwijderen.</p>
           <ul id="bank-open-list" class="boek-list"></ul>
@@ -455,6 +461,16 @@
         </div>
 
         <div class="card">
+          <h2>Privé-opnames</h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Opgenomen</span><span id="kpi-prive-op" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Gestort</span><span id="kpi-prive-in" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Netto opgenomen</span><span id="kpi-prive-netto" class="kpi-value">—</span></div>
+          </div>
+          <p class="sub">Herkend aan "privé" of "opstartbudget" in de omschrijving/opmerking van bankregels — handig voor het jaaroverzicht.</p>
+        </div>
+
+        <div class="card">
           <h2>Reiskosten</h2>
           <div class="kpi-row">
             <div class="kpi"><span class="kpi-label">Ritten</span><span id="kpi-ritten" class="kpi-value">—</span></div>
@@ -537,6 +553,11 @@
       <div class="modal-sheet">
         <h2 id="bank-modal-title">Bankregel</h2>
         <p id="bank-modal-info" class="sub">—</p>
+        <label>Rekening</label>
+        <div id="bank-m-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
+          <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">Rabobank</button>
+          <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">Knab</button>
+        </div>
         <label for="bank-m-omschrijving">Omschrijving</label>
         <input id="bank-m-omschrijving" autocomplete="off" />
         <div class="row-2">

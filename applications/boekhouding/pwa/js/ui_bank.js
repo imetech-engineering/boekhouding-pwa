@@ -8,6 +8,46 @@
 
   let modalRow = null; // geselecteerde bankregel in de modal
   let gematchteRijen = []; // openstaande regels waarvoor een factuur gevonden is
+  let filter = "Alles"; // Alles | Rabo | Knab
+
+  const REK_KEY = "boek_laatste_rekening";
+
+  function nieuweRekening() {
+    try {
+      const v = localStorage.getItem(REK_KEY);
+      if (v === "Rabo" || v === "Knab") return v;
+    } catch (_) {}
+    return "Knab";
+  }
+
+  /** Segmented switch: zet de actieve rekening en geef de huidige keuze terug. */
+  function setSwitch(containerId, rekening) {
+    document.querySelectorAll(`#${containerId} .rek-opt`).forEach((b) => {
+      const actief = b.dataset.rek === rekening;
+      b.classList.toggle("active", actief);
+      b.setAttribute("aria-checked", String(actief));
+    });
+  }
+
+  function getSwitch(containerId) {
+    return document.querySelector(`#${containerId} .rek-opt.active`)?.dataset.rek || "";
+  }
+
+  function bindSwitch(containerId, onChange) {
+    document.querySelectorAll(`#${containerId} .rek-opt`).forEach((b) => {
+      b.addEventListener("click", () => {
+        setSwitch(containerId, b.dataset.rek);
+        App().haptic(15);
+        onChange?.(b.dataset.rek);
+      });
+    });
+  }
+
+  function rekDot(rekening) {
+    if (rekening === "Rabo") return '<span class="rek-dot rek-dot-rabo" title="Rabobank"></span>';
+    if (rekening === "Knab") return '<span class="rek-dot rek-dot-knab" title="Knab"></span>';
+    return "";
+  }
 
   function recenteFacturen() {
     const st = App().state;
@@ -56,7 +96,7 @@
     }
     li.innerHTML = `
       <div class="bi-head">
-        <span class="bi-title">${escapeHtml(r.omschrijving || "(geen omschrijving)")}</span>
+        <span class="bi-title">${rekDot(r.rekening)}${escapeHtml(r.omschrijving || "(geen omschrijving)")}</span>
         ${bedragHtml}
       </div>
       <div class="bi-sub">
@@ -123,21 +163,29 @@
   function render() {
     const st = App().state;
     const filled = st.bankRows.filter((r) => !r.isEmpty);
+    const zichtbaar = (r) => filter === "Alles" || r.rekening === filter;
     const open = filled.filter((r) => !r.ingeboekt);
-    const last = filled[filled.length - 1];
-    $("#bank-saldo").textContent = last ? M().fmtEur(last.saldo) : "—";
+
+    const saldi = M().saldiPerRekening(st.bankRows);
+    $("#bank-saldo-rabo").textContent = st.loaded ? M().fmtEur(saldi.Rabo) : "—";
+    $("#bank-saldo-knab").textContent = st.loaded ? M().fmtEur(saldi.Knab) : "—";
     $("#bank-open-count").textContent = String(open.length);
+    const zonder = $("#bank-zonder-rek");
+    zonder.classList.toggle("hidden", !saldi.zonderRekening);
+    if (saldi.zonderRekening) {
+      zonder.textContent = `⚠ ${saldi.zonderRekening} regel${saldi.zonderRekening === 1 ? "" : "s"} zonder rekening — tik erop en kies Rabo of Knab.`;
+    }
 
     const facturen = recenteFacturen();
     const openList = $("#bank-open-list");
     openList.innerHTML = "";
     gematchteRijen = [];
-    for (const r of open.slice().reverse().slice(0, 50)) {
+    for (const r of open.filter(zichtbaar).slice().reverse().slice(0, 50)) {
       const li = rowLine(r, { showMatch: true, facturen });
       if (li.classList.contains("has-match")) gematchteRijen.push(r);
       openList.appendChild(li);
     }
-    if (!open.length) {
+    if (!openList.children.length) {
       openList.innerHTML = '<li class="sub">Alles is ingeboekt 🎉</li>';
     }
     const knop = $("#btn-bank-match-all");
@@ -151,7 +199,7 @@
 
     const recentList = $("#bank-recent-list");
     recentList.innerHTML = "";
-    for (const r of filled.slice(-8).reverse()) {
+    for (const r of filled.filter(zichtbaar).slice(-8).reverse()) {
       recentList.appendChild(rowLine(r));
     }
     updateNewRowMatchHint();
@@ -165,6 +213,7 @@
       in: M().parseUserAmount($("#bank-in").value),
       uit: M().parseUserAmount($("#bank-uit").value),
       opmerking: $("#bank-opmerking").value.trim(),
+      rekening: getSwitch("bank-rek-switch"),
     };
   }
 
@@ -200,11 +249,15 @@
 
   async function saveNewRow() {
     const f = newRowFields();
+    if (!f.rekening) return App().showToast("Kies een rekening (Rabo of Knab).", true);
     if (!f.datumIso) return App().showToast("Vul een datum in.", true);
     if (!f.omschrijving) return App().showToast("Vul een omschrijving in.", true);
     if (f.in == null && f.uit == null) {
       return App().showToast("Vul In en/of Uit in.", true);
     }
+    try {
+      localStorage.setItem(REK_KEY, f.rekening);
+    } catch (_) {}
     const matches = M().invoiceMatchesForBankRow(recenteFacturen(), {
       datum: M().isoToDate(f.datumIso),
       in: f.in,
@@ -245,6 +298,7 @@
     $("#bank-m-in").value = r.in != null ? M().fmtAmountInput(r.in) : "";
     $("#bank-m-uit").value = r.uit != null ? M().fmtAmountInput(r.uit) : "";
     $("#bank-m-opmerking").value = r.opmerking;
+    setSwitch("bank-m-rek-switch", r.rekening);
     $("#btn-bank-m-ingeboekt").textContent = r.ingeboekt
       ? "Markeer als NIET ingeboekt"
       : "Markeer ingeboekt";
@@ -283,6 +337,7 @@
     const fields = {
       omschrijving: $("#bank-m-omschrijving").value.trim(),
       opmerking: $("#bank-m-opmerking").value.trim(),
+      rekening: getSwitch("bank-m-rek-switch") || null,
       updateAmounts: inVal !== modalRow.in || uitVal !== modalRow.uit,
       in: inVal,
       uit: uitVal,
@@ -327,6 +382,18 @@
 
   function init() {
     $("#bank-datum").value = M().todayIso();
+    setSwitch("bank-rek-switch", nieuweRekening());
+    bindSwitch("bank-rek-switch");
+    bindSwitch("bank-m-rek-switch");
+    document.querySelectorAll("#bank-filter .chip").forEach((c) => {
+      c.addEventListener("click", () => {
+        filter = c.dataset.f;
+        document.querySelectorAll("#bank-filter .chip").forEach((x) =>
+          x.classList.toggle("active", x === c)
+        );
+        render();
+      });
+    });
     App().bindDateSteppers("bank-datum", "btn-bank-date-prev", "btn-bank-date-next", updateNewRowMatchHint);
     global.BoekCombo.createCombo(
       "bank-omschrijving",

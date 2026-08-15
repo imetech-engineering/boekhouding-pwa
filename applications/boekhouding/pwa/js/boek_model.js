@@ -13,7 +13,8 @@
   const MATCH_DAYS = 14;
 
   // 0-based kolomindexen binnen de tabel-array (kolom A = 0)
-  const BANK = { DATUM: 0, OMS: 1, IN: 2, UIT: 3, SALDO: 4, INGEBOEKT: 5, OPM: 6 };
+  const BANK = { DATUM: 0, OMS: 1, IN: 2, UIT: 3, SALDO: 4, INGEBOEKT: 5, OPM: 6, REK: 7 };
+  const REKENINGEN = ["Rabo", "Knab"];
   const INK = {
     DATUM: 0, PERIODE: 1, JAAR: 2, LEVERANCIER: 3, OMS: 4, FNR: 5, BEDRAG: 6,
     BEDRAG_ORIG: 7, VALUTA: 8, KOERS: 9, BTW: 10, VERLEGD: 11, VERLEGD_EUR: 12,
@@ -169,6 +170,7 @@
         saldo: isEmpty ? null : saldo,
         ingeboekt: cellBool(v[BANK.INGEBOEKT]),
         opmerking: opm,
+        rekening: cellText(v[BANK.REK]),
         isEmpty,
         isEmptySlot,
       });
@@ -264,13 +266,57 @@
     return found;
   }
 
-  /** Saldo-formule zoals bestaande formule-rijen in het werkboek. */
-  function saldoFormula(prevExcelRow) {
-    const base = prevExcelRow ? `E${prevExcelRow}` : "0";
+  /**
+   * Zelf-herstellende saldo-formule per rekening (kolom H): telt alle In min Uit
+   * van dezelfde rekening tot en met deze rij op. Volgorde-onafhankelijk, en
+   * verwijderen van een rij kan zonder andere formules te herkoppelen.
+   */
+  function saldoFormula(excelRow) {
+    const n = excelRow;
     return (
-      `=IF(AND(ISBLANK(Tabel1[[#This Row],[In (€)]]),ISBLANK(Tabel1[[#This Row],[Uit (€)]])),"",` +
-      `${base}+Tabel1[[#This Row],[In (€)]]-Tabel1[[#This Row],[Uit (€)]])`
+      `=IF(AND(ISBLANK($C${n}),ISBLANK($D${n})),"",` +
+      `ROUND(SUMIF($H$6:$H${n},$H${n},$C$6:$C${n})-SUMIF($H$6:$H${n},$H${n},$D$6:$D${n}),2))`
     );
+  }
+
+  /** Actueel saldo per rekening, plus rijen die nog een rekening missen. */
+  function saldiPerRekening(bankRows) {
+    const saldi = { Rabo: 0, Knab: 0 };
+    let zonder = 0;
+    for (const r of bankRows) {
+      if (r.isEmpty) continue;
+      const net = (r.in || 0) - (r.uit || 0);
+      if (saldi[r.rekening] !== undefined) {
+        saldi[r.rekening] = Math.round((saldi[r.rekening] + net) * 100) / 100;
+      } else if ((r.in != null || r.uit != null) && !/priv[eéè]\s*betaald/i.test(r.opmerking)) {
+        // 'Privé betaald'-regels horen bewust bij geen enkele rekening
+        zonder++;
+      }
+    }
+    return { ...saldi, zonderRekening: zonder };
+  }
+
+  /** Privé-opnames en -stortingen van een jaar, herkend aan de omschrijving/opmerking. */
+  const PRIVE_RE = /priv[eéè]|opstartbudget/i;
+
+  function priveOverzicht(bankRows, jaar) {
+    let opgenomen = 0;
+    let gestort = 0;
+    let regels = 0;
+    for (const r of bankRows) {
+      if (r.isEmpty || !r.datum || r.datum.getUTCFullYear() !== jaar) continue;
+      if (!r.rekening) continue; // 'privé betaald'-regels raken geen rekening
+      if (!PRIVE_RE.test(`${r.omschrijving} ${r.opmerking}`)) continue;
+      opgenomen += r.uit || 0;
+      gestort += r.in || 0;
+      regels++;
+    }
+    return {
+      opgenomen: Math.round(opgenomen * 100) / 100,
+      gestort: Math.round(gestort * 100) / 100,
+      netto: Math.round((opgenomen - gestort) * 100) / 100,
+      regels,
+    };
   }
 
   /** Inkoop/verkoop: eerste rij zonder datum én partij (desktop-regel). */
@@ -629,11 +675,12 @@
   global.BoekModel = {
     SHEET_BANK, SHEET_VERKOOP, SHEET_INKOOP,
     TABLE_BANK, TABLE_VERKOOP, TABLE_INKOOP,
-    BANK, INK, VRK, MATCH_DAYS,
+    BANK, INK, VRK, MATCH_DAYS, REKENINGEN,
     serialToDate, dateToIso, isoToDate, formatDateNl, todayIso, daysBetween, isoToYymmdd,
     parseCellAmount, parseUserAmount, fmtEur, fmtAmountInput, cellText, cellBool,
     parseBankRows, parseInkoopRows, parseVerkoopRows,
-    firstEmptyBankSlot, lastFilledBankRowBefore, saldoFormula, firstEmptyBoekSlot,
+    firstEmptyBankSlot, lastFilledBankRowBefore, saldoFormula, saldiPerRekening,
+    priveOverzicht, firstEmptyBoekSlot,
     normalizeParty, partyNamesMatch, buildIntel, partyDefaults, findDuplicate,
     bankMatchesForInvoice, invoiceMatchesForBankRow,
     normalizeLand, countryToType,

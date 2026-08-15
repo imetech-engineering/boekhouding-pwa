@@ -45,32 +45,32 @@
   // === Bankboek ===
 
   /**
-   * Nieuwe bankregel: eerste lege slot binnen Tabel1, saldo als formule.
-   * fields: {datumIso, omschrijving, in, uit, opmerking}
+   * Nieuwe bankregel: eerste lege slot binnen Tabel1, saldo als formule per rekening.
+   * fields: {datumIso, omschrijving, in, uit, opmerking, rekening, ingeboekt}
    */
-  async function addBankRow(token, fields, snapshot) {
+  async function addBankRow(token, fields) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
       // Verse leesronde binnen de sessie (bescherming tegen verouderde snapshot)
       const bank = await W().readTableRange(path, token, M().TABLE_BANK, sid);
       const rows = M().parseBankRows(bank.values, bank.headerRow);
       const targetRow = M().firstEmptyBankSlot(rows);
-      const prev = M().lastFilledBankRowBefore(rows, targetRow);
       const sheet = M().SHEET_BANK;
       if (bank.endRow && targetRow > bank.endRow) {
-        // Tabel vol → rij toevoegen via tabel-API (formule direct mee)
+        // Tabel vol → rij toevoegen via tabel-API (formule als '='-string gaat mee)
         await W().addTableRow(path, token, sid, M().TABLE_BANK, [
           fields.datumIso,
           fields.omschrijving || "",
           fields.in != null ? fields.in : null,
           fields.uit != null ? fields.uit : null,
-          M().saldoFormula(prev ? prev.excelRow : null),
+          M().saldoFormula((bank.endRow || 5) + 1),
           !!fields.ingeboekt,
           fields.opmerking || "",
+          fields.rekening || "",
         ]);
         return { excelRow: (bank.endRow || 5) + 1 };
       }
-      await W().patchValues(path, token, sid, sheet, `A${targetRow}:G${targetRow}`, [
+      await W().patchValues(path, token, sid, sheet, `A${targetRow}:H${targetRow}`, [
         [
           fields.datumIso,
           fields.omschrijving || "",
@@ -79,10 +79,11 @@
           null, // saldo → formule hieronder
           !!fields.ingeboekt,
           fields.opmerking || "",
+          fields.rekening || "",
         ],
       ]);
       await W().patchFormulas(path, token, sid, sheet, `E${targetRow}`, [
-        [M().saldoFormula(prev ? prev.excelRow : null)],
+        [M().saldoFormula(targetRow)],
       ]);
       return { excelRow: targetRow };
     });
@@ -90,7 +91,7 @@
 
   /**
    * Bestaande bankregel bijwerken.
-   * fields: {omschrijving?, opmerking?, in?, uit?, updateAmounts:boolean}
+   * fields: {omschrijving?, opmerking?, rekening?, in?, uit?, updateAmounts:boolean}
    */
   async function updateBankRow(token, excelRow, fields) {
     const path = drivePath();
@@ -102,16 +103,16 @@
       if (fields.opmerking != null) {
         await W().patchValues(path, token, sid, sheet, `G${excelRow}`, [[fields.opmerking]]);
       }
+      if (fields.rekening != null) {
+        await W().patchValues(path, token, sid, sheet, `H${excelRow}`, [[fields.rekening]]);
+      }
       if (fields.updateAmounts) {
         await W().patchValues(path, token, sid, sheet, `C${excelRow}:D${excelRow}`, [
           [fields.in != null ? fields.in : "", fields.uit != null ? fields.uit : ""],
         ]);
-        // Saldo naar zelf-herstellende formule (ook als het een hard getal was)
-        const bank = await W().readTableRange(path, token, M().TABLE_BANK, sid);
-        const rows = M().parseBankRows(bank.values, bank.headerRow);
-        const prev = M().lastFilledBankRowBefore(rows, excelRow);
+        // Saldo naar zelf-herstellende formule (ook als het nog een hard getal was)
         await W().patchFormulas(path, token, sid, sheet, `E${excelRow}`, [
-          [M().saldoFormula(prev ? prev.excelRow : null)],
+          [M().saldoFormula(excelRow)],
         ]);
       }
     });
@@ -128,26 +129,15 @@
   }
 
   /**
-   * Bankregel leegmaken. De saldo-formule van de eerstvolgende gevulde regel
-   * verwijst naar deze rij, dus die wordt opnieuw gekoppeld aan de regel ervóór —
-   * anders staat er na het verwijderen #WAARDE! in de saldokolom.
+   * Bankregel leegmaken. De saldo-formules zijn per rekening opgeteld en
+   * verwijzen niet naar elkaar, dus andere rijen hebben hier geen last van.
    */
   async function deleteBankRow(token, excelRow) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
-      const sheet = M().SHEET_BANK;
-      const bank = await W().readTableRange(path, token, M().TABLE_BANK, sid);
-      const rows = M().parseBankRows(bank.values, bank.headerRow);
-      const prev = M().lastFilledBankRowBefore(rows, excelRow);
-      const next = rows.find((r) => r.excelRow > excelRow && !r.isEmpty);
-      await W().patchValues(path, token, sid, sheet, `A${excelRow}:G${excelRow}`, [
-        ["", "", "", "", "", false, ""],
+      await W().patchValues(path, token, sid, M().SHEET_BANK, `A${excelRow}:H${excelRow}`, [
+        ["", "", "", "", null, false, "", ""],
       ]);
-      if (next) {
-        await W().patchFormulas(path, token, sid, sheet, `E${next.excelRow}`, [
-          [M().saldoFormula(prev ? prev.excelRow : null)],
-        ]);
-      }
     });
   }
 

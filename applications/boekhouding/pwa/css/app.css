@@ -1031,6 +1031,42 @@ button {
   max-height: 96dvh;
 }
 
+/* ===== Toevoegen: één plusknop met de opties eronder ===== */
+.scan-add-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.scan-opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+}
+
+.scan-opt:active {
+  background: var(--bg-hover);
+}
+
+.scan-opt .opt-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.scan-add-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 /* ===== Bon scannen ===== */
 .scan-busy {
   position: sticky;

@@ -107,13 +107,20 @@
           <ul id="inkoop-files-list" class="file-list"></ul>
           <p id="inkoop-files-empty" class="sub hidden">Geen facturen in de map.</p>
           <div class="btn-row">
-            <button type="button" id="btn-scan-camera" class="btn-primary">＋ Bon fotograferen</button>
+            <button type="button" id="btn-scan-toggle" class="btn-primary" aria-expanded="false" aria-controls="scan-add-options">＋ Factuur toevoegen</button>
           </div>
-          <div class="btn-row">
-            <button type="button" id="btn-scan-gallery" class="btn-secondary">Foto uit galerij</button>
-            <button type="button" id="btn-scan-file" class="btn-secondary">Bestand toevoegen</button>
+          <div id="scan-add-options" class="scan-add-options hidden">
+            <button type="button" id="btn-scan-camera" class="scan-opt">
+              <span class="opt-icon">📷</span><span>Camera</span>
+            </button>
+            <button type="button" id="btn-scan-gallery" class="scan-opt">
+              <span class="opt-icon">🖼️</span><span>Galerij</span>
+            </button>
+            <button type="button" id="btn-scan-file" class="scan-opt">
+              <span class="opt-icon">📄</span><span>Bestand</span>
+            </button>
+            <p class="sub scan-add-hint">Foto's worden rechtgetrokken; een bestand (PDF of afbeelding) gaat ongewijzigd mee.</p>
           </div>
-          <p class="sub">Foto's worden rechtgetrokken; een bestand (PDF of afbeelding) gaat ongewijzigd naar de map.</p>
           <input type="file" id="scan-input-camera" accept="image/*" capture="environment" class="hidden" />
           <input type="file" id="scan-input-gallery" accept="image/*" class="hidden" />
           <input type="file" id="scan-input-file" accept="application/pdf,image/*" multiple class="hidden" />

@@ -29,13 +29,25 @@
 
   // === Foto kiezen ===
 
+  /** Opties onder de plusknop tonen of verbergen. */
+  function toggleOpties(open) {
+    const wrap = $("#scan-add-options");
+    const knop = $("#btn-scan-toggle");
+    const nu = open != null ? open : wrap.classList.contains("hidden");
+    wrap.classList.toggle("hidden", !nu);
+    knop.setAttribute("aria-expanded", String(nu));
+    knop.textContent = nu ? "✕ Sluiten" : "＋ Factuur toevoegen";
+  }
+
   function pickPhoto(useCamera) {
+    toggleOpties(false);
     const input = useCamera ? $("#scan-input-camera") : $("#scan-input-gallery");
     input.value = "";
     input.click();
   }
 
   function pickFile() {
+    toggleOpties(false);
     const input = $("#scan-input-file");
     input.value = "";
     input.click();
@@ -442,6 +454,7 @@
       updateFilenamePreview,
       { title: "Leverancier" }
     );
+    $("#btn-scan-toggle").addEventListener("click", () => toggleOpties());
     $("#btn-scan-camera").addEventListener("click", () => pickPhoto(true));
     $("#btn-scan-gallery").addEventListener("click", () => pickPhoto(false));
     $("#btn-scan-file").addEventListener("click", pickFile);

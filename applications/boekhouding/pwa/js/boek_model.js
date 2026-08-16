@@ -590,11 +590,14 @@
   }
 
   /**
-   * Dagen waarop je volgens de uren op een bekende bestemming werkte,
-   * maar waarvoor (nog) geen rit geboekt is.
+   * Dagen waarop je volgens de uren ergens anders dan thuis werkte, zonder
+   * geboekte rit. Bekende bestemmingen krijgen km mee; onbekende locaties
+   * worden ook voorgesteld (fav = null) zodat je ze in één keer kunt inrichten.
+   * `afgewezen` bevat keys ("datumIso|naam") die de gebruiker heeft weggedrukt.
    */
-  function reisVoorstellen(urenRows, inkoopHistory, bestemmingen, thuisPlaats, maxDagen = 60) {
+  function reisVoorstellen(urenRows, inkoopHistory, bestemmingen, thuisPlaats, afgewezen = [], maxDagen = 60) {
     const thuis = normalizeParty(thuisPlaats || "Aalten");
+    const afgSet = new Set(afgewezen);
     const nu = new Date();
     const cutoff = new Date(nu.getTime() - maxDagen * 86400000);
 
@@ -608,8 +611,7 @@
       geboekt.get(key).push(p.naam);
     }
 
-    const voorstellen = [];
-    const gezien = new Set();
+    const perKey = new Map();
     for (const u of urenRows) {
       if (u.datum < cutoff || u.datum > nu) continue;
       const loc = normalizeParty(u.locatie);
@@ -617,18 +619,25 @@
       const best = bestemmingen.find(
         (b) => partyNamesMatch(b.naam, u.locatie) || partyNamesMatch(b.naam, u.opdrachtgever)
       );
-      if (!best) continue;
-      const key = `${dateToIso(u.datum)}|${best.naam.toLowerCase()}`;
-      if (gezien.has(key)) continue;
-      gezien.add(key);
-      const ritten = geboekt.get(dateToIso(u.datum)) || [];
-      if (ritten.some((naam) => partyNamesMatch(naam, best.naam))) continue;
-      voorstellen.push({
-        datumIso: dateToIso(u.datum),
-        datumStr: u.datumStr,
-        fav: best,
-      });
+      const naam = best ? best.naam : u.locatie;
+      const iso = dateToIso(u.datum);
+      const key = `${iso}|${naam.toLowerCase()}`;
+      if (afgSet.has(key)) continue;
+      const ritten = geboekt.get(iso) || [];
+      if (ritten.some((r) => partyNamesMatch(r, naam))) continue;
+      if (!perKey.has(key)) {
+        perKey.set(key, {
+          key,
+          datumIso: iso,
+          datumStr: u.datumStr,
+          fav: best || null,
+          locatie: u.locatie,
+          urenRijen: [],
+        });
+      }
+      perKey.get(key).urenRijen.push(u.excelRow);
     }
+    const voorstellen = [...perKey.values()];
     voorstellen.sort((a, b) => (a.datumIso < b.datumIso ? 1 : -1));
     return voorstellen.slice(0, 12);
   }

@@ -309,6 +309,16 @@
     });
   }
 
+  /** Locatie (kolom G) van urenregels corrigeren in het urenwerkboek. */
+  async function updateUrenLocatie(token, excelRows, locatie) {
+    const cfg = global.BOEK_CONFIG.graph;
+    return W().withSession(cfg.urenPath, token, async (sid) => {
+      for (const row of excelRows) {
+        await W().patchValues(cfg.urenPath, token, sid, cfg.urenSheet, `G${row}`, [[locatie]]);
+      }
+    });
+  }
+
   global.BoekIo = {
     drivePath,
     loadAll,
@@ -322,5 +332,6 @@
     addVerkoopRow,
     updateVerkoopRow,
     deleteVerkoopRow,
+    updateUrenLocatie,
   };
 })(window);

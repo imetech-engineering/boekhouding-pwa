@@ -375,6 +375,61 @@
     }
   }
 
+  /** Voorstel wegdrukken; keuze syncet via de instellingen naar al je apparaten. */
+  async function wijsAf(v) {
+    const oud = settings().reisAfgewezen || [];
+    const grens = M().dateToIso(new Date(Date.now() - 90 * 86400000));
+    const nieuw = [...oud.filter((k) => k.slice(0, 10) >= grens), v.key];
+    App().haptic(15);
+    await App().saveSettings({ reisAfgewezen: nieuw });
+    renderVoorstellen();
+  }
+
+  /** Onbekende locatie: formulier voorzetten, adres nog even zoeken. */
+  function vulNieuw(v) {
+    clearForm();
+    $("#reis-datum").value = v.datumIso;
+    $("#reis-naam").value = v.locatie;
+    $("#reis-fav-save").checked = true;
+    updatePreview();
+    App().haptic(15);
+    $("#reis-form-card").scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => $("#reis-adres").focus(), 350);
+  }
+
+  // — Urenregistratie corrigeren (verkeerde locatie ingevoerd) —
+  let fixVoorstel = null;
+
+  function openUrenFix(v) {
+    fixVoorstel = v;
+    $("#uren-fix-info").textContent =
+      `${v.datumStr} · ${v.urenRijen.length} urenregel${v.urenRijen.length === 1 ? "" : "s"} met locatie "${v.locatie}"`;
+    $("#uren-fix-locatie").value = "";
+    $("#uren-fix-modal").classList.remove("hidden");
+    setTimeout(() => $("#uren-fix-locatie").focus(), 250);
+  }
+
+  async function bewaarUrenFix() {
+    const locatie = $("#uren-fix-locatie").value.trim();
+    if (!fixVoorstel || !locatie) return App().showToast("Vul de juiste locatie in.", true);
+    const v = fixVoorstel;
+    $("#uren-fix-modal").classList.add("hidden");
+    App().setStatus("Urenregistratie bijwerken…");
+    try {
+      const token = await App().ensureLoggedIn();
+      await global.BoekIo.updateUrenLocatie(token, v.urenRijen, locatie);
+      for (const u of App().state.urenRows || []) {
+        if (v.urenRijen.includes(u.excelRow)) u.locatie = locatie;
+      }
+      App().setStatus("Gesynchroniseerd");
+      App().showToast(`Locatie aangepast naar "${locatie}"`);
+      renderVoorstellen();
+    } catch (e) {
+      App().setStatus("Bijwerken mislukt", true);
+      App().showToast(e.message || String(e), true);
+    }
+  }
+
   function renderVoorstellen() {
     const card = $("#reis-voorstel-card");
     const list = $("#reis-voorstel-list");
@@ -387,31 +442,47 @@
       urenRows,
       App().state.intel.inkoop.history,
       alleFavorieten(),
-      settings().thuisAdres?.plaats || "Aalten"
+      settings().thuisAdres?.plaats || "Aalten",
+      settings().reisAfgewezen || []
     );
     card.classList.toggle("hidden", !voorstellen.length);
     list.innerHTML = "";
     for (const v of voorstellen) {
       const li = document.createElement("li");
       li.className = "reis-row";
+      const sub = v.fav
+        ? `${escapeHtml(v.fav.naam)} (${M().formatKm(v.fav.km)} km)`
+        : `${escapeHtml(v.locatie)} · nieuw`;
       li.innerHTML = `
         <span class="reis-name">${v.datumStr}
-          <span class="reis-sub">· ${escapeHtml(v.fav.naam)} (${M().formatKm(v.fav.km)} km)</span>
+          <span class="reis-sub">· ${sub}</span>
         </span>
-        <button type="button" class="btn-icon voorstel-boek">Boek</button>`;
+        <button type="button" class="btn-icon voorstel-boek">${v.fav ? "Boek" : "Invullen"}</button>
+        <button type="button" class="btn-icon voorstel-fix" aria-label="Urenlocatie corrigeren" title="Urenlocatie corrigeren">✎</button>
+        <button type="button" class="btn-icon btn-icon-danger voorstel-weg" aria-label="Voorstel afwijzen" title="Afwijzen">✕</button>`;
       li.addEventListener("click", (e) => {
         if (e.target.closest("button")) return;
-        vulFavoriet(v.fav);
-        $("#reis-datum").value = v.datumIso;
-        updatePreview();
+        if (v.fav) {
+          vulFavoriet(v.fav);
+          $("#reis-datum").value = v.datumIso;
+          updatePreview();
+        } else {
+          vulNieuw(v);
+        }
       });
       li.querySelector(".voorstel-boek").addEventListener("click", async () => {
-        vulFavoriet(v.fav);
-        $("#reis-datum").value = v.datumIso;
-        updatePreview();
-        await boek();
-        renderVoorstellen();
+        if (v.fav) {
+          vulFavoriet(v.fav);
+          $("#reis-datum").value = v.datumIso;
+          updatePreview();
+          await boek();
+          renderVoorstellen();
+        } else {
+          vulNieuw(v);
+        }
       });
+      li.querySelector(".voorstel-fix").addEventListener("click", () => openUrenFix(v));
+      li.querySelector(".voorstel-weg").addEventListener("click", () => wijsAf(v));
       list.appendChild(li);
     }
   }
@@ -440,6 +511,18 @@
     $("#btn-reis-boek").addEventListener("click", boek);
     $("#btn-reis-clear").addEventListener("click", clearForm);
     $("#btn-reis-cancel-edit").addEventListener("click", clearForm);
+    global.BoekCombo.createCombo(
+      "uren-fix-locatie",
+      null,
+      () => {
+        const set = new Set();
+        for (const u of App().state.urenRows || []) if (u.locatie) set.add(u.locatie);
+        return [...set].sort((a, b) => a.localeCompare(b));
+      },
+      null,
+      { title: "Locatie" }
+    );
+    $("#btn-uren-fix-save").addEventListener("click", bewaarUrenFix);
     $("#btn-reis-toggle-all").addEventListener("click", () => {
       $("#reis-all-wrap").classList.toggle("hidden");
       renderBestemmingen();

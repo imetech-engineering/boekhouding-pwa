@@ -25,6 +25,7 @@ window.BOEK_CONFIG = {
     /** Urenwerkboek — voor reiskosten-voorstellen op basis van waar je gewerkt hebt. */
     urenPath: "02 Boekhouding/04 Urenadministratie/urenadministratie_2025.xlsx",
     urenTable: "Tabel13",
+    urenSheet: "Urenadministratie",
     settingsPath: "02 Boekhouding/boekhouding_pwa_settings.json",
     folders: {
       verkoopNieuw: "02 Boekhouding/01 Verkoop facturen/Facturen verkoop nog te verwerken",

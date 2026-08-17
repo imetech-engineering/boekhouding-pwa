@@ -713,7 +713,13 @@
       if (kant == null && !q) continue;
       if (q && !`${r.omschrijving} ${r.opmerking}`.toLowerCase().includes(q)) continue;
       const exact = kant != null && factuur.bedrag != null && Math.abs(kant - factuur.bedrag) < 0.005;
-      if (!q && !exact) continue; // zonder zoekterm alleen exacte bedragen
+      if (!q && !exact) {
+        // Zonder zoekterm ook termijn-kandidaten: kleiner bedrag, binnen ±60 dagen
+        // (deelbetalingen: meerdere bankregels dekken samen één factuur).
+        const dichtbij =
+          factuur.datum && r.datum && daysBetween(r.datum, factuur.datum) <= 60;
+        if (!(dichtbij && factuur.bedrag != null && kant < factuur.bedrag - 0.005)) continue;
+      }
       uit.push({ ...r, exact });
     }
     uit.sort((a, b) => {

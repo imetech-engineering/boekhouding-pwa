@@ -1185,6 +1185,7 @@
   }
 
   function renderAnalyse() {
+    renderUrencriterium();
     if (!state.entries.length) {
       $("#analyse-summary").textContent = "Geen data — ververs uit OneDrive.";
       $("#analyse-list").innerHTML = "";
@@ -1291,6 +1292,35 @@
     }
     updatePeriodCustomVisibility();
     renderGrafieken();
+  }
+
+  /** Urencriterium (1225 u/jaar voor zelfstandigenaftrek): voortgang vs. jaarschema. */
+  function renderUrencriterium() {
+    const tekst = $("#uc-tekst");
+    if (!tekst) return;
+    const DOEL = 1225;
+    const jaar = new Date().getFullYear();
+    let tot = 0;
+    for (const r of state.entries) {
+      const d = r.datum instanceof Date ? r.datum : new Date(r.datum);
+      if (d.getFullYear() === jaar) tot += r.uren || 0;
+    }
+    const jaarDagen = new Date(jaar, 1, 29).getMonth() === 1 ? 366 : 365;
+    const dagVanJaar = Math.floor((Date.now() - new Date(jaar, 0, 1)) / 86400000) + 1;
+    const verwacht = (DOEL * dagVanJaar) / jaarDagen;
+    const verschil = tot - verwacht;
+    $("#uc-jaar").textContent = String(jaar);
+    const fill = $("#uc-fill");
+    fill.style.width = `${Math.min(100, (tot / DOEL) * 100).toFixed(1)}%`;
+    fill.classList.toggle("uc-achter", tot < DOEL && verschil < 0);
+    tekst.textContent =
+      tot >= DOEL
+        ? `${Math.floor(tot)} / ${DOEL} uur — gehaald ✓`
+        : `${Math.floor(tot)} / ${DOEL} uur · ${
+            verschil >= 0
+              ? `${Math.floor(verschil)} uur vóór op schema ✓`
+              : `${Math.ceil(-verschil)} uur achter op schema`
+          }`;
   }
 
   function renderAccount() {

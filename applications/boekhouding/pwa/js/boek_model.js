@@ -1003,6 +1003,31 @@
     }));
   }
 
+  /** Investeringen (afschrijving-vinkje) van een jaar, netto — voor de KIA-drempel. */
+  const KIA_DREMPEL = 2901;
+  function kiaTotaal(inkoopRows, jaar) {
+    let som = 0;
+    let aantal = 0;
+    for (const r of inkoopRows) {
+      if (r.isEmpty || !r.afschrijving || !r.datum || r.datum.getUTCFullYear() !== jaar) continue;
+      som += r.netto != null ? r.netto : (r.bedrag || 0) / 1.21;
+      aantal++;
+    }
+    return { som: Math.round(som * 100) / 100, aantal, drempel: KIA_DREMPEL };
+  }
+
+  /** Boekwaarde van alle investeringen per einde jaar (activa op de mini-balans). */
+  function boekwaardeActiva(inkoopRows, jaar) {
+    let invest = 0;
+    let afgeschreven = 0;
+    for (const r of inkoopRows) {
+      if (r.isEmpty || !r.datum || r.datum.getUTCFullYear() > jaar) continue;
+      if (r.afschrijving) invest += r.netto || 0;
+      else if (r.categorie === "Afschrijving") afgeschreven += r.netto != null ? r.netto : r.bedrag || 0;
+    }
+    return Math.round((invest - afgeschreven) * 100) / 100;
+  }
+
   /** Top-N groepering, bijvoorbeeld omzet per klant of kosten per categorie. */
   function topGroepen(rows, jaar, keyFn, valFn, n = 8) {
     const map = new Map();
@@ -1054,5 +1079,6 @@
     parseUrenRows, reisVoorstellen,
     kwartaalOverzicht,
     beschikbareJaren, maandCijfers, btwAangifte, topGroepen, reisTotaal,
+    kiaTotaal, boekwaardeActiva,
   };
 })(window);

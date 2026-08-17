@@ -974,3 +974,24 @@ html[data-theme="dark"] .status-geannuleerd { background: #450a0a; color: #fca5a
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* Urencriterium-voortgang (1225 uur) */
+.uc-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent-light);
+  overflow: hidden;
+  margin: 4px 0 8px;
+}
+
+#uc-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+#uc-fill.uc-achter {
+  background: #f0a500;
+}

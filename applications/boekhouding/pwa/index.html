@@ -51,6 +51,7 @@
             <div class="kpi kpi-knab"><span class="kpi-label">Knab</span><span id="bank-saldo-knab" class="kpi-value">—</span></div>
             <div class="kpi"><span class="kpi-label">Openstaand</span><span id="bank-open-count" class="kpi-value">—</span></div>
           </div>
+          <p id="bank-btw-potje" class="sub hidden"></p>
           <p id="bank-zonder-rek" class="sub hidden"></p>
         </div>
 
@@ -412,6 +413,17 @@
             <div class="kpi"><span class="kpi-label">Resultaat</span><span id="kpi-resultaat" class="kpi-value">—</span></div>
           </div>
           <p class="sub">Netto bedragen, exclusief BTW.</p>
+          <p id="ovz-kia" class="sub hidden"></p>
+          <button type="button" id="btn-jaarrapport" class="btn-secondary btn-inline">📄 Jaarrapport (PDF)</button>
+        </div>
+
+        <div class="card">
+          <h2>Onbetaalde verkoopfacturen</h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Openstaand</span><span id="kpi-onbetaald" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Facturen</span><span id="kpi-onbetaald-n" class="kpi-value">—</span></div>
+          </div>
+          <div id="ovz-onbetaald"></div>
         </div>
 
         <div class="card">

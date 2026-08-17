@@ -220,6 +220,17 @@
     $("#bank-saldo-rabo").textContent = st.loaded ? M().fmtEur(saldi.Rabo) : "—";
     $("#bank-saldo-knab").textContent = st.loaded ? M().fmtEur(saldi.Knab) : "—";
     $("#bank-open-count").textContent = String(open.length);
+    // BTW-reservering: wat er van het saldo eigenlijk opzij staat voor de aangifte.
+    const potjeEl = $("#bank-btw-potje");
+    if (potjeEl && st.loaded) {
+      const nu = new Date();
+      const kw = M().btwAangifte(st.inkoopRows, st.verkoopRows, nu.getFullYear());
+      const s = kw[Math.floor(nu.getMonth() / 3)];
+      potjeEl.classList.toggle("hidden", !(s && s.saldo > 0.005));
+      if (s && s.saldo > 0.005) {
+        potjeEl.textContent = `waarvan ± ${M().fmtEur(s.saldo)} BTW-reservering voor ${s.q}`;
+      }
+    }
     const zonder = $("#bank-zonder-rek");
     zonder.classList.toggle("hidden", !saldi.zonderRekening);
     if (saldi.zonderRekening) {

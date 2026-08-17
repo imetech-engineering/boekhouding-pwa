@@ -185,6 +185,8 @@
     const losBank = M().bankZonderKoppeling(st.bankRows);
     $("#kpi-fact-los").textContent = String(losFact.length);
     $("#kpi-bank-los").textContent = String(losBank.length);
+    renderOnbetaald(losFact);
+    renderKia();
 
     // Klikbare lijstjes: tik op een regel om hem direct te koppelen.
     const lijst = (elId, kop, items, regel, onTik, toonAlles) => {
@@ -237,6 +239,116 @@
   }
 
   const toonAllesSet = new Set();
+
+  /** Verkoopfacturen zonder bankregel = nog niet betaald; tik = koppelen (betaald melden). */
+  function renderOnbetaald(losFact) {
+    const onbetaald = losFact.filter((f) => f.boek === "verkoop" && f.bedrag > 0);
+    const totaal = onbetaald.reduce((s, f) => s + f.bedrag, 0);
+    $("#kpi-onbetaald").textContent = M().fmtEur(totaal);
+    $("#kpi-onbetaald-n").textContent = String(onbetaald.length);
+    const el = $("#ovz-onbetaald");
+    el.innerHTML = "";
+    for (const f of onbetaald.slice(0, 6)) {
+      const dagen = Math.floor((Date.now() - f.datum.getTime()) / 86400000);
+      const p = document.createElement("p");
+      p.className = "sub ovz-koppel-item";
+      p.textContent = `• ${f.partij}${f.factuurnummer ? " · " + f.factuurnummer : ""} · ${M().fmtEur(f.bedrag)} · ${dagen} dgn${dagen > 30 ? " ⚠" : ""}`;
+      p.addEventListener("click", () => openFactuurKoppel(f));
+      el.appendChild(p);
+    }
+    if (onbetaald.length > 6) {
+      const p = document.createElement("p");
+      p.className = "sub";
+      p.textContent = `… en nog ${onbetaald.length - 6}`;
+      el.appendChild(p);
+    }
+  }
+
+  /** KIA-regel onder de kerncijfers: investeringen dit jaar t.o.v. de drempel. */
+  function renderKia() {
+    const st = App().state;
+    const el = $("#ovz-kia");
+    const kia = M().kiaTotaal(st.inkoopRows, jaar);
+    el.classList.toggle("hidden", !kia.aantal);
+    if (!kia.aantal) return;
+    el.textContent =
+      kia.som >= kia.drempel
+        ? `Investeringen ${jaar}: ${M().fmtEur(kia.som)} (${kia.aantal}×) — boven de KIA-drempel, ±28% extra aftrek ✓`
+        : `Investeringen ${jaar}: ${M().fmtEur(kia.som)} (${kia.aantal}×) — nog ${M().fmtEur(kia.drempel - kia.som)} tot de KIA-drempel (${M().fmtEur(kia.drempel)})`;
+  }
+
+  /** Jaarrapport: winst & verlies + mini-balans + BTW als printbare pagina (→ PDF). */
+  function openJaarrapport() {
+    const st = App().state;
+    if (!st.loaded) return App().showToast("Eerst verversen.", true);
+    const inJaar = (r) => !r.isEmpty && r.datum && r.datum.getUTCFullYear() === jaar;
+    const omzet = st.verkoopRows.filter(inJaar).reduce((s, r) => s + (r.netto || 0), 0);
+    // Investeringen zijn geen kosten: de jaarlast zit al in de afschrijvingsregels.
+    const kostenRows = st.inkoopRows.filter((r) => inJaar(r) && !r.afschrijving);
+    const kosten = kostenRows.reduce((s, r) => s + (r.netto || 0), 0);
+    const kostenPerCat = M().topGroepen(kostenRows, jaar, (r) => r.categorie || "(geen categorie)", (r) => r.netto || 0, 99);
+    const omzetPerKlant = M().topGroepen(st.verkoopRows, jaar, (r) => r.partij, (r) => r.netto || 0, 99);
+    const btw = M().btwAangifte(st.inkoopRows, st.verkoopRows, jaar);
+    const kia = M().kiaTotaal(st.inkoopRows, jaar);
+    const activa = M().boekwaardeActiva(st.inkoopRows, jaar);
+    const eind = new Date(Date.UTC(jaar, 11, 31, 23, 59));
+    const saldi = M().saldiPerRekening(st.bankRows.filter((r) => !r.isEmpty && r.datum && r.datum <= eind));
+    const prive = M().priveOverzicht(st.bankRows, jaar);
+    const reis = M().reisTotaal(st.inkoopRows, jaar);
+    const eur = (v) => M().fmtEur(v);
+    const rij = (n, b, sterk) => `<tr${sterk ? ' class="sterk"' : ""}><td>${n}</td><td class="num">${eur(b)}</td></tr>`;
+    const w = window.open("", "_blank");
+    if (!w) return App().showToast("Pop-up geblokkeerd — sta pop-ups toe.", true);
+    w.document.write(`<!doctype html><html lang="nl"><head><meta charset="utf-8"><title>Jaarrapport ${jaar} — IMeTech</title>
+<style>
+  body { font: 13px/1.45 "Segoe UI", system-ui, sans-serif; color: #16233b; margin: 32px auto; max-width: 720px; }
+  h1 { font-size: 21px; margin: 0 0 2px; } .sub { color: #5b6b85; margin: 0 0 18px; }
+  h2 { font-size: 14px; margin: 20px 0 6px; border-bottom: 2px solid #16233b; padding-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { padding: 3px 6px; border-bottom: 1px solid #e3e8f0; text-align: left; }
+  .num { text-align: right; white-space: nowrap; } tr.sterk td { font-weight: 700; border-top: 2px solid #16233b; }
+  .twee { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media print { body { margin: 0; } .noprint { display: none; } }
+</style></head><body>
+<h1>Jaarrapport ${jaar}</h1>
+<p class="sub">IMeTech Engineering · netto bedragen excl. BTW · gegenereerd ${new Date().toLocaleDateString("nl-NL")}</p>
+<button class="noprint" onclick="print()">Afdrukken / opslaan als PDF</button>
+<h2>Winst &amp; verlies</h2>
+<table>
+${omzetPerKlant.map((x) => rij(`Omzet — ${x.naam}`, x.bedrag)).join("")}
+${rij("Totaal omzet", omzet, true)}
+${kostenPerCat.map((x) => rij(`Kosten — ${x.naam}`, x.bedrag)).join("")}
+${rij("Totaal kosten", kosten, true)}
+${rij("Resultaat", omzet - kosten, true)}
+</table>
+<div class="twee"><div>
+<h2>Mini-balans per 31-12</h2>
+<table>
+${rij("Bedrijfsmiddelen (boekwaarde)", activa)}
+${rij("Rabo", saldi.Rabo)}
+${rij("Knab", saldi.Knab)}
+${rij("Totaal", activa + saldi.Rabo + saldi.Knab, true)}
+</table>
+<h2>Privé</h2>
+<table>
+${rij("Opgenomen", prive.opgenomen)}
+${rij("Gestort", prive.gestort)}
+${rij("Netto opgenomen", prive.netto, true)}
+</table>
+</div><div>
+<h2>BTW per kwartaal</h2>
+<table><tr><th>Kw</th><th class="num">Verschuldigd</th><th class="num">Voorbelasting</th><th class="num">Saldo</th></tr>
+${btw.map((s) => `<tr><td>${s.q}</td><td class="num">${eur(s.verschuldigd)}</td><td class="num">${eur(s.terugTeVragen)}</td><td class="num">${eur(s.saldo)}</td></tr>`).join("")}
+</table>
+<h2>Overig</h2>
+<table>
+${rij(`Investeringen (KIA${kia.som >= kia.drempel ? " ✓" : ""})`, kia.som)}
+${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
+</table>
+</div></div>
+</body></html>`);
+    w.document.close();
+  }
 
   // === Factuur → bankregel koppelen (kiezer) ===
   let koppelFactuur = null;
@@ -375,6 +487,7 @@
   function init() {
     $("#btn-koppel-sluit").addEventListener("click", sluitFactuurKoppel);
     $("#koppel-zoek").addEventListener("input", renderKoppelLijst);
+    $("#btn-jaarrapport").addEventListener("click", openJaarrapport);
     $("#btn-ovz-year-prev").addEventListener("click", () => {
       jaar -= 1;
       render();

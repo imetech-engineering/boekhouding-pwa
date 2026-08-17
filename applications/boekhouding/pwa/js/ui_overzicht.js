@@ -431,10 +431,10 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
 
   function openFactuurKoppel(f) {
     koppelFactuur = f;
-    $("#koppel-modal-title").textContent = `Koppel: ${f.partij}`;
-    $("#koppel-modal-info").textContent = `${f.boek === "verkoop" ? "Verkoop" : "Inkoop"} · ${
-      f.factuurnummer ? f.factuurnummer + " · " : ""
-    }${M().fmtEur(f.bedrag)} · ${f.datumStr} — kies de bankregel die erbij hoort:`;
+    $("#koppel-modal-title").textContent = `${f.partij}${f.factuurnummer ? " · " + f.factuurnummer : ""}`;
+    $("#koppel-modal-info").textContent = `Met welke bankregel is deze ${M().fmtEur(f.bedrag)} ${
+      f.boek === "verkoop" ? "ontvangen" : "betaald"
+    }? Tik hem aan:`;
     $("#koppel-zoek").value = "";
     renderKoppelLijst();
     $("#koppel-modal").classList.remove("hidden");
@@ -448,7 +448,7 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     const kandidaten = M().bankKandidatenVoorFactuur(f, st.bankRows, zoek);
     const list = $("#koppel-lijst");
     list.innerHTML = "";
-    for (const b of kandidaten.slice(0, 10)) {
+    for (const b of kandidaten.slice(0, 8)) {
       const li = document.createElement("li");
       li.className = "boek-item koppel-kandidaat";
       const bedrag = b.in != null ? `+ ${M().fmtEur(b.in)}` : `− ${M().fmtEur(b.uit)}`;
@@ -457,9 +457,7 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
           <span class="bi-title">${escapeHtml(b.omschrijving || "(geen omschrijving)")}</span>
           <span class="bi-amount">${bedrag}</span>
         </div>
-        <div class="bi-sub"><span>${b.datumStr}${b.koppelingRaw ? " · al deels gekoppeld" : ""}${
-        b.ingeboekt ? " · ✓ ingeboekt" : ""
-      }</span><span>${b.exact ? "✓ zelfde bedrag" : ""}</span></div>`;
+        <div class="bi-sub"><span>${b.datumStr}</span><span class="koppel-exact">${b.exact ? "✓ bedrag klopt" : ""}</span></div>`;
       li.addEventListener("click", async () => {
         const waarde = M().koppelWaarde(
           f.boek === "verkoop" ? "V" : "I",
@@ -470,7 +468,7 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
         sluitFactuurKoppel();
         await App().persistMutation(
           { kind: "bank_koppel", items: [{ excelRow: b.excelRow, waarde, ingeboekt: true }] },
-          { successMsg: `${f.partij} gekoppeld aan bankregel ${b.datumStr}` }
+          { successMsg: `${f.partij} gekoppeld ✓` }
         );
       });
       list.appendChild(li);
@@ -478,8 +476,8 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     if (!list.children.length) {
       list.innerHTML = `<li class="sub">${
         zoek
-          ? "Niets gevonden."
-          : `Geen bankregel met exact ${M().fmtEur(f.bedrag)} — zoek hierboven op omschrijving (bijv. bij een verzamelbetaling), of koppel vanuit de bankregel zelf.`
+          ? "Niets gevonden — probeer een ander woord."
+          : `Geen bankregel van ${M().fmtEur(f.bedrag)} gevonden — waarschijnlijk is de betaling nog niet binnen. Je kunt hierboven ook op omschrijving zoeken.`
       }</li>`;
     }
   }

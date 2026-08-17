@@ -694,6 +694,11 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   font-weight: 600;
 }
 
+.koppel-exact {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .btn-match-all {
   display: block;
   width: 100%;

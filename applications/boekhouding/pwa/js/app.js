@@ -276,7 +276,7 @@
       case "bank_koppel":
         return global.BoekIo.koppelBank(token, d.items);
       case "bank_ontkoppel":
-        return global.BoekIo.ontkoppelBank(token, d.excelRow);
+        return global.BoekIo.ontkoppelBank(token, d.excelRow, d.waarde || "");
       case "inkoop_add": {
         const res = await global.BoekIo.addInkoopRow(token, d.fields);
         await koppelNaInboeken(token, d, res, "I");

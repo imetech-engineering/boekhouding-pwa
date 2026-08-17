@@ -261,10 +261,31 @@
           : `✓ Alle ${gematchteRijen.length} regels met factuur ingeboekt markeren`;
     }
 
+    // Zoekveld doorzoekt álle bankregels (omschrijving, opmerking, koppeling, bedrag);
+    // zonder zoekterm: de laatste 8.
     const recentList = $("#bank-recent-list");
     recentList.innerHTML = "";
-    for (const r of filled.filter(zichtbaar).slice(-8).reverse()) {
+    const zoekterm = ($("#bank-zoek")?.value || "").trim().toLowerCase();
+    let tonen;
+    if (zoekterm) {
+      tonen = filled
+        .filter(zichtbaar)
+        .filter((r) =>
+          `${r.omschrijving} ${r.opmerking} ${r.koppelingRaw} ${r.datumStr} ${r.in ?? ""} ${r.uit ?? ""}`
+            .toLowerCase()
+            .replace(/\./g, ",")
+            .includes(zoekterm.replace(/\./g, ","))
+        )
+        .slice(-20)
+        .reverse();
+    } else {
+      tonen = filled.filter(zichtbaar).slice(-8).reverse();
+    }
+    for (const r of tonen) {
       recentList.appendChild(rowLine(r));
+    }
+    if (zoekterm && !tonen.length) {
+      recentList.innerHTML = '<li class="sub">Niets gevonden.</li>';
     }
     updateNewRowMatchHint();
   }
@@ -669,6 +690,7 @@
       document.getElementById(id).addEventListener("change", updateNewRowMatchHint);
     }
     $("#btn-bank-match-all").addEventListener("click", markeerAlleMatches);
+    $("#bank-zoek").addEventListener("input", render);
     $("#btn-bank-m-save").addEventListener("click", modalSave);
     $("#btn-bank-m-koppel").addEventListener("click", modalKoppel);
     $("#btn-bank-m-geen").addEventListener("click", modalGeenFactuur);

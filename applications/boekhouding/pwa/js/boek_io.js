@@ -168,10 +168,11 @@
   }
 
   /** Koppeling van een bankregel weghalen. */
-  async function ontkoppelBank(token, excelRow) {
+  /** Kolom I van een bankregel exact zetten; lege waarde = volledig ontkoppelen. */
+  async function ontkoppelBank(token, excelRow, waarde = "") {
     const path = drivePath();
     return W().withSession(path, token, (sid) =>
-      W().patchValues(path, token, sid, M().SHEET_BANK, `I${excelRow}`, [[""]])
+      W().patchValues(path, token, sid, M().SHEET_BANK, `I${excelRow}`, [[waarde || ""]])
     );
   }
 

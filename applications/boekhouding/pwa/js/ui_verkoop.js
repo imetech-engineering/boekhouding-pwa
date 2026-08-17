@@ -353,6 +353,13 @@
         if (ev.target.closest("button")) return;
         applyHistory(h);
       });
+      if (gekoppeld) {
+        // Tik op 🔗 → koppelingen van deze factuur bekijken/ontkoppelen/aanvullen
+        li.querySelector(".bi-amount").addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          global.BoekUiOverzicht?.openFactuurKoppel({ ...h, boek: "verkoop" });
+        });
+      }
       li.querySelector('[data-act="edit"]').addEventListener("click", () => startEdit(h));
       li.querySelector('[data-act="del"]').addEventListener("click", () => deleteRow(h));
       App().bindSwipe(li, { onEdit: () => startEdit(h), onDelete: () => deleteRow(h) });

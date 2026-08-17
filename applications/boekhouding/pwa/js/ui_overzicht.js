@@ -186,33 +186,125 @@
     $("#kpi-fact-los").textContent = String(losFact.length);
     $("#kpi-bank-los").textContent = String(losBank.length);
 
-    const lijst = (elId, kop, items, regel) => {
+    // Klikbare lijstjes: tik op een regel om hem direct te koppelen.
+    const lijst = (elId, kop, items, regel, onTik, toonAlles) => {
       const el = $(elId);
       el.innerHTML = "";
       if (!items.length) return;
       const h = document.createElement("p");
       h.className = "sub";
-      h.innerHTML = `<strong>${kop}</strong>`;
+      h.innerHTML = `<strong>${kop}</strong> <span class="sub">— tik om te koppelen</span>`;
       el.appendChild(h);
-      for (const it of items.slice(0, 8)) {
+      const max = toonAlles ? items.length : 8;
+      for (const it of items.slice(0, max)) {
         const p = document.createElement("p");
-        p.className = "sub";
+        p.className = "sub ovz-koppel-item";
         p.textContent = regel(it);
+        p.addEventListener("click", () => onTik(it));
         el.appendChild(p);
       }
-      if (items.length > 8) {
+      if (items.length > max) {
         const p = document.createElement("p");
-        p.className = "sub";
-        p.textContent = `… en nog ${items.length - 8}`;
+        p.className = "sub ovz-koppel-item";
+        p.textContent = `… en nog ${items.length - max} — toon alles`;
+        p.addEventListener("click", () => {
+          toonAllesSet.add(elId);
+          renderKoppelcontrole();
+        });
         el.appendChild(p);
       }
     };
-    lijst("#ovz-fact-los", "Facturen zonder bankregel:", losFact, (f) =>
-      `• ${f.datumStr} · ${f.boek === "verkoop" ? "V" : "I"} · ${f.partij} · ${M().fmtEur(f.bedrag)}`
+    lijst(
+      "#ovz-fact-los",
+      "Facturen zonder bankregel:",
+      losFact,
+      (f) =>
+        `• ${f.datumStr} · ${f.boek === "verkoop" ? "V" : "I"} · ${f.partij}${f.factuurnummer ? " · " + f.factuurnummer : ""} · ${M().fmtEur(f.bedrag)}`,
+      (f) => openFactuurKoppel(f),
+      toonAllesSet.has("#ovz-fact-los")
     );
-    lijst("#ovz-bank-los", "Ingeboekte bankregels zonder factuur:", losBank, (b) =>
-      `• ${b.datumStr} · ${b.omschrijving.slice(0, 38)} · ${M().fmtEur(b.in != null ? b.in : b.uit)}`
+    lijst(
+      "#ovz-bank-los",
+      "Ingeboekte bankregels zonder factuur:",
+      losBank,
+      (b) => `• ${b.datumStr} · ${b.omschrijving.slice(0, 38)} · ${M().fmtEur(b.in != null ? b.in : b.uit)}`,
+      (b) => {
+        App().switchTab("bank");
+        global.BoekUiBank?.openByExcelRow(b.excelRow);
+      },
+      toonAllesSet.has("#ovz-bank-los")
     );
+  }
+
+  const toonAllesSet = new Set();
+
+  // === Factuur → bankregel koppelen (kiezer) ===
+  let koppelFactuur = null;
+
+  function openFactuurKoppel(f) {
+    koppelFactuur = f;
+    $("#koppel-modal-title").textContent = `Koppel: ${f.partij}`;
+    $("#koppel-modal-info").textContent = `${f.boek === "verkoop" ? "Verkoop" : "Inkoop"} · ${
+      f.factuurnummer ? f.factuurnummer + " · " : ""
+    }${M().fmtEur(f.bedrag)} · ${f.datumStr} — kies de bankregel die erbij hoort:`;
+    $("#koppel-zoek").value = "";
+    renderKoppelLijst();
+    $("#koppel-modal").classList.remove("hidden");
+  }
+
+  function renderKoppelLijst() {
+    const f = koppelFactuur;
+    if (!f) return;
+    const st = App().state;
+    const zoek = $("#koppel-zoek").value;
+    const kandidaten = M().bankKandidatenVoorFactuur(f, st.bankRows, zoek);
+    const list = $("#koppel-lijst");
+    list.innerHTML = "";
+    for (const b of kandidaten.slice(0, 10)) {
+      const li = document.createElement("li");
+      li.className = "boek-item koppel-kandidaat";
+      const bedrag = b.in != null ? `+ ${M().fmtEur(b.in)}` : `− ${M().fmtEur(b.uit)}`;
+      li.innerHTML = `
+        <div class="bi-head">
+          <span class="bi-title">${escapeHtml(b.omschrijving || "(geen omschrijving)")}</span>
+          <span class="bi-amount">${bedrag}</span>
+        </div>
+        <div class="bi-sub"><span>${b.datumStr}${b.koppelingRaw ? " · al deels gekoppeld" : ""}${
+        b.ingeboekt ? " · ✓ ingeboekt" : ""
+      }</span><span>${b.exact ? "✓ zelfde bedrag" : ""}</span></div>`;
+      li.addEventListener("click", async () => {
+        const waarde = M().koppelWaarde(
+          f.boek === "verkoop" ? "V" : "I",
+          f,
+          st.inkoopRows,
+          st.verkoopRows
+        );
+        sluitFactuurKoppel();
+        await App().persistMutation(
+          { kind: "bank_koppel", items: [{ excelRow: b.excelRow, waarde, ingeboekt: true }] },
+          { successMsg: `${f.partij} gekoppeld aan bankregel ${b.datumStr}` }
+        );
+      });
+      list.appendChild(li);
+    }
+    if (!list.children.length) {
+      list.innerHTML = `<li class="sub">${
+        zoek
+          ? "Niets gevonden."
+          : `Geen bankregel met exact ${M().fmtEur(f.bedrag)} — zoek hierboven op omschrijving (bijv. bij een verzamelbetaling), of koppel vanuit de bankregel zelf.`
+      }</li>`;
+    }
+  }
+
+  function sluitFactuurKoppel() {
+    $("#koppel-modal").classList.add("hidden");
+    koppelFactuur = null;
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
   }
 
   function renderAccount() {
@@ -281,6 +373,8 @@
   }, 350);
 
   function init() {
+    $("#btn-koppel-sluit").addEventListener("click", sluitFactuurKoppel);
+    $("#koppel-zoek").addEventListener("input", renderKoppelLijst);
     $("#btn-ovz-year-prev").addEventListener("click", () => {
       jaar -= 1;
       render();

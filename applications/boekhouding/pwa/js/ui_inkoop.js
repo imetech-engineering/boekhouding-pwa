@@ -416,16 +416,17 @@
     list.innerHTML = "";
     let shown = 0;
     for (const h of intel().history) {
-      if (q && !`${h.partij} ${h.omschrijving} ${h.categorie} ${h.project}`.toLowerCase().includes(q)) continue;
+      if (q && !`${h.partij} ${h.omschrijving} ${h.categorie} ${h.project} ${h.factuurnummer || ""}`.toLowerCase().includes(q)) continue;
       const gekoppeld = kopIndex.has(`inkoop|${h.excelRow}`);
       const li = document.createElement("li");
       li.className = "boek-item" + (editRow === h.excelRow ? " selected" : "");
+      const nr = h.factuurnummer ? `${escapeHtml(h.factuurnummer)} · ` : "";
       li.innerHTML = `
         <div class="bi-head">
           <span class="bi-title">${escapeHtml(h.partij)}</span>
           <span class="bi-amount uit">${gekoppeld ? "🔗 " : ""}${M().fmtEur(h.bedrag)}</span>
         </div>
-        <div class="bi-sub"><span>${escapeHtml(h.omschrijving).slice(0, 70)}</span><span>${h.datumStr}</span></div>
+        <div class="bi-sub"><span>${nr}${escapeHtml(h.omschrijving).slice(0, 60)}</span><span>${h.datumStr}</span></div>
         ${App().rowActionsHtml()}`;
       li.addEventListener("click", (ev) => {
         if (ev.target.closest("button")) return;

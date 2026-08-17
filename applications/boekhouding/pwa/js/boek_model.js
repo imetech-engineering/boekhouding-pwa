@@ -537,6 +537,89 @@
       .reverse();
   }
 
+  /**
+   * Kandidaat-facturen om handmatig aan een bankregel te koppelen.
+   * Richting: bank-uit → inkoop, bank-in → verkoop. Al gekoppelde facturen doen niet mee.
+   * Zonder zoekterm: datum binnen ±dagen en bedrag ≤ bankbedrag (deelbetalingen kunnen samen
+   * één afschrijving dekken). Met zoekterm: alle facturen op partij/factuurnummer/omschrijving.
+   */
+  function koppelKandidaten(bankRow, inkoopRows, verkoopRows, index, dagen = MATCH_DAYS, zoek = "") {
+    const isVerkoop = bankRow.in != null;
+    const bedrag = isVerkoop ? bankRow.in : bankRow.uit;
+    const rows = isVerkoop ? verkoopRows : inkoopRows;
+    const boek = isVerkoop ? "verkoop" : "inkoop";
+    const q = String(zoek || "").trim().toLowerCase();
+    const uit = [];
+    for (const f of rows) {
+      if (f.isEmpty || f.bedrag == null || !f.datum) continue;
+      if (index && index.has(`${boek}|${f.excelRow}`)) continue;
+      if (q) {
+        const hay = `${f.partij} ${f.factuurnummer} ${f.omschrijving}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+      } else {
+        if (!bankRow.datum || daysBetween(f.datum, bankRow.datum) > dagen) continue;
+        if (bedrag != null && f.bedrag > bedrag + 0.005) continue;
+      }
+      uit.push({ ...f, boek: isVerkoop ? "Verkoop" : "Inkoop" });
+    }
+    uit.sort((a, b) => {
+      const da = bankRow.datum ? Math.abs(a.datum - bankRow.datum) : 0;
+      const db = bankRow.datum ? Math.abs(b.datum - bankRow.datum) : 0;
+      return da - db;
+    });
+    return uit;
+  }
+
+  /** Kleinste combinatie facturen (max 4) die samen precies het doelbedrag dekt, of null. */
+  function vindCombinatie(kandidaten, doelBedrag) {
+    if (doelBedrag == null || !kandidaten.length) return null;
+    const doel = Math.round(doelBedrag * 100);
+    const n = Math.min(kandidaten.length, 25);
+    const cents = kandidaten.slice(0, n).map((f) => Math.round(f.bedrag * 100));
+    for (let size = 1; size <= 4; size++) {
+      const pick = [];
+      const zoekSub = (start, rest) => {
+        if (pick.length === size) return rest === 0;
+        for (let i = start; i < n; i++) {
+          if (cents[i] > rest) continue;
+          pick.push(i);
+          if (zoekSub(i + 1, rest - cents[i])) return true;
+          pick.pop();
+        }
+        return false;
+      };
+      if (zoekSub(0, doel)) return pick.map((i) => kandidaten[i]);
+    }
+    return null;
+  }
+
+  /**
+   * Kandidaat-bankregels om een losse factuur aan te koppelen (vanuit de controle-lijst).
+   * Richting: verkoop → bank-in, inkoop → bank-uit. Exact bedrag + dichtstbijzijnde datum eerst;
+   * bankregels waar deze factuur al aan hangt vallen af. Met zoekterm: filter op omschrijving.
+   */
+  function bankKandidatenVoorFactuur(factuur, bankRows, zoek = "") {
+    const isVerkoop = String(factuur.boek || "").toLowerCase() === "verkoop";
+    const q = String(zoek || "").trim().toLowerCase();
+    const uit = [];
+    for (const r of bankRows) {
+      if (r.isEmpty || (r.in == null && r.uit == null)) continue;
+      const kant = isVerkoop ? r.in : r.uit;
+      if (kant == null) continue;
+      if (q && !`${r.omschrijving} ${r.opmerking}`.toLowerCase().includes(q)) continue;
+      const exact = factuur.bedrag != null && Math.abs(kant - factuur.bedrag) < 0.005;
+      if (!q && !exact) continue; // zonder zoekterm alleen exacte bedragen
+      uit.push({ ...r, exact });
+    }
+    uit.sort((a, b) => {
+      if (a.exact !== b.exact) return a.exact ? -1 : 1;
+      const da = factuur.datum && a.datum ? Math.abs(a.datum - factuur.datum) : Infinity;
+      const db = factuur.datum && b.datum ? Math.abs(b.datum - factuur.datum) : Infinity;
+      return da - db;
+    });
+    return uit;
+  }
+
   // === Bank-matching (bedrag exact, datum ±dagen, richting) ===
   // Bankregels/facturen die al gekoppeld zijn doen niet meer mee — dat voorkomt
   // dubbel afvinken van dezelfde factuur.
@@ -887,6 +970,7 @@
     normalizeParty, partyNamesMatch, buildIntel, partyDefaults, findDuplicate,
     bankMatchesForInvoice, invoiceMatchesForBankRow,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
+    koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur,
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,

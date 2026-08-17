@@ -338,7 +338,7 @@
     list.innerHTML = "";
     let shown = 0;
     for (const h of intel().history) {
-      if (q && !`${h.partij} ${h.omschrijving} ${h.categorie}`.toLowerCase().includes(q)) continue;
+      if (q && !`${h.partij} ${h.omschrijving} ${h.categorie} ${h.factuurnummer || ""}`.toLowerCase().includes(q)) continue;
       const gekoppeld = kopIndex.has(`verkoop|${h.excelRow}`);
       const li = document.createElement("li");
       li.className = "boek-item" + (editRow === h.excelRow ? " selected" : "");

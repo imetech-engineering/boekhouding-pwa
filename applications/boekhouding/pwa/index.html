@@ -593,8 +593,14 @@
           <ul id="bank-m-koppeling" class="boek-list"></ul>
         </div>
         <div id="bank-m-matches-wrap" class="hidden">
-          <p class="sub"><strong>Matchende facturen</strong> — tik op Koppel om vast te leggen:</p>
+          <p class="sub"><strong>Koppelen aan factuur</strong> — tik facturen aan (meerdere kan, bijv. één Amazon-afschrijving voor meerdere facturen):</p>
+          <input id="bank-m-koppel-zoek" placeholder="🔍 Zoek op naam of factuurnummer (alle facturen)…" autocomplete="off" />
           <ul id="bank-m-matches" class="boek-list"></ul>
+          <div id="bank-m-som" class="koppel-som hidden"></div>
+          <div class="btn-row">
+            <button type="button" id="btn-bank-m-koppel" class="btn-primary" disabled>Koppel</button>
+            <button type="button" id="btn-bank-m-geen" class="btn-secondary">Geen factuur nodig ✓</button>
+          </div>
         </div>
         <div class="btn-row">
           <button type="button" id="btn-bank-m-ingeboekt" class="btn-primary">Markeer ingeboekt</button>
@@ -608,6 +614,20 @@
         <div class="btn-row">
           <button type="button" id="btn-bank-m-naar-inkoop" class="btn-secondary">→ Boek als kosten (inkoop)</button>
           <button type="button" id="btn-bank-m-naar-verkoop" class="btn-secondary">→ Als omzet (verkoop)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Factuur aan bankregel koppelen (vanuit Overzicht → Koppelingscontrole) -->
+    <div id="koppel-modal" class="modal hidden" role="dialog" aria-labelledby="koppel-modal-title">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-sheet">
+        <h2 id="koppel-modal-title">Koppel aan bankregel</h2>
+        <p id="koppel-modal-info" class="sub">—</p>
+        <input id="koppel-zoek" placeholder="🔍 Zoek in bankregels…" autocomplete="off" />
+        <ul id="koppel-lijst" class="boek-list"></ul>
+        <div class="btn-row">
+          <button type="button" id="btn-koppel-sluit" class="btn-secondary">Sluiten</button>
         </div>
       </div>
     </div>

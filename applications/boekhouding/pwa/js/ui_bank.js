@@ -73,10 +73,12 @@
     return M().invoiceMatchesForBankRow(facturen, r, kopIndex, App().state.matchDagen);
   }
 
-  /** Korte weergave van een koppeling: partij of token + datum. */
+  /** Korte weergave van een koppeling: partij + factuurnummer + bedrag + datum. */
   function koppelLabel(k) {
+    if (k.token === "-") return "geen factuur (bewust)";
     if (k.row) {
-      return `${escapeHtml(k.row.partij)} · ${M().fmtEur(k.row.bedrag)} · ${k.row.datumStr}`;
+      const nr = k.row.factuurnummer ? ` · ${escapeHtml(k.row.factuurnummer)}` : "";
+      return `${escapeHtml(k.row.partij)}${nr} · ${M().fmtEur(k.row.bedrag)} · ${k.row.datumStr}`;
     }
     return `${escapeHtml(k.token)} (niet gevonden)`;
   }
@@ -389,40 +391,135 @@
       kopList.appendChild(li);
     }
 
-    // Matches met Koppel-knop (alleen als er nog geen koppeling is)
-    const matches = koppelingen.length ? [] : matchesVoorBankRow(r, recenteFacturen());
+    // Koppel-sectie: multi-select met som — één afschrijving kan meerdere
+    // facturen dekken (bijv. Amazon). Zoekveld doorzoekt álle ongekoppelde facturen.
+    koppelSelectie = new Map();
+    $("#bank-m-koppel-zoek").value = "";
+    $("#btn-bank-m-geen").classList.toggle("hidden", !!koppelingen.length);
+    renderKoppelSectie();
+    $("#bank-modal").classList.remove("hidden");
+  }
+
+  let koppelSelectie = new Map(); // "Boek|excelRow" → factuur
+
+  function bankBedrag(r) {
+    return r.in != null ? r.in : r.uit;
+  }
+
+  /** Bedrag dat al gedekt is door bestaande koppelingen van deze regel. */
+  function gekoppeldBedrag(r) {
+    if (!r.koppelingRaw) return 0;
+    const st = App().state;
+    return M()
+      .parseKoppelingen(r.koppelingRaw, st.inkoopRows, st.verkoopRows)
+      .reduce((s, k) => s + (k.row?.bedrag || 0), 0);
+  }
+
+  function renderKoppelSectie() {
+    const r = modalRow;
+    if (!r) return;
+    const st = App().state;
     const wrap = $("#bank-m-matches-wrap");
     const list = $("#bank-m-matches");
+    const bedrag = bankBedrag(r);
+    if (bedrag == null) {
+      wrap.classList.add("hidden");
+      return;
+    }
+    const zoek = $("#bank-m-koppel-zoek").value;
+    const kandidaten = M().koppelKandidaten(r, st.inkoopRows, st.verkoopRows, kopIndex, st.matchDagen, zoek);
+    const rest = Math.round((bedrag - gekoppeldBedrag(r)) * 100) / 100;
+    // Suggestie vooraf aanvinken: kleinste combinatie die het bedrag precies dekt.
+    if (!zoek && !koppelSelectie.size && !r.koppelingRaw) {
+      const combi = M().vindCombinatie(kandidaten, rest);
+      if (combi) for (const f of combi) koppelSelectie.set(`${f.boek}|${f.excelRow}`, f);
+    }
+    wrap.classList.remove("hidden");
     list.innerHTML = "";
-    wrap.classList.toggle("hidden", !matches.length);
-    for (const f of matches.slice(0, 6)) {
+    for (const f of kandidaten.slice(0, zoek ? 12 : 8)) {
+      const key = `${f.boek}|${f.excelRow}`;
+      const sel = koppelSelectie.has(key);
       const li = document.createElement("li");
-      li.className = "boek-item";
+      li.className = "boek-item koppel-kandidaat" + (sel ? " selected" : "");
+      const nr = f.factuurnummer ? ` · ${escapeHtml(f.factuurnummer)}` : "";
       li.innerHTML = `
         <div class="bi-head">
-          <span class="bi-title">${escapeHtml(f.boek)}: ${escapeHtml(f.partij)}</span>
+          <span class="bi-title"><span class="koppel-check">${sel ? "☑" : "☐"}</span> ${escapeHtml(f.partij)}${nr}</span>
           <span class="bi-amount">${M().fmtEur(f.bedrag)}</span>
         </div>
-        <div class="bi-sub"><span>${escapeHtml(f.omschrijving).slice(0, 60)}</span><span>${f.datumStr}</span></div>
-        <span class="row-actions">
-          <button type="button" class="btn-icon koppel-knop">Koppel</button>
-        </span>`;
-      li.querySelector(".koppel-knop").addEventListener("click", async () => {
-        const waarde = M().koppelWaarde(
-          f.boek.toLowerCase() === "verkoop" ? "V" : "I",
-          f,
-          App().state.inkoopRows,
-          App().state.verkoopRows
-        );
-        closeModal();
-        await App().persistMutation(
-          { kind: "bank_koppel", items: [{ excelRow: r.excelRow, waarde, ingeboekt: true }] },
-          { successMsg: `Gekoppeld aan ${f.partij}` }
-        );
+        <div class="bi-sub"><span>${escapeHtml(f.boek)} · ${escapeHtml((f.omschrijving || "").slice(0, 40))}</span><span>${f.datumStr}</span></div>`;
+      li.addEventListener("click", () => {
+        if (koppelSelectie.has(key)) koppelSelectie.delete(key);
+        else koppelSelectie.set(key, f);
+        App().haptic(10);
+        renderKoppelSectie();
       });
       list.appendChild(li);
     }
-    $("#bank-modal").classList.remove("hidden");
+    if (!list.children.length) {
+      list.innerHTML = `<li class="sub">${
+        zoek
+          ? "Niets gevonden."
+          : `Geen kandidaten binnen ±${st.matchDagen} dagen — zoek hierboven op naam of factuurnummer.`
+      }</li>`;
+    }
+    const som = [...koppelSelectie.values()].reduce((s, f) => s + f.bedrag, 0);
+    const somEl = $("#bank-m-som");
+    const knop = $("#btn-bank-m-koppel");
+    somEl.classList.toggle("hidden", !koppelSelectie.size);
+    if (koppelSelectie.size) {
+      const klopt = Math.abs(som - rest) < 0.005;
+      somEl.textContent = `${koppelSelectie.size} geselecteerd · ${M().fmtEur(som)} van ${M().fmtEur(rest)} ${klopt ? "✓ dekt precies" : "⚠ wijkt af"}`;
+      somEl.classList.toggle("som-ok", klopt);
+      somEl.classList.toggle("som-af", !klopt);
+    }
+    knop.disabled = !koppelSelectie.size;
+    knop.textContent =
+      koppelSelectie.size > 1 ? `Koppel ${koppelSelectie.size} facturen` : "Koppel";
+  }
+
+  async function modalKoppel() {
+    if (!modalRow || !koppelSelectie.size) return;
+    const r = modalRow;
+    const st = App().state;
+    const sel = [...koppelSelectie.values()];
+    const som = sel.reduce((s, f) => s + f.bedrag, 0);
+    const rest = Math.round(((bankBedrag(r) || 0) - gekoppeldBedrag(r)) * 100) / 100;
+    if (Math.abs(som - rest) >= 0.005) {
+      const ok = await App().showConfirm(
+        `Som van de selectie (${M().fmtEur(som)}) wijkt af van het bankbedrag (${M().fmtEur(rest)}). Toch koppelen?`,
+        "Toch koppelen",
+        "Annuleren"
+      );
+      if (!ok) return;
+    }
+    const waarde = sel
+      .map((f) =>
+        M().koppelWaarde(f.boek.toLowerCase() === "verkoop" ? "V" : "I", f, st.inkoopRows, st.verkoopRows)
+      )
+      .join(", ");
+    closeModal();
+    await App().persistMutation(
+      { kind: "bank_koppel", items: [{ excelRow: r.excelRow, waarde, ingeboekt: true }] },
+      { successMsg: sel.length > 1 ? `${sel.length} facturen gekoppeld` : `Gekoppeld aan ${sel[0].partij}` }
+    );
+  }
+
+  /** Bewust géén factuur bij deze regel (bankkosten, privé, overboeking): "-" in kolom I. */
+  async function modalGeenFactuur() {
+    if (!modalRow) return;
+    const r = modalRow;
+    closeModal();
+    await App().persistMutation(
+      { kind: "bank_koppel", items: [{ excelRow: r.excelRow, waarde: "-", ingeboekt: true }] },
+      { successMsg: "Gemarkeerd: geen factuur nodig" }
+    );
+  }
+
+  /** Open de modal voor een specifieke Excel-rij (vanuit Overzicht → Koppelingscontrole). */
+  function openByExcelRow(excelRow) {
+    const r = App().state.bankRows.find((x) => !x.isEmpty && x.excelRow === excelRow);
+    if (r) openModal(r);
   }
 
   function closeModal() {
@@ -528,6 +625,9 @@
     }
     $("#btn-bank-match-all").addEventListener("click", markeerAlleMatches);
     $("#btn-bank-m-save").addEventListener("click", modalSave);
+    $("#btn-bank-m-koppel").addEventListener("click", modalKoppel);
+    $("#btn-bank-m-geen").addEventListener("click", modalGeenFactuur);
+    $("#bank-m-koppel-zoek").addEventListener("input", renderKoppelSectie);
     $("#btn-bank-m-ingeboekt").addEventListener("click", modalToggleIngeboekt);
     $("#btn-bank-m-naar-inkoop").addEventListener("click", () => modalNaarBoek(false));
     $("#btn-bank-m-naar-verkoop").addEventListener("click", () => modalNaarBoek(true));
@@ -537,5 +637,5 @@
   }
 
   App().registerTab("bank", { init, render });
-  global.BoekUiBank = { render };
+  global.BoekUiBank = { render, openByExcelRow };
 })(window);

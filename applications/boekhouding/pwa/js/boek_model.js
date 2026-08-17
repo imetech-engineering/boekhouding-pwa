@@ -611,6 +611,8 @@
       const boekKey = boekNaam.toLowerCase();
       for (const f of rows) {
         if (f.isEmpty || f.bedrag == null || !f.datum) continue;
+        // Reiskosten en afschrijvingen hebben per definitie geen bankregel
+        if (f.categorie === "Reiskosten" || f.categorie === "Afschrijving") continue;
         if (index && index.has(`${boekKey}|${f.excelRow}`)) continue;
         if (q) {
           const hay = `${f.partij} ${f.factuurnummer} ${f.omschrijving}`.toLowerCase();

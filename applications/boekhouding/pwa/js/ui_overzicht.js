@@ -188,21 +188,42 @@
     renderOnbetaald(losFact);
     renderKia();
 
-    // Klikbare lijstjes: tik op een regel om hem direct te koppelen.
-    const lijst = (elId, kop, items, regel, onTik, toonAlles) => {
+    // Klikbare lijstjes: tik = koppelen; ingedrukt houden (bankregels) = meerdere
+    // selecteren en in één keer "geen factuur nodig" markeren.
+    const lijst = (elId, kop, items, regel, onTik, toonAlles, opts = {}) => {
       const el = $(elId);
       el.innerHTML = "";
       if (!items.length) return;
       const h = document.createElement("p");
       h.className = "sub";
-      h.innerHTML = `<strong>${kop}</strong> <span class="sub">— tik om te koppelen</span>`;
+      h.innerHTML = `<strong>${kop}</strong> <span class="sub">— ${opts.hint || "tik om te koppelen"}</span>`;
       el.appendChild(h);
       const max = toonAlles ? items.length : 8;
       for (const it of items.slice(0, max)) {
         const p = document.createElement("p");
-        p.className = "sub ovz-koppel-item";
-        p.textContent = regel(it);
-        p.addEventListener("click", () => onTik(it));
+        const sel = opts.geselecteerd?.(it) || false;
+        p.className = "sub ovz-koppel-item" + (sel ? " selected" : "");
+        p.textContent = (sel ? "☑ " : "") + regel(it);
+        let timer = null;
+        let langGedrukt = false;
+        if (opts.onLang) {
+          p.addEventListener("contextmenu", (ev) => ev.preventDefault());
+          p.addEventListener("pointerdown", () => {
+            langGedrukt = false;
+            timer = setTimeout(() => {
+              langGedrukt = true;
+              App().haptic(20);
+              opts.onLang(it);
+            }, 450);
+          });
+          for (const evt of ["pointerup", "pointerleave", "pointercancel"]) {
+            p.addEventListener(evt, () => clearTimeout(timer));
+          }
+        }
+        p.addEventListener("click", () => {
+          if (langGedrukt) return; // long-press was al afgehandeld
+          onTik(it);
+        });
         el.appendChild(p);
       }
       if (items.length > max) {
@@ -231,10 +252,48 @@
       losBank,
       (b) => `• ${b.datumStr} · ${b.omschrijving.slice(0, 38)} · ${M().fmtEur(b.in != null ? b.in : b.uit)}`,
       (b) => {
-        App().switchTab("bank");
+        if (bankSelectie.size) {
+          toggleBankSelectie(b);
+          return;
+        }
         global.BoekUiBank?.openByExcelRow(b.excelRow);
       },
-      toonAllesSet.has("#ovz-bank-los")
+      toonAllesSet.has("#ovz-bank-los"),
+      {
+        hint: "tik = koppelen · ingedrukt houden = selecteren",
+        onLang: (b) => toggleBankSelectie(b),
+        geselecteerd: (b) => bankSelectie.has(b.excelRow),
+      }
+    );
+    if (bankSelectie.size) {
+      const bar = document.createElement("div");
+      bar.className = "btn-row";
+      bar.innerHTML = `
+        <button type="button" class="btn-primary" id="btn-geen-batch">✓ ${bankSelectie.size} × geen factuur nodig</button>
+        <button type="button" class="btn-secondary" id="btn-geen-annuleer">Annuleren</button>`;
+      $("#ovz-bank-los").appendChild(bar);
+      bar.querySelector("#btn-geen-batch").addEventListener("click", batchGeenFactuur);
+      bar.querySelector("#btn-geen-annuleer").addEventListener("click", () => {
+        bankSelectie.clear();
+        renderKoppelcontrole();
+      });
+    }
+  }
+
+  const bankSelectie = new Set(); // excelRows in multi-select (long-press)
+
+  function toggleBankSelectie(b) {
+    if (bankSelectie.has(b.excelRow)) bankSelectie.delete(b.excelRow);
+    else bankSelectie.add(b.excelRow);
+    renderKoppelcontrole();
+  }
+
+  async function batchGeenFactuur() {
+    const items = [...bankSelectie].map((row) => ({ excelRow: row, waarde: "-", ingeboekt: true }));
+    bankSelectie.clear();
+    await App().persistMutation(
+      { kind: "bank_koppel", items },
+      { successMsg: `${items.length} bankregel${items.length === 1 ? "" : "s"} gemarkeerd: geen factuur nodig` }
     );
   }
 

@@ -682,6 +682,18 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   background: var(--accent-light);
 }
 
+.ovz-koppel-item.selected {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.koppel-meer {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .btn-match-all {
   display: block;
   width: 100%;

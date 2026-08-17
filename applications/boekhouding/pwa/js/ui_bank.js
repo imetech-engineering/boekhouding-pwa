@@ -405,6 +405,7 @@
     // Koppel-sectie: multi-select met som — één afschrijving kan meerdere
     // facturen dekken (bijv. Amazon). Zoekveld doorzoekt álle ongekoppelde facturen.
     koppelSelectie = new Map();
+    koppelUitgeklapt = false;
     $("#bank-m-koppel-zoek").value = "";
     $("#btn-bank-m-geen").classList.toggle("hidden", !!koppelingen.length);
     renderKoppelSectie();
@@ -412,6 +413,7 @@
   }
 
   let koppelSelectie = new Map(); // "Boek|excelRow" → factuur
+  let koppelUitgeklapt = false; // al gekoppeld → sectie ingeklapt achter "+ nog een factuur"
 
   function bankBedrag(r) {
     return r.in != null ? r.in : r.uit;
@@ -442,7 +444,27 @@
       wrap.classList.add("hidden");
       return;
     }
-    const zoek = $("#bank-m-koppel-zoek").value;
+    // Al gekoppeld → sectie inklappen; via "+ nog een factuur" alsnog uitklappen
+    // (één bankregel kan meerdere facturen dekken).
+    const uitleg = $("#bank-m-koppel-uitleg");
+    const zoekEl = $("#bank-m-koppel-zoek");
+    if (r.koppelingRaw && !koppelUitgeklapt) {
+      wrap.classList.remove("hidden");
+      uitleg.classList.add("hidden");
+      zoekEl.classList.add("hidden");
+      $("#bank-m-som").classList.add("hidden");
+      $("#btn-bank-m-koppel").classList.add("hidden");
+      list.innerHTML = '<li class="sub koppel-meer">＋ Nog een factuur koppelen…</li>';
+      list.querySelector(".koppel-meer").addEventListener("click", () => {
+        koppelUitgeklapt = true;
+        renderKoppelSectie();
+      });
+      return;
+    }
+    uitleg.classList.remove("hidden");
+    zoekEl.classList.remove("hidden");
+    $("#btn-bank-m-koppel").classList.remove("hidden");
+    const zoek = zoekEl.value;
     const kandidaten = M().koppelKandidaten(r, st.inkoopRows, st.verkoopRows, kopIndex, st.matchDagen, zoek);
     const rest = Math.round((bedrag - gekoppeldBedrag(r)) * 100) / 100;
     // Suggestie vooraf aanvinken: kleinste combinatie die het bedrag precies dekt.

@@ -307,6 +307,36 @@
    * privé-deel uit de opmerking als daar een €-bedrag in staat.
    */
   const PRIVE_WOORD = /priv[eéè]/i;
+  // Factuur van de privérekening betaald → krijgt per definitie geen bankregel
+  // (de privérekening staat niet in het bankboek) en is een privé-inleg voor de IB.
+  const PRIVE_BETAALD_RE = /van\s+priv[eéè]?rekening|priv[eéè]?rekening\s+afgeschreven|priv[eéè]\s+betaald/i;
+
+  function isPriveBetaald(r) {
+    return PRIVE_BETAALD_RE.test(r.opmerking || "");
+  }
+
+  /**
+   * Privé-vermeldingen in het inkoopboek van een jaar, gesplitst voor de IB-aangifte:
+   * - betaald: van privé betaald (inleg — de zaak is dit aan privé verschuldigd)
+   * - onttrekkingen: zakelijk betaald maar (deels) privé gebruikt; het privé-deel
+   *   komt uit een €-bedrag in de opmerking als dat er staat.
+   */
+  function priveInkoop(inkoopRows, jaar) {
+    const betaald = [];
+    const onttrekkingen = [];
+    for (const r of inkoopRows) {
+      if (r.isEmpty || !r.datum || r.datum.getUTCFullYear() !== jaar) continue;
+      if (!PRIVE_WOORD.test(r.opmerking || "")) continue;
+      if (isPriveBetaald(r)) {
+        betaald.push(r);
+      } else {
+        const m = (r.opmerking || "").match(/€\s*([\d.,]+)/);
+        onttrekkingen.push({ ...r, deel: m ? parseUserAmount(m[1]) : null });
+      }
+    }
+    const betaaldSom = Math.round(betaald.reduce((s, r) => s + (r.bedrag || 0), 0) * 100) / 100;
+    return { betaald, betaaldSom, onttrekkingen };
+  }
   const PRIVE_TRANSFER = [
     /^priv[eéè]\s*opname/i, // omschrijving
     /opstartbudget/i, // omschrijving (heen én retour)
@@ -521,6 +551,7 @@
         if (r.isEmpty || !r.datum || r.bedrag == null) continue;
         if (r.datum > nu) continue; // afschrijvingsregels in de toekomst
         if (r.categorie === "Reiskosten" || r.categorie === "Afschrijving") continue;
+        if (boek === "inkoop" && isPriveBetaald(r)) continue; // privé betaald: nooit een bankregel
         if (index.has(`${boek}|${r.excelRow}`)) continue;
         uit.push({ ...r, boek });
       }
@@ -639,8 +670,9 @@
       const boekKey = boekNaam.toLowerCase();
       for (const f of rows) {
         if (f.isEmpty || f.bedrag == null || !f.datum) continue;
-        // Reiskosten en afschrijvingen hebben per definitie geen bankregel
+        // Reiskosten, afschrijvingen en privé-betaalde facturen: geen bankregel
         if (f.categorie === "Reiskosten" || f.categorie === "Afschrijving") continue;
+        if (boekKey === "inkoop" && isPriveBetaald(f)) continue;
         const gedekt = dekking ? dekking.get(`${boekKey}|${f.excelRow}`) || 0 : 0;
         const rest = Math.round((f.bedrag - gedekt) * 100) / 100;
         if (rest < 0.01) continue; // volledig gedekt
@@ -1129,6 +1161,7 @@
     bankMatchesForInvoice, invoiceMatchesForBankRow,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
+    priveInkoop, isPriveBetaald,
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,

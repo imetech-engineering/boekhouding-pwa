@@ -168,6 +168,34 @@
         overigEl.appendChild(p);
       }
     }
+    // Privé in het inkoopboek — de twee IB-gevallen apart en compact.
+    const pi = M().priveInkoop(st.inkoopRows, jaar);
+    if (pi.betaald.length) {
+      const kop = document.createElement("p");
+      kop.className = "sub";
+      kop.innerHTML = `<strong>Van privé betaald: ${M().fmtEur(pi.betaaldSom)}</strong> (${pi.betaald.length} facturen — inleg, meenemen in de IB-aangifte):`;
+      overigEl.appendChild(kop);
+      for (const r of pi.betaald) {
+        const p = document.createElement("p");
+        p.className = "sub";
+        p.textContent = `• ${r.datumStr} · ${r.partij} · ${M().fmtEur(r.bedrag)}`;
+        overigEl.appendChild(p);
+      }
+    }
+    if (pi.onttrekkingen.length) {
+      const kop = document.createElement("p");
+      kop.className = "sub";
+      kop.innerHTML = `<strong>Privé-gebruik / onttrekkingen</strong> (check bij de IB-aangifte):`;
+      overigEl.appendChild(kop);
+      for (const r of pi.onttrekkingen) {
+        const p = document.createElement("p");
+        p.className = "sub";
+        p.textContent = `• ${r.datumStr} · ${r.partij} · ${M().fmtEur(r.bedrag)}${
+          r.deel != null ? ` (privé-deel ${M().fmtEur(r.deel)})` : ""
+        } — ${(r.opmerking || "").slice(0, 60)}`;
+        overigEl.appendChild(p);
+      }
+    }
   }
 
   function renderStatus() {
@@ -370,6 +398,7 @@
     const eind = new Date(Date.UTC(jaar, 11, 31, 23, 59));
     const saldi = M().saldiPerRekening(st.bankRows.filter((r) => !r.isEmpty && r.datum && r.datum <= eind));
     const prive = M().priveOverzicht(st.bankRows, jaar);
+    const pi = M().priveInkoop(st.inkoopRows, jaar);
     const reis = M().reisTotaal(st.inkoopRows, jaar);
     const eur = (v) => M().fmtEur(v);
     const rij = (n, b, sterk) => `<tr${sterk ? ' class="sterk"' : ""}><td>${n}</td><td class="num">${eur(b)}</td></tr>`;
@@ -405,12 +434,20 @@ ${rij("Rabo", saldi.Rabo)}
 ${rij("Knab", saldi.Knab)}
 ${rij("Totaal", activa + saldi.Rabo + saldi.Knab, true)}
 </table>
-<h2>Privé</h2>
+<h2>Privé (IB)</h2>
 <table>
 ${rij("Opgenomen", prive.opgenomen)}
 ${rij("Gestort", prive.gestort)}
-${rij("Netto opgenomen", prive.netto, true)}
+${pi.betaald.length ? rij(`Van privé betaald (inleg, ${pi.betaald.length}×)`, pi.betaaldSom) : ""}
+${rij("Netto opgenomen", prive.netto - pi.betaaldSom, true)}
 </table>
+${
+  pi.onttrekkingen.length
+    ? `<h2>Privé-gebruik (check IB)</h2><table>${pi.onttrekkingen
+        .map((r) => rij(`${r.partij} — ${(r.opmerking || "").slice(0, 42)}`, r.deel != null ? r.deel : r.bedrag))
+        .join("")}</table>`
+    : ""
+}
 </div><div>
 <h2>BTW per kwartaal</h2>
 <table><tr><th>Kw</th><th class="num">Verschuldigd</th><th class="num">Voorbelasting</th><th class="num">Saldo</th></tr>

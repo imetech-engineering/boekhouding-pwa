@@ -406,13 +406,18 @@
     return r.in != null ? r.in : r.uit;
   }
 
-  /** Bedrag dat al gedekt is door bestaande koppelingen van deze regel. */
+  /**
+   * Bedrag dat al gedekt is door bestaande koppelingen van deze regel.
+   * Tegenrichting telt negatief: een fee-factuur (inkoop) op een uitbetaling
+   * (bank-in) verlaagt het gedekte bedrag — netto klopt het dan precies.
+   */
   function gekoppeldBedrag(r) {
     if (!r.koppelingRaw) return 0;
     const st = App().state;
+    const hoofd = r.in != null ? "verkoop" : "inkoop";
     return M()
       .parseKoppelingen(r.koppelingRaw, st.inkoopRows, st.verkoopRows)
-      .reduce((s, k) => s + (k.row?.bedrag || 0), 0);
+      .reduce((s, k) => s + (k.row ? (k.boek === hoofd ? 1 : -1) * k.row.bedrag : 0), 0);
   }
 
   function renderKoppelSectie() {
@@ -439,15 +444,16 @@
     for (const f of kandidaten.slice(0, zoek ? 12 : 8)) {
       const key = `${f.boek}|${f.excelRow}`;
       const sel = koppelSelectie.has(key);
+      const tegen = (f.teken || 1) < 0;
       const li = document.createElement("li");
       li.className = "boek-item koppel-kandidaat" + (sel ? " selected" : "");
       const nr = f.factuurnummer ? ` · ${escapeHtml(f.factuurnummer)}` : "";
       li.innerHTML = `
         <div class="bi-head">
           <span class="bi-title"><span class="koppel-check">${sel ? "☑" : "☐"}</span> ${escapeHtml(f.partij)}${nr}</span>
-          <span class="bi-amount">${M().fmtEur(f.bedrag)}</span>
+          <span class="bi-amount${tegen ? " uit" : ""}">${tegen ? "− " : ""}${M().fmtEur(f.bedrag)}</span>
         </div>
-        <div class="bi-sub"><span>${escapeHtml(f.boek)} · ${escapeHtml((f.omschrijving || "").slice(0, 40))}</span><span>${f.datumStr}</span></div>`;
+        <div class="bi-sub"><span>${escapeHtml(f.boek)}${tegen ? " (verrekend)" : ""} · ${escapeHtml((f.omschrijving || "").slice(0, 40))}</span><span>${f.datumStr}</span></div>`;
       li.addEventListener("click", () => {
         if (koppelSelectie.has(key)) koppelSelectie.delete(key);
         else koppelSelectie.set(key, f);
@@ -463,7 +469,7 @@
           : `Geen kandidaten binnen ±${st.matchDagen} dagen — zoek hierboven op naam of factuurnummer.`
       }</li>`;
     }
-    const som = [...koppelSelectie.values()].reduce((s, f) => s + f.bedrag, 0);
+    const som = [...koppelSelectie.values()].reduce((s, f) => s + (f.teken || 1) * f.bedrag, 0);
     const somEl = $("#bank-m-som");
     const knop = $("#btn-bank-m-koppel");
     somEl.classList.toggle("hidden", !koppelSelectie.size);
@@ -483,7 +489,7 @@
     const r = modalRow;
     const st = App().state;
     const sel = [...koppelSelectie.values()];
-    const som = sel.reduce((s, f) => s + f.bedrag, 0);
+    const som = sel.reduce((s, f) => s + (f.teken || 1) * f.bedrag, 0);
     const rest = Math.round(((bankBedrag(r) || 0) - gekoppeldBedrag(r)) * 100) / 100;
     if (Math.abs(som - rest) >= 0.005) {
       const ok = await App().showConfirm(

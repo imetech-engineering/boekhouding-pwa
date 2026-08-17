@@ -525,8 +525,26 @@
         uit.push({ ...r, boek });
       }
     }
-    uit.sort((a, b) => b.datum - a.datum);
-    return uit;
+    // Factuur + creditnota die elkaar opheffen (zelfde boek/partij, ±bedrag)
+    // hebben per definitie geen bankregel — die vallen tegen elkaar weg.
+    const perKey = new Map();
+    for (const r of uit) {
+      const key = `${r.boek}|${(r.partij || "").toLowerCase()}|${Math.abs(r.bedrag).toFixed(2)}`;
+      if (!perKey.has(key)) perKey.set(key, []);
+      perKey.get(key).push(r);
+    }
+    const weg = new Set();
+    for (const groep of perKey.values()) {
+      const plus = groep.filter((r) => r.bedrag > 0);
+      const min = groep.filter((r) => r.bedrag < 0);
+      for (let i = 0; i < Math.min(plus.length, min.length); i++) {
+        weg.add(plus[i]);
+        weg.add(min[i]);
+      }
+    }
+    const rest = uit.filter((r) => !weg.has(r));
+    rest.sort((a, b) => b.datum - a.datum);
+    return rest;
   }
 
   /** Ingeboekte bankregels zonder gekoppelde factuur — de "bijzondere gevallen". */
@@ -544,25 +562,36 @@
    * één afschrijving dekken). Met zoekterm: alle facturen op partij/factuurnummer/omschrijving.
    */
   function koppelKandidaten(bankRow, inkoopRows, verkoopRows, index, dagen = MATCH_DAYS, zoek = "") {
-    const isVerkoop = bankRow.in != null;
-    const bedrag = isVerkoop ? bankRow.in : bankRow.uit;
-    const rows = isVerkoop ? verkoopRows : inkoopRows;
-    const boek = isVerkoop ? "verkoop" : "inkoop";
+    const isIn = bankRow.in != null;
+    const bedrag = isIn ? bankRow.in : bankRow.uit;
     const q = String(zoek || "").trim().toLowerCase();
     const uit = [];
-    for (const f of rows) {
-      if (f.isEmpty || f.bedrag == null || !f.datum) continue;
-      if (index && index.has(`${boek}|${f.excelRow}`)) continue;
-      if (q) {
-        const hay = `${f.partij} ${f.factuurnummer} ${f.omschrijving}`.toLowerCase();
-        if (!hay.includes(q)) continue;
-      } else {
-        if (!bankRow.datum || daysBetween(f.datum, bankRow.datum) > dagen) continue;
-        if (bedrag != null && f.bedrag > bedrag + 0.005) continue;
+    // teken +1 = hoofdrichting; teken −1 = tegenrichting (verrekening: bij een
+    // uitbetaling worden ingehouden fees als inkoopfactuur afgetrokken — netto klopt dan).
+    const voegToe = (rows, boekNaam, teken, maxBedrag) => {
+      const boekKey = boekNaam.toLowerCase();
+      for (const f of rows) {
+        if (f.isEmpty || f.bedrag == null || !f.datum) continue;
+        if (index && index.has(`${boekKey}|${f.excelRow}`)) continue;
+        if (q) {
+          const hay = `${f.partij} ${f.factuurnummer} ${f.omschrijving}`.toLowerCase();
+          if (!hay.includes(q)) continue;
+        } else {
+          if (!bankRow.datum || daysBetween(f.datum, bankRow.datum) > dagen) continue;
+          if (teken > 0 && maxBedrag != null && f.bedrag > maxBedrag + 0.005) continue;
+        }
+        uit.push({ ...f, boek: boekNaam, teken });
       }
-      uit.push({ ...f, boek: isVerkoop ? "Verkoop" : "Inkoop" });
-    }
+    };
+    const hoofd = isIn ? [verkoopRows, "Verkoop"] : [inkoopRows, "Inkoop"];
+    const tegen = isIn ? [inkoopRows, "Inkoop"] : [verkoopRows, "Verkoop"];
+    voegToe(tegen[0], tegen[1], -1, null);
+    // Hoofdrichting mag groter zijn dan het bankbedrag zolang verrekeningen
+    // het verschil kunnen dekken (uitbetaling = omzet − fees).
+    const tegenSom = uit.reduce((s, f) => s + f.bedrag, 0);
+    voegToe(hoofd[0], hoofd[1], 1, bedrag != null ? bedrag + tegenSom : null);
     uit.sort((a, b) => {
+      if (a.teken !== b.teken) return b.teken - a.teken; // hoofdrichting eerst
       const da = bankRow.datum ? Math.abs(a.datum - bankRow.datum) : 0;
       const db = bankRow.datum ? Math.abs(b.datum - bankRow.datum) : 0;
       return da - db;
@@ -570,27 +599,34 @@
     return uit;
   }
 
-  /** Kleinste combinatie facturen (max 4) die samen precies het doelbedrag dekt, of null. */
+  /**
+   * Kleinste combinatie facturen (max 4) die samen precies het doelbedrag dekt, of null.
+   * Eerst alleen hoofdrichting; lukt dat niet, dan ook met verrekeningen
+   * (tegenrichting telt negatief — bijv. uitbetaling = omzet − fees).
+   */
   function vindCombinatie(kandidaten, doelBedrag) {
     if (doelBedrag == null || !kandidaten.length) return null;
     const doel = Math.round(doelBedrag * 100);
-    const n = Math.min(kandidaten.length, 25);
-    const cents = kandidaten.slice(0, n).map((f) => Math.round(f.bedrag * 100));
-    for (let size = 1; size <= 4; size++) {
-      const pick = [];
-      const zoekSub = (start, rest) => {
-        if (pick.length === size) return rest === 0;
-        for (let i = start; i < n; i++) {
-          if (cents[i] > rest) continue;
-          pick.push(i);
-          if (zoekSub(i + 1, rest - cents[i])) return true;
-          pick.pop();
-        }
-        return false;
-      };
-      if (zoekSub(0, doel)) return pick.map((i) => kandidaten[i]);
-    }
-    return null;
+    const zoekIn = (set) => {
+      const n = Math.min(set.length, 25);
+      const cents = set.slice(0, n).map((f) => Math.round(f.bedrag * 100) * (f.teken || 1));
+      for (let size = 1; size <= 4; size++) {
+        const pick = [];
+        const zoekSub = (start, rest) => {
+          if (pick.length === size) return rest === 0;
+          for (let i = start; i < n; i++) {
+            pick.push(i);
+            if (zoekSub(i + 1, rest - cents[i])) return true;
+            pick.pop();
+          }
+          return false;
+        };
+        if (zoekSub(0, doel)) return pick.map((i) => set[i]);
+      }
+      return null;
+    };
+    const positief = kandidaten.filter((f) => (f.teken || 1) > 0);
+    return zoekIn(positief) || (positief.length < kandidaten.length ? zoekIn(kandidaten) : null);
   }
 
   /**
@@ -605,9 +641,11 @@
     for (const r of bankRows) {
       if (r.isEmpty || (r.in == null && r.uit == null)) continue;
       const kant = isVerkoop ? r.in : r.uit;
-      if (kant == null) continue;
+      // Met zoekterm ook de tegenrichting tonen: een fee-factuur (inkoop) hoort
+      // bij de uitbetalings-bankregel (in) waar hij op ingehouden is.
+      if (kant == null && !q) continue;
       if (q && !`${r.omschrijving} ${r.opmerking}`.toLowerCase().includes(q)) continue;
-      const exact = factuur.bedrag != null && Math.abs(kant - factuur.bedrag) < 0.005;
+      const exact = kant != null && factuur.bedrag != null && Math.abs(kant - factuur.bedrag) < 0.005;
       if (!q && !exact) continue; // zonder zoekterm alleen exacte bedragen
       uit.push({ ...r, exact });
     }

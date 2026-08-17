@@ -512,9 +512,13 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     el.appendChild(ul);
   }
 
+  /** Bijdrage van een bankregel aan deze factuur: hoofdrichting positief,
+   * tegenrichting (terugboeking/refund) negatief. */
   function bankKant(f, b) {
-    const kant = f.boek === "verkoop" ? b.in : b.uit;
-    return kant != null ? kant : b.in != null ? b.in : b.uit;
+    const isVerkoop = f.boek === "verkoop";
+    const plus = isVerkoop ? b.in : b.uit;
+    const min = isVerkoop ? b.uit : b.in;
+    return (plus || 0) - (min || 0);
   }
 
   function renderKoppelLijst() {

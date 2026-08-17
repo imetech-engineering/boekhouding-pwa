@@ -606,10 +606,14 @@
       if (b.isEmpty || !b.koppelingRaw) continue;
       const ks = parseKoppelingen(b.koppelingRaw, inkoopRows, verkoopRows).filter((k) => k.row);
       if (!ks.length) continue;
-      const bedrag = b.in != null ? b.in : b.uit;
-      if (ks.length === 1 && bedrag != null) {
-        const key = `${ks[0].boek}|${ks[0].row.excelRow}`;
-        dekking.set(key, (dekking.get(key) || 0) + bedrag);
+      if (ks.length === 1) {
+        // Richting telt: voor een inkoopfactuur dekt bank-uit positief en telt een
+        // terugboeking (bank-in) negatief — betaald 289,98 − retour 9,99 = 279,99.
+        const k = ks[0];
+        const bijdrage =
+          k.boek === "inkoop" ? (b.uit || 0) - (b.in || 0) : (b.in || 0) - (b.uit || 0);
+        const key = `${k.boek}|${k.row.excelRow}`;
+        dekking.set(key, (dekking.get(key) || 0) + bijdrage);
       } else {
         for (const k of ks) dekking.set(`${k.boek}|${k.row.excelRow}`, Infinity);
       }
@@ -705,22 +709,40 @@
     const isVerkoop = String(factuur.boek || "").toLowerCase() === "verkoop";
     const q = String(zoek || "").trim().toLowerCase();
     const uit = [];
+    const hoofdPool = [];
+    const tegenPool = [];
     for (const r of bankRows) {
       if (r.isEmpty || (r.in == null && r.uit == null)) continue;
       const kant = isVerkoop ? r.in : r.uit;
-      // Met zoekterm ook de tegenrichting tonen: een fee-factuur (inkoop) hoort
-      // bij de uitbetalings-bankregel (in) waar hij op ingehouden is.
-      if (kant == null && !q) continue;
-      if (q && !`${r.omschrijving} ${r.opmerking}`.toLowerCase().includes(q)) continue;
-      const exact = kant != null && factuur.bedrag != null && Math.abs(kant - factuur.bedrag) < 0.005;
-      if (!q && !exact) {
-        // Zonder zoekterm ook termijn-kandidaten: kleiner bedrag, binnen ±60 dagen
-        // (deelbetalingen: meerdere bankregels dekken samen één factuur).
-        const dichtbij =
-          factuur.datum && r.datum && daysBetween(r.datum, factuur.datum) <= 60;
-        if (!(dichtbij && factuur.bedrag != null && kant < factuur.bedrag - 0.005)) continue;
+      if (q) {
+        if (!`${r.omschrijving} ${r.opmerking}`.toLowerCase().includes(q)) continue;
+        const exact = kant != null && factuur.bedrag != null && Math.abs(kant - factuur.bedrag) < 0.005;
+        uit.push({ ...r, exact });
+        continue;
       }
-      uit.push({ ...r, exact });
+      const exact = kant != null && factuur.bedrag != null && Math.abs(kant - factuur.bedrag) < 0.005;
+      if (exact) {
+        uit.push({ ...r, exact: true });
+        continue;
+      }
+      const dichtbij = factuur.datum && r.datum && daysBetween(r.datum, factuur.datum) <= 60;
+      if (!dichtbij || factuur.bedrag == null) continue;
+      if (kant != null) {
+        hoofdPool.push(r); // termijn of betaling (evt. groter dan factuur, bij refund)
+      } else {
+        const ander = isVerkoop ? r.uit : r.in;
+        if (ander != null && ander < factuur.bedrag - 0.005) tegenPool.push(r); // terugboeking
+      }
+    }
+    if (!q) {
+      // Betalingen mogen groter zijn dan de factuur zolang terugboekingen het
+      // verschil dekken (betaald 289,98 − retour 9,99 = factuur 279,99).
+      const tegenSom = tegenPool.reduce((s, r) => s + ((isVerkoop ? r.uit : r.in) || 0), 0);
+      for (const r of hoofdPool) {
+        const kant = isVerkoop ? r.in : r.uit;
+        if (kant <= factuur.bedrag + tegenSom + 0.005) uit.push({ ...r, exact: false });
+      }
+      for (const r of tegenPool) uit.push({ ...r, exact: false });
     }
     uit.sort((a, b) => {
       if (a.exact !== b.exact) return a.exact ? -1 : 1;

@@ -177,6 +177,44 @@
     $("#ovz-files-open").textContent = String(st.files.inkoop.length + st.files.verkoop.length);
   }
 
+  function renderKoppelcontrole() {
+    const st = App().state;
+    if (!st.loaded) return;
+    const index = M().koppelingIndex(st.bankRows, st.inkoopRows, st.verkoopRows);
+    const losFact = M().facturenZonderBank(st.inkoopRows, st.verkoopRows, index);
+    const losBank = M().bankZonderKoppeling(st.bankRows);
+    $("#kpi-fact-los").textContent = String(losFact.length);
+    $("#kpi-bank-los").textContent = String(losBank.length);
+
+    const lijst = (elId, kop, items, regel) => {
+      const el = $(elId);
+      el.innerHTML = "";
+      if (!items.length) return;
+      const h = document.createElement("p");
+      h.className = "sub";
+      h.innerHTML = `<strong>${kop}</strong>`;
+      el.appendChild(h);
+      for (const it of items.slice(0, 8)) {
+        const p = document.createElement("p");
+        p.className = "sub";
+        p.textContent = regel(it);
+        el.appendChild(p);
+      }
+      if (items.length > 8) {
+        const p = document.createElement("p");
+        p.className = "sub";
+        p.textContent = `… en nog ${items.length - 8}`;
+        el.appendChild(p);
+      }
+    };
+    lijst("#ovz-fact-los", "Facturen zonder bankregel:", losFact, (f) =>
+      `• ${f.datumStr} · ${f.boek === "verkoop" ? "V" : "I"} · ${f.partij} · ${M().fmtEur(f.bedrag)}`
+    );
+    lijst("#ovz-bank-los", "Ingeboekte bankregels zonder factuur:", losBank, (b) =>
+      `• ${b.datumStr} · ${b.omschrijving.slice(0, 38)} · ${M().fmtEur(b.in != null ? b.in : b.uit)}`
+    );
+  }
+
   function renderAccount() {
     const label = global.BoekAuth.getAccountLabel();
     $("#account-label").textContent = label || "Niet ingelogd";
@@ -205,6 +243,7 @@
     renderBtw();
     renderRanglijsten();
     renderStatus();
+    renderKoppelcontrole();
     renderAccount();
     renderSettings();
   }

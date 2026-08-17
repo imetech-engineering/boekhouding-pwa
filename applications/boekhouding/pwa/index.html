@@ -98,6 +98,9 @@
             <button type="button" data-f="Alles" class="chip active">Alles</button>
             <button type="button" data-f="Rabo" class="chip">Rabo</button>
             <button type="button" data-f="Knab" class="chip">Knab</button>
+            <span class="filter-spacer"></span>
+            <button type="button" data-dagen="14" class="chip chip-dagen" title="Matchvenster">±2w</button>
+            <button type="button" data-dagen="28" class="chip chip-dagen" title="Matchvenster">±4w</button>
           </div>
           <button type="button" id="btn-bank-match-all" class="btn-match-all hidden"></button>
           <p class="sub">Tik voor bewerken, matchen en ingeboekt markeren. Vegen kan ook: rechts bewerken, links verwijderen.</p>
@@ -492,6 +495,17 @@
         </div>
 
         <div class="card">
+          <h2>Koppelingscontrole</h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Facturen zonder bankregel</span><span id="kpi-fact-los" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Bankregels zonder factuur</span><span id="kpi-bank-los" class="kpi-value">—</span></div>
+          </div>
+          <div id="ovz-fact-los"></div>
+          <div id="ovz-bank-los"></div>
+          <p class="sub">Bankregels zonder factuur zijn de bijzondere gevallen voor de jaaropgaaf (bankkosten, privé, overboekingen). Reiskosten en afschrijvingen worden niet als "los" geteld.</p>
+        </div>
+
+        <div class="card">
           <h2>Microsoft-account</h2>
           <p id="account-label">—</p>
           <div class="btn-row">
@@ -574,8 +588,12 @@
         </div>
         <label for="bank-m-opmerking">Opmerking</label>
         <input id="bank-m-opmerking" autocomplete="off" />
+        <div id="bank-m-koppeling-wrap" class="hidden">
+          <p class="sub"><strong>Gekoppelde factuur</strong></p>
+          <ul id="bank-m-koppeling" class="boek-list"></ul>
+        </div>
         <div id="bank-m-matches-wrap" class="hidden">
-          <p class="sub"><strong>Matchende facturen</strong> (zelfde bedrag, datum ±14 dagen):</p>
+          <p class="sub"><strong>Matchende facturen</strong> — tik op Koppel om vast te leggen:</p>
           <ul id="bank-m-matches" class="boek-list"></ul>
         </div>
         <div class="btn-row">

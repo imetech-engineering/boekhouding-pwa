@@ -617,6 +617,26 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   color: var(--accent);
 }
 
+.filter-spacer {
+  flex: 1;
+}
+
+.rek-filter .chip-dagen {
+  padding: 5px 10px;
+  color: var(--text-secondary);
+}
+
+.rek-filter .chip-dagen.active {
+  background: var(--accent-light);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bi-koppel {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .btn-match-all {
   display: block;
   width: 100%;

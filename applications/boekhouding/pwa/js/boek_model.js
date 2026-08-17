@@ -13,7 +13,7 @@
   const MATCH_DAYS = 14;
 
   // 0-based kolomindexen binnen de tabel-array (kolom A = 0)
-  const BANK = { DATUM: 0, OMS: 1, IN: 2, UIT: 3, SALDO: 4, INGEBOEKT: 5, OPM: 6, REK: 7 };
+  const BANK = { DATUM: 0, OMS: 1, IN: 2, UIT: 3, SALDO: 4, INGEBOEKT: 5, OPM: 6, REK: 7, KOP: 8 };
   const REKENINGEN = ["Rabo", "Knab"];
   const INK = {
     DATUM: 0, PERIODE: 1, JAAR: 2, LEVERANCIER: 3, OMS: 4, FNR: 5, BEDRAG: 6,
@@ -171,6 +171,7 @@
         ingeboekt: cellBool(v[BANK.INGEBOEKT]),
         opmerking: opm,
         rekening: cellText(v[BANK.REK]),
+        koppelingRaw: cellText(v[BANK.KOP]),
         isEmpty,
         isEmptySlot,
       });
@@ -443,23 +444,119 @@
     return null;
   }
 
-  // === Bank-matching (bedrag exact, datum ±14 dagen, richting) ===
-  function bankMatchesForInvoice(bankRows, bedrag, datumIso, isVerkoop) {
+  // === Koppeling bankregel ↔ factuur (kolom I in het Bankboek) ===
+  // Notatie: factuurnummer als dat uniek is, anders "fnr (I155)" of "(V60)".
+
+  function fnrTelling(inkoopRows, verkoopRows) {
+    const telling = new Map();
+    for (const r of [...inkoopRows, ...verkoopRows]) {
+      if (r.isEmpty || !r.factuurnummer) continue;
+      const k = r.factuurnummer.toLowerCase();
+      telling.set(k, (telling.get(k) || 0) + 1);
+    }
+    return telling;
+  }
+
+  /** Schrijfwaarde voor één koppeling. */
+  function koppelWaarde(boekLetter, factuurRow, inkoopRows, verkoopRows) {
+    const fnr = (factuurRow.factuurnummer || "").trim();
+    if (fnr && (fnrTelling(inkoopRows, verkoopRows).get(fnr.toLowerCase()) || 0) <= 1) {
+      return fnr;
+    }
+    return `${fnr ? fnr + " " : ""}(${boekLetter}${factuurRow.excelRow})`;
+  }
+
+  /** Celtekst → gekoppelde facturen: [{boek:'inkoop'|'verkoop', row, token}]. */
+  function parseKoppelingen(raw, inkoopRows, verkoopRows) {
+    const uit = [];
+    for (const tokenRaw of String(raw || "").split(",")) {
+      const token = tokenRaw.trim();
+      if (!token) continue;
+      const m = token.match(/\(([IV])(\d+)\)$/i);
+      if (m) {
+        const boek = m[1].toUpperCase() === "I" ? "inkoop" : "verkoop";
+        const rows = boek === "inkoop" ? inkoopRows : verkoopRows;
+        const row = rows.find((r) => r.excelRow === +m[2]) || null;
+        uit.push({ boek, row, token });
+        continue;
+      }
+      const laag = token.toLowerCase();
+      const inI = inkoopRows.filter((r) => !r.isEmpty && r.factuurnummer.toLowerCase() === laag);
+      const inV = verkoopRows.filter((r) => !r.isEmpty && r.factuurnummer.toLowerCase() === laag);
+      if (inI.length + inV.length === 1) {
+        uit.push(
+          inI.length
+            ? { boek: "inkoop", row: inI[0], token }
+            : { boek: "verkoop", row: inV[0], token }
+        );
+      } else {
+        uit.push({ boek: null, row: null, token }); // onbekend of niet uniek
+      }
+    }
+    return uit;
+  }
+
+  /** Omgekeerde index: "inkoop|155" → [bankRow, …]. */
+  function koppelingIndex(bankRows, inkoopRows, verkoopRows) {
+    const index = new Map();
+    for (const b of bankRows) {
+      if (b.isEmpty || !b.koppelingRaw) continue;
+      for (const k of parseKoppelingen(b.koppelingRaw, inkoopRows, verkoopRows)) {
+        if (!k.row) continue;
+        const sleutel = `${k.boek}|${k.row.excelRow}`;
+        if (!index.has(sleutel)) index.set(sleutel, []);
+        index.get(sleutel).push(b);
+      }
+    }
+    return index;
+  }
+
+  /** Facturen waar nog geen bankregel aan hangt (jouw controle-/jaaropgaaflijst). */
+  function facturenZonderBank(inkoopRows, verkoopRows, index) {
+    const nu = new Date();
+    const uit = [];
+    for (const boek of ["inkoop", "verkoop"]) {
+      const rows = boek === "inkoop" ? inkoopRows : verkoopRows;
+      for (const r of rows) {
+        if (r.isEmpty || !r.datum || r.bedrag == null) continue;
+        if (r.datum > nu) continue; // afschrijvingsregels in de toekomst
+        if (r.categorie === "Reiskosten" || r.categorie === "Afschrijving") continue;
+        if (index.has(`${boek}|${r.excelRow}`)) continue;
+        uit.push({ ...r, boek });
+      }
+    }
+    uit.sort((a, b) => b.datum - a.datum);
+    return uit;
+  }
+
+  /** Ingeboekte bankregels zonder gekoppelde factuur — de "bijzondere gevallen". */
+  function bankZonderKoppeling(bankRows) {
+    return bankRows
+      .filter((r) => !r.isEmpty && r.ingeboekt && !r.koppelingRaw && (r.in != null || r.uit != null))
+      .slice()
+      .reverse();
+  }
+
+  // === Bank-matching (bedrag exact, datum ±dagen, richting) ===
+  // Bankregels/facturen die al gekoppeld zijn doen niet meer mee — dat voorkomt
+  // dubbel afvinken van dezelfde factuur.
+  function bankMatchesForInvoice(bankRows, bedrag, datumIso, isVerkoop, dagen = MATCH_DAYS) {
     const datum = isoToDate(datumIso);
     if (bedrag == null || !datum) return [];
     return bankRows.filter((r) => {
-      if (r.isEmpty || r.ingeboekt) return false;
-      if (!r.datum || daysBetween(r.datum, datum) > MATCH_DAYS) return false;
+      if (r.isEmpty || r.ingeboekt || r.koppelingRaw) return false;
+      if (!r.datum || daysBetween(r.datum, datum) > dagen) return false;
       const kant = isVerkoop ? r.in : r.uit;
       return kant != null && Math.abs(kant - bedrag) < 0.005;
     });
   }
 
-  function invoiceMatchesForBankRow(facturen, bankRow) {
+  function invoiceMatchesForBankRow(facturen, bankRow, index, dagen = MATCH_DAYS) {
     if (!bankRow.datum) return [];
     return facturen.filter((f) => {
       if (!f.datum || f.bedrag == null) return false;
-      if (daysBetween(f.datum, bankRow.datum) > MATCH_DAYS) return false;
+      if (index && index.has(`${f.boek?.toLowerCase() === "verkoop" ? "verkoop" : "inkoop"}|${f.excelRow}`)) return false;
+      if (daysBetween(f.datum, bankRow.datum) > dagen) return false;
       return (
         (bankRow.in != null && Math.abs(f.bedrag - bankRow.in) < 0.005) ||
         (bankRow.uit != null && Math.abs(f.bedrag - bankRow.uit) < 0.005)
@@ -789,6 +886,7 @@
     priveOverzicht, firstEmptyBoekSlot,
     normalizeParty, partyNamesMatch, buildIntel, partyDefaults, findDuplicate,
     bankMatchesForInvoice, invoiceMatchesForBankRow,
+    koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,

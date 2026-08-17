@@ -52,12 +52,33 @@
   function recenteFacturen() {
     const st = App().state;
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 60);
+    cutoff.setDate(cutoff.getDate() - 90);
     const all = [
       ...st.inkoopRows.filter((r) => !r.isEmpty).map((r) => ({ ...r, boek: "Inkoop" })),
       ...st.verkoopRows.filter((r) => !r.isEmpty).map((r) => ({ ...r, boek: "Verkoop" })),
     ];
     return all.filter((f) => f.datum && f.datum.getTime() >= cutoff.getTime());
+  }
+
+  /** Omgekeerde index (factuur → bankregels), per render opgebouwd. */
+  let kopIndex = new Map();
+
+  function bouwKopIndex() {
+    const st = App().state;
+    kopIndex = M().koppelingIndex(st.bankRows, st.inkoopRows, st.verkoopRows);
+    return kopIndex;
+  }
+
+  function matchesVoorBankRow(r, facturen) {
+    return M().invoiceMatchesForBankRow(facturen, r, kopIndex, App().state.matchDagen);
+  }
+
+  /** Korte weergave van een koppeling: partij of token + datum. */
+  function koppelLabel(k) {
+    if (k.row) {
+      return `${escapeHtml(k.row.partij)} · ${M().fmtEur(k.row.bedrag)} · ${k.row.datumStr}`;
+    }
+    return `${escapeHtml(k.token)} (niet gevonden)`;
   }
 
   function recenteOmschrijvingen() {
@@ -82,10 +103,15 @@
         ? `<span class="bi-amount in">+ ${M().fmtEur(r.in)}</span>`
         : `<span class="bi-amount uit">− ${M().fmtEur(r.uit)}</span>`;
 
-    // De match meteen uitschrijven, zodat je zonder tikken ziet wélke factuur erbij hoort.
+    // Koppeling of match meteen uitschrijven, zodat je zonder tikken ziet wat erbij hoort.
     let matchHtml = "";
-    if (showMatch) {
-      const matches = M().invoiceMatchesForBankRow(facturen || recenteFacturen(), r);
+    if (r.koppelingRaw) {
+      const ks = M().parseKoppelingen(r.koppelingRaw, App().state.inkoopRows, App().state.verkoopRows);
+      const eerste = ks[0];
+      const extra = ks.length > 1 ? ` +${ks.length - 1}` : "";
+      matchHtml = `<div class="bi-match-line bi-koppel">🔗 ${eerste ? koppelLabel(eerste) : ""}${extra}</div>`;
+    } else if (showMatch) {
+      const matches = matchesVoorBankRow(r, facturen || recenteFacturen());
       if (matches.length) {
         const m = matches[0];
         const extra = matches.length > 1 ? ` +${matches.length - 1} meer` : "";
@@ -116,26 +142,48 @@
   }
 
   /**
-   * Alle regels met een gevonden factuur in één keer afvinken. Die facturen
-   * staan al in het inkoop- of verkoopboek, dus de bankregel hoort ingeboekt.
+   * Alle regels met precies één gevonden factuur in één keer koppelen én
+   * afvinken. De koppeling legt vast wélke factuur erbij hoort, zodat dezelfde
+   * factuur nooit twee keer afgevinkt kan worden.
    */
   async function markeerAlleMatches() {
     if (!gematchteRijen.length) return;
-    const rijen = gematchteRijen.slice();
-    const voorbeeld = rijen
-      .slice(0, 4)
-      .map((r) => `• ${r.datumStr} ${r.omschrijving} — ${M().fmtEur(r.in != null ? r.in : r.uit)}`)
-      .join("\n");
-    const rest = rijen.length > 4 ? `\n… en nog ${rijen.length - 4}` : "";
+    const facturen = recenteFacturen();
+    const items = [];
+    const regels = [];
+    const geclaimd = new Set();
+    for (const r of gematchteRijen) {
+      const ms = matchesVoorBankRow(r, facturen).filter(
+        (f) => !geclaimd.has(`${f.boek}|${f.excelRow}`)
+      );
+      if (ms.length !== 1) continue; // ambigu → handmatig via de regel zelf
+      const f = ms[0];
+      geclaimd.add(`${f.boek}|${f.excelRow}`);
+      items.push({
+        excelRow: r.excelRow,
+        waarde: M().koppelWaarde(
+          f.boek.toLowerCase() === "verkoop" ? "V" : "I",
+          f,
+          App().state.inkoopRows,
+          App().state.verkoopRows
+        ),
+        ingeboekt: true,
+      });
+      regels.push(`• ${r.datumStr} ${r.omschrijving} → ${f.partij}`);
+    }
+    if (!items.length) {
+      return App().showToast("Alleen regels met meerdere kandidaten — koppel die per regel.", true);
+    }
+    const rest = regels.length > 4 ? `\n… en nog ${regels.length - 4}` : "";
     const ok = await App().showConfirm(
-      `${rijen.length} bankregel${rijen.length === 1 ? "" : "s"} als ingeboekt markeren?\n${voorbeeld}${rest}`,
-      "Markeren",
+      `${items.length} bankregel${items.length === 1 ? "" : "s"} koppelen en afvinken?\n${regels.slice(0, 4).join("\n")}${rest}`,
+      "Koppelen",
       "Annuleren"
     );
     if (!ok) return;
     await App().persistMutation(
-      { kind: "bank_ingeboekt", rows: rijen.map((r) => r.excelRow), value: true },
-      { successMsg: `${rijen.length} bankregel${rijen.length === 1 ? "" : "s"} afgevinkt` }
+      { kind: "bank_koppel", items },
+      { successMsg: `${items.length} bankregel${items.length === 1 ? "" : "s"} gekoppeld en afgevinkt` }
     );
   }
 
@@ -176,6 +224,7 @@
       zonder.textContent = `⚠ ${saldi.zonderRekening} regel${saldi.zonderRekening === 1 ? "" : "s"} zonder rekening — tik erop en kies Rabo of Knab.`;
     }
 
+    bouwKopIndex();
     const facturen = recenteFacturen();
     const openList = $("#bank-open-list");
     openList.innerHTML = "";
@@ -226,12 +275,10 @@
       el.classList.add("hidden");
       return;
     }
-    const matches = M()
-      .invoiceMatchesForBankRow(recenteFacturen(), {
-        datum: M().isoToDate(f.datumIso),
-        in: f.in,
-        uit: f.uit,
-      });
+    const matches = matchesVoorBankRow(
+      { datum: M().isoToDate(f.datumIso), in: f.in, uit: f.uit },
+      recenteFacturen()
+    );
     el.classList.toggle("hidden", !matches.length);
     if (matches.length) {
       const first = matches[0];
@@ -258,18 +305,26 @@
     try {
       localStorage.setItem(REK_KEY, f.rekening);
     } catch (_) {}
-    const matches = M().invoiceMatchesForBankRow(recenteFacturen(), {
-      datum: M().isoToDate(f.datumIso),
-      in: f.in,
-      uit: f.uit,
-    });
-    if (matches.length) {
+    const matches = matchesVoorBankRow(
+      { datum: M().isoToDate(f.datumIso), in: f.in, uit: f.uit },
+      recenteFacturen()
+    );
+    if (matches.length === 1) {
       const m0 = matches[0];
-      f.ingeboekt = await App().showConfirm(
-        `Er is een matchende factuur (${m0.boek}: ${m0.partij}, ${M().fmtEur(m0.bedrag)}). Deze bankregel direct als ingeboekt markeren?`,
-        "Ja, ingeboekt",
+      const ja = await App().showConfirm(
+        `Er is een matchende factuur (${m0.boek}: ${m0.partij}, ${M().fmtEur(m0.bedrag)}). Direct koppelen en als ingeboekt markeren?`,
+        "Ja, koppel",
         "Nee"
       );
+      if (ja) {
+        f.ingeboekt = true;
+        f.koppeling = M().koppelWaarde(
+          m0.boek.toLowerCase() === "verkoop" ? "V" : "I",
+          m0,
+          App().state.inkoopRows,
+          App().state.verkoopRows
+        );
+      }
     }
     const snapshot = { ...f };
     clearNewRow();
@@ -303,7 +358,39 @@
       ? "Markeer als NIET ingeboekt"
       : "Markeer ingeboekt";
 
-    const matches = M().invoiceMatchesForBankRow(recenteFacturen(), r);
+    // Bestaande koppeling
+    bouwKopIndex();
+    const kopWrap = $("#bank-m-koppeling-wrap");
+    const kopList = $("#bank-m-koppeling");
+    kopList.innerHTML = "";
+    const koppelingen = r.koppelingRaw
+      ? M().parseKoppelingen(r.koppelingRaw, App().state.inkoopRows, App().state.verkoopRows)
+      : [];
+    kopWrap.classList.toggle("hidden", !koppelingen.length);
+    for (const k of koppelingen) {
+      const li = document.createElement("li");
+      li.className = "boek-item";
+      li.innerHTML = `
+        <div class="bi-head">
+          <span class="bi-title bi-koppel">🔗 ${koppelLabel(k)}</span>
+        </div>
+        <span class="row-actions">
+          <button type="button" class="btn-icon btn-icon-danger" aria-label="Ontkoppelen" title="Ontkoppelen">✕</button>
+        </span>`;
+      li.querySelector("button").addEventListener("click", async () => {
+        const ok = await App().showConfirm("Koppeling weghalen?", "Ontkoppelen", "Annuleren");
+        if (!ok) return;
+        closeModal();
+        await App().persistMutation(
+          { kind: "bank_ontkoppel", excelRow: r.excelRow },
+          { successMsg: "Ontkoppeld" }
+        );
+      });
+      kopList.appendChild(li);
+    }
+
+    // Matches met Koppel-knop (alleen als er nog geen koppeling is)
+    const matches = koppelingen.length ? [] : matchesVoorBankRow(r, recenteFacturen());
     const wrap = $("#bank-m-matches-wrap");
     const list = $("#bank-m-matches");
     list.innerHTML = "";
@@ -316,7 +403,23 @@
           <span class="bi-title">${escapeHtml(f.boek)}: ${escapeHtml(f.partij)}</span>
           <span class="bi-amount">${M().fmtEur(f.bedrag)}</span>
         </div>
-        <div class="bi-sub"><span>${escapeHtml(f.omschrijving).slice(0, 60)}</span><span>${f.datumStr}</span></div>`;
+        <div class="bi-sub"><span>${escapeHtml(f.omschrijving).slice(0, 60)}</span><span>${f.datumStr}</span></div>
+        <span class="row-actions">
+          <button type="button" class="btn-icon koppel-knop">Koppel</button>
+        </span>`;
+      li.querySelector(".koppel-knop").addEventListener("click", async () => {
+        const waarde = M().koppelWaarde(
+          f.boek.toLowerCase() === "verkoop" ? "V" : "I",
+          f,
+          App().state.inkoopRows,
+          App().state.verkoopRows
+        );
+        closeModal();
+        await App().persistMutation(
+          { kind: "bank_koppel", items: [{ excelRow: r.excelRow, waarde, ingeboekt: true }] },
+          { successMsg: `Gekoppeld aan ${f.partij}` }
+        );
+      });
       list.appendChild(li);
     }
     $("#bank-modal").classList.remove("hidden");
@@ -385,15 +488,30 @@
     setSwitch("bank-rek-switch", nieuweRekening());
     bindSwitch("bank-rek-switch");
     bindSwitch("bank-m-rek-switch");
-    document.querySelectorAll("#bank-filter .chip").forEach((c) => {
+    document.querySelectorAll("#bank-filter .chip:not(.chip-dagen)").forEach((c) => {
       c.addEventListener("click", () => {
         filter = c.dataset.f;
-        document.querySelectorAll("#bank-filter .chip").forEach((x) =>
+        document.querySelectorAll("#bank-filter .chip:not(.chip-dagen)").forEach((x) =>
           x.classList.toggle("active", x === c)
         );
         render();
       });
     });
+    const zetDagenChips = () => {
+      document.querySelectorAll("#bank-filter .chip-dagen").forEach((c) =>
+        c.classList.toggle("active", +c.dataset.dagen === App().state.matchDagen)
+      );
+    };
+    document.querySelectorAll("#bank-filter .chip-dagen").forEach((c) => {
+      c.addEventListener("click", () => {
+        App().setMatchDagen(+c.dataset.dagen);
+        zetDagenChips();
+        render();
+        global.BoekUiInkoop?.render();
+        global.BoekUiVerkoop?.render();
+      });
+    });
+    zetDagenChips();
     App().bindDateSteppers("bank-datum", "btn-bank-date-prev", "btn-bank-date-next", updateNewRowMatchHint);
     global.BoekCombo.createCombo(
       "bank-omschrijving",

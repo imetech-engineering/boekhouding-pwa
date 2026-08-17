@@ -67,10 +67,11 @@
           !!fields.ingeboekt,
           fields.opmerking || "",
           fields.rekening || "",
+          fields.koppeling || "",
         ]);
         return { excelRow: (bank.endRow || 5) + 1 };
       }
-      await W().patchValues(path, token, sid, sheet, `A${targetRow}:H${targetRow}`, [
+      await W().patchValues(path, token, sid, sheet, `A${targetRow}:I${targetRow}`, [
         [
           fields.datumIso,
           fields.omschrijving || "",
@@ -80,6 +81,7 @@
           !!fields.ingeboekt,
           fields.opmerking || "",
           fields.rekening || "",
+          fields.koppeling || "",
         ],
       ]);
       await W().patchFormulas(path, token, sid, sheet, `E${targetRow}`, [
@@ -135,10 +137,42 @@
   async function deleteBankRow(token, excelRow) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
-      await W().patchValues(path, token, sid, M().SHEET_BANK, `A${excelRow}:H${excelRow}`, [
-        ["", "", "", "", null, false, "", ""],
+      await W().patchValues(path, token, sid, M().SHEET_BANK, `A${excelRow}:I${excelRow}`, [
+        ["", "", "", "", null, false, "", "", ""],
       ]);
     });
+  }
+
+  /**
+   * Factuurkoppeling schrijven op bankregels (kolom I), plus ingeboekt-vinkje.
+   * Bestaande koppelingen blijven staan; de nieuwe komt er met een komma achter.
+   */
+  async function koppelBank(token, items) {
+    const path = drivePath();
+    return W().withSession(path, token, async (sid) => {
+      const bank = await W().readTableRange(path, token, M().TABLE_BANK, sid);
+      const rows = M().parseBankRows(bank.values, bank.headerRow);
+      for (const item of items) {
+        const huidig = rows.find((r) => r.excelRow === item.excelRow)?.koppelingRaw || "";
+        const al = huidig
+          .split(",")
+          .map((s) => s.trim().toLowerCase())
+          .includes(item.waarde.trim().toLowerCase());
+        const nieuw = al ? huidig : huidig ? `${huidig}, ${item.waarde}` : item.waarde;
+        await W().patchValues(path, token, sid, M().SHEET_BANK, `I${item.excelRow}`, [[nieuw]]);
+        if (item.ingeboekt) {
+          await W().patchValues(path, token, sid, M().SHEET_BANK, `F${item.excelRow}`, [[true]]);
+        }
+      }
+    });
+  }
+
+  /** Koppeling van een bankregel weghalen. */
+  async function ontkoppelBank(token, excelRow) {
+    const path = drivePath();
+    return W().withSession(path, token, (sid) =>
+      W().patchValues(path, token, sid, M().SHEET_BANK, `I${excelRow}`, [[""]])
+    );
   }
 
   // === Inkoopboek ===
@@ -326,6 +360,8 @@
     updateBankRow,
     deleteBankRow,
     setBankIngeboekt,
+    koppelBank,
+    ontkoppelBank,
     addInkoopRow,
     updateInkoopRow,
     deleteInkoopRow,

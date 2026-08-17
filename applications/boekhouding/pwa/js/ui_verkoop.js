@@ -155,7 +155,9 @@
     bankMatchRows = [];
     let matches = [];
     if (bedrag != null && datumIso) {
-      matches = M().bankMatchesForInvoice(App().state.bankRows, bedrag, datumIso, true);
+      matches = M().bankMatchesForInvoice(
+        App().state.bankRows, bedrag, datumIso, true, App().state.matchDagen
+      );
       bankMatchRows = matches.map((r) => r.excelRow);
     }
     for (const r of prefillBankRows) {
@@ -312,13 +314,10 @@
     if (fileToMove) deselectFile();
 
     const ok = await App().persistMutation(
-      { kind: "verkoop_add", fields: f },
+      { kind: "verkoop_add", fields: f, bankRows: afvinken },
       { successMsg: move ? "Ingeboekt + factuur verplaatst" : "Ingeboekt in verkoopboek" }
     );
     if (!ok) return;
-    if (afvinken.length) {
-      await App().persistMutation({ kind: "bank_ingeboekt", rows: afvinken, value: true });
-    }
     if (fileToMove) {
       await App().persistMutation({
         kind: "file_move",
@@ -329,19 +328,24 @@
     }
   }
 
+  let kopIndex = new Map();
+
   function renderHistory() {
+    const st = App().state;
+    kopIndex = M().koppelingIndex(st.bankRows, st.inkoopRows, st.verkoopRows);
     const list = $("#verkoop-hist-list");
     const q = $("#verkoop-hist-search").value.trim().toLowerCase();
     list.innerHTML = "";
     let shown = 0;
     for (const h of intel().history) {
       if (q && !`${h.partij} ${h.omschrijving} ${h.categorie}`.toLowerCase().includes(q)) continue;
+      const gekoppeld = kopIndex.has(`verkoop|${h.excelRow}`);
       const li = document.createElement("li");
       li.className = "boek-item" + (editRow === h.excelRow ? " selected" : "");
       li.innerHTML = `
         <div class="bi-head">
           <span class="bi-title">${escapeHtml(h.partij)}</span>
-          <span class="bi-amount in">${M().fmtEur(h.bedrag)}</span>
+          <span class="bi-amount in">${gekoppeld ? "🔗 " : ""}${M().fmtEur(h.bedrag)}</span>
         </div>
         <div class="bi-sub"><span>${escapeHtml(h.omschrijving).slice(0, 70)}</span><span>${h.factuurnummer || ""} · ${h.datumStr}</span></div>
         ${App().rowActionsHtml()}`;

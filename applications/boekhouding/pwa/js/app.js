@@ -22,7 +22,21 @@
     settings: { kmTarief: 0.23, thuisAdres: null, favorieten: [] },
     settingsLoaded: false,
     webUrl: null,
+    matchDagen: (() => {
+      try {
+        return parseInt(localStorage.getItem("boek_match_dagen"), 10) === 28 ? 28 : 14;
+      } catch (_) {
+        return 14;
+      }
+    })(),
   };
+
+  function setMatchDagen(dagen) {
+    state.matchDagen = dagen === 28 ? 28 : 14;
+    try {
+      localStorage.setItem("boek_match_dagen", String(state.matchDagen));
+    } catch (_) {}
+  }
 
   const tabs = {};
 
@@ -231,6 +245,22 @@
     }
   }
 
+  /** Na inboeken de afgevinkte bankregels aan de nieuwe factuurregel koppelen. */
+  async function koppelNaInboeken(token, d, res, boekLetter) {
+    const rows = d.bankRows || [];
+    if (!rows.length || !res?.excelRow) return;
+    const waarde = global.BoekModel.koppelWaarde(
+      boekLetter,
+      { excelRow: res.excelRow, factuurnummer: d.fields.factuurnummer || "" },
+      state.inkoopRows,
+      state.verkoopRows
+    );
+    await global.BoekIo.koppelBank(
+      token,
+      rows.map((r) => ({ excelRow: r, waarde, ingeboekt: true }))
+    );
+  }
+
   // === Mutaties (online direct, anders offline queue) ===
   async function executeMutation(d) {
     const token = await ensureLoggedIn();
@@ -243,14 +273,24 @@
         return global.BoekIo.deleteBankRow(token, d.excelRow);
       case "bank_ingeboekt":
         return global.BoekIo.setBankIngeboekt(token, d.rows, d.value !== false);
-      case "inkoop_add":
-        return global.BoekIo.addInkoopRow(token, d.fields);
+      case "bank_koppel":
+        return global.BoekIo.koppelBank(token, d.items);
+      case "bank_ontkoppel":
+        return global.BoekIo.ontkoppelBank(token, d.excelRow);
+      case "inkoop_add": {
+        const res = await global.BoekIo.addInkoopRow(token, d.fields);
+        await koppelNaInboeken(token, d, res, "I");
+        return res;
+      }
       case "inkoop_update":
         return global.BoekIo.updateInkoopRow(token, d.excelRow, d.fields);
       case "inkoop_delete":
         return global.BoekIo.deleteInkoopRow(token, d.excelRow);
-      case "verkoop_add":
-        return global.BoekIo.addVerkoopRow(token, d.fields);
+      case "verkoop_add": {
+        const res = await global.BoekIo.addVerkoopRow(token, d.fields);
+        await koppelNaInboeken(token, d, res, "V");
+        return res;
+      }
       case "verkoop_update":
         return global.BoekIo.updateVerkoopRow(token, d.excelRow, d.fields);
       case "verkoop_delete":
@@ -542,6 +582,7 @@
     isNetworkError,
     rowActionsHtml,
     bindSwipe,
+    setMatchDagen,
     ICON_PENCIL,
     ICON_TRASH,
   };

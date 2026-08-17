@@ -280,6 +280,13 @@
       case "inkoop_add": {
         const res = await global.BoekIo.addInkoopRow(token, d.fields);
         await koppelNaInboeken(token, d, res, "I");
+        // Afschrijving aangevinkt → jaarregels automatisch mee-inboeken.
+        if (d.fields.afschrijving && d.fields.afschrijvingJaren) {
+          const regels = global.BoekModel.afschrijvingsRegels(d.fields, d.fields.afschrijvingJaren);
+          for (const regel of regels) {
+            await global.BoekIo.addInkoopRow(token, regel);
+          }
+        }
         return res;
       }
       case "inkoop_update":

@@ -547,6 +547,45 @@
     return rest;
   }
 
+  /**
+   * Afschrijvingsschema in de stijl van het werkboek: netto (excl. BTW) lineair
+   * over N jaar, jaarregels op 31-12 met BTW 0%, categorie "Afschrijving" en
+   * een aflopende boekwaarde in de opmerking (laatste jaar €0). Het laatste
+   * jaar vangt afrondingsverschillen op.
+   */
+  function afschrijvingsRegels(fields, jaren = 5) {
+    const bedrag = fields.bedrag;
+    const datum = isoToDate(fields.datumIso);
+    jaren = Math.min(10, Math.max(2, Math.round(jaren || 5)));
+    if (bedrag == null || bedrag <= 0 || !datum) return [];
+    const btw = fields.btw != null ? fields.btw : 21;
+    const netto = Math.round((bedrag / (1 + btw / 100)) * 100) / 100;
+    const perJaar = Math.round((netto / jaren) * 100) / 100;
+    const oms = (fields.omschrijving || fields.leverancier || "").trim();
+    const uit = [];
+    let boekwaarde = netto;
+    for (let n = 1; n <= jaren; n++) {
+      const bedragJaar = n === jaren ? Math.round(boekwaarde * 100) / 100 : perJaar;
+      boekwaarde = Math.round((boekwaarde - bedragJaar) * 100) / 100;
+      const bw = boekwaarde === 0 ? "€0" : `€${boekwaarde.toFixed(2).replace(".", ",")}`;
+      uit.push({
+        datumIso: `${datum.getFullYear() + n - 1}-12-31`,
+        leverancier: fields.leverancier,
+        omschrijving: `${oms} afschrijving ${n}e jaar`,
+        factuurnummer: "",
+        bedrag: bedragJaar,
+        btw: 0,
+        verlegd: false,
+        afschrijving: false,
+        categorie: "Afschrijving",
+        opmerking: `Boekwaarde ${bw}`,
+        land: fields.land || "",
+        project: fields.project || "",
+      });
+    }
+    return uit;
+  }
+
   /** Ingeboekte bankregels zonder gekoppelde factuur — de "bijzondere gevallen". */
   function bankZonderKoppeling(bankRows) {
     return bankRows
@@ -1008,7 +1047,7 @@
     normalizeParty, partyNamesMatch, buildIntel, partyDefaults, findDuplicate,
     bankMatchesForInvoice, invoiceMatchesForBankRow,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
-    koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur,
+    koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels,
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,

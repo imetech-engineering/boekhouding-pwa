@@ -225,6 +225,7 @@
       btw: $("#inkoop-btw").value.trim() === "" ? null : M().parseUserAmount($("#inkoop-btw").value.replace("%", "")),
       verlegd: $("#inkoop-verlegd").checked,
       afschrijving: $("#inkoop-afschrijving").checked,
+      afschrijvingJaren: Math.min(10, Math.max(2, parseInt($("#inkoop-afschrijf-jaren").value, 10) || 5)),
       categorie: $("#inkoop-categorie").value.trim(),
       project: $("#inkoop-project").value.trim(),
       opmerking: $("#inkoop-opmerking").value.trim(),
@@ -248,6 +249,8 @@
     $("#inkoop-land").value = "";
     $("#inkoop-verlegd").checked = false;
     $("#inkoop-afschrijving").checked = false;
+    $("#inkoop-afschrijf-jaren").value = "5";
+    $("#inkoop-afschrijf-wrap").classList.add("hidden");
     $("#inkoop-bank-check").checked = false;
     $("#inkoop-valuta-wrap").classList.add("hidden");
     prefillBankRows = [];
@@ -263,6 +266,7 @@
   /** Bewerkmodus aan/uit: knoptekst en titel volgen de stand. */
   function setEditRow(row) {
     editRow = row;
+    updateAfschrijfPreview();
     $("#inkoop-form-title").textContent = row ? `Regel bewerken (rij ${row})` : "Factuur inboeken";
     $("#btn-inkoop-boek").textContent = row ? "Bijwerken" : "Inboeken";
     $("#btn-inkoop-boek-move").classList.toggle("hidden", !!row || !selectedFile);
@@ -329,6 +333,29 @@
     );
   }
 
+  /**
+   * Live schema onder het afschrijving-vinkje: hoeveel jaarregels er automatisch
+   * bijgeboekt worden. Alleen bij nieuw inboeken — bij bewerken bestaan ze al.
+   */
+  function updateAfschrijfPreview() {
+    const wrap = $("#inkoop-afschrijf-wrap");
+    const aan = $("#inkoop-afschrijving").checked && !editRow;
+    wrap.classList.toggle("hidden", !aan);
+    if (!aan) return;
+    const f = readFields();
+    const p = $("#inkoop-afschrijf-preview");
+    const regels = M().afschrijvingsRegels(f, f.afschrijvingJaren);
+    if (!regels.length) {
+      p.textContent = "Vul bedrag en datum in om het schema te zien.";
+      return;
+    }
+    const eerste = regels[0];
+    const laatste = regels[regels.length - 1];
+    const afwijkend =
+      laatste.bedrag !== eerste.bedrag ? `, laatste ${M().fmtEur(laatste.bedrag)}` : "";
+    p.textContent = `✓ Boekt automatisch ${regels.length} jaarregels van ${M().fmtEur(eerste.bedrag)}${afwijkend} (31-12-${eerste.datumIso.slice(0, 4)} t/m 31-12-${laatste.datumIso.slice(0, 4)}), netto excl. BTW, tot boekwaarde €0.`;
+  }
+
   async function boek(move) {
     const f = readFields();
     if (!f.leverancier) return App().showToast("Vul de leverancier in.", true);
@@ -365,9 +392,16 @@
     clearForm();
     if (fileToMove) deselectFile();
 
+    const nJaar = f.afschrijving ? f.afschrijvingJaren : 0;
     const ok = await App().persistMutation(
       { kind: "inkoop_add", fields: f, bankRows: afvinken },
-      { successMsg: move ? "Ingeboekt + factuur verplaatst" : "Ingeboekt in inkoopboek" }
+      {
+        successMsg: nJaar
+          ? `Ingeboekt + ${nJaar} afschrijvingsregels${move ? " + verplaatst" : ""}`
+          : move
+            ? "Ingeboekt + factuur verplaatst"
+            : "Ingeboekt in inkoopboek",
+      }
     );
     if (!ok) return;
     if (fileToMove) {
@@ -523,6 +557,10 @@
     for (const id of ["inkoop-bedrag", "inkoop-datum"]) {
       document.getElementById(id).addEventListener("input", updateBankCheck);
       document.getElementById(id).addEventListener("change", updateBankCheck);
+    }
+    $("#inkoop-afschrijving").addEventListener("change", updateAfschrijfPreview);
+    for (const id of ["inkoop-afschrijf-jaren", "inkoop-bedrag", "inkoop-btw", "inkoop-datum", "inkoop-omschrijving"]) {
+      document.getElementById(id).addEventListener("input", updateAfschrijfPreview);
     }
     for (const id of ["inkoop-datum", "inkoop-leverancier", "inkoop-fnr"]) {
       document.getElementById(id).addEventListener("input", updateRenameButton);

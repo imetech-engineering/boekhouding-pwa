@@ -299,20 +299,37 @@
 
   const toonAllesSet = new Set();
 
-  /** Verkoopfacturen zonder bankregel = nog niet betaald; tik = koppelen (betaald melden). */
+  /**
+   * Verkoopfacturen zonder (volledige) bankregel = nog niet (helemaal) betaald.
+   * Deelbetalingen tellen mee met hun restbedrag; tik = koppelen (betaald melden).
+   */
   function renderOnbetaald(losFact) {
-    const onbetaald = losFact.filter((f) => f.boek === "verkoop" && f.bedrag > 0);
-    const totaal = onbetaald.reduce((s, f) => s + f.bedrag, 0);
+    const st = App().state;
+    const dekking = M().factuurDekking(st.bankRows, st.inkoopRows, st.verkoopRows);
+    const onbetaald = losFact
+      .filter((f) => f.boek === "verkoop" && f.bedrag > 0)
+      .map((f) => ({ ...f, rest: f.bedrag, deels: false }));
+    const nu = new Date();
+    for (const r of st.verkoopRows) {
+      if (r.isEmpty || !r.datum || r.bedrag == null || r.bedrag <= 0 || r.datum > nu) continue;
+      const gedekt = dekking.get(`verkoop|${r.excelRow}`) || 0;
+      const rest = Math.round((r.bedrag - gedekt) * 100) / 100;
+      if (gedekt > 0.005 && rest >= 0.01) onbetaald.push({ ...r, boek: "verkoop", rest, deels: true });
+    }
+    const totaal = onbetaald.reduce((s, f) => s + f.rest, 0);
     $("#kpi-onbetaald").textContent = M().fmtEur(totaal);
     $("#kpi-onbetaald-n").textContent = String(onbetaald.length);
     const el = $("#ovz-onbetaald");
     el.innerHTML = "";
     for (const f of onbetaald.slice(0, 6)) {
       const dagen = Math.floor((Date.now() - f.datum.getTime()) / 86400000);
+      const bedragTekst = f.deels
+        ? `nog ${M().fmtEur(f.rest)} van ${M().fmtEur(f.bedrag)}`
+        : M().fmtEur(f.bedrag);
       const p = document.createElement("p");
       p.className = "sub ovz-koppel-item";
-      p.textContent = `• ${f.partij}${f.factuurnummer ? " · " + f.factuurnummer : ""} · ${M().fmtEur(f.bedrag)} · ${dagen} dgn${dagen > 30 ? " ⚠" : ""}`;
-      p.addEventListener("click", () => openFactuurKoppel(f));
+      p.textContent = `• ${f.partij}${f.factuurnummer ? " · " + f.factuurnummer : ""} · ${bedragTekst} · ${dagen} dgn${dagen > 30 ? " ⚠" : ""}`;
+      p.addEventListener("click", () => openFactuurKoppel({ ...f, bedrag: f.rest }));
       el.appendChild(p);
     }
     if (onbetaald.length > 6) {

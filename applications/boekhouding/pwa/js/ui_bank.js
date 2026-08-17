@@ -60,12 +60,14 @@
     return all.filter((f) => f.datum && f.datum.getTime() >= cutoff.getTime());
   }
 
-  /** Omgekeerde index (factuur → bankregels), per render opgebouwd. */
+  /** Omgekeerde index (factuur → bankregels) + gedekt bedrag per factuur, per render. */
   let kopIndex = new Map();
+  let dekkingMap = new Map();
 
   function bouwKopIndex() {
     const st = App().state;
     kopIndex = M().koppelingIndex(st.bankRows, st.inkoopRows, st.verkoopRows);
+    dekkingMap = M().factuurDekking(st.bankRows, st.inkoopRows, st.verkoopRows);
     return kopIndex;
   }
 
@@ -465,7 +467,7 @@
     zoekEl.classList.remove("hidden");
     $("#btn-bank-m-koppel").classList.remove("hidden");
     const zoek = zoekEl.value;
-    const kandidaten = M().koppelKandidaten(r, st.inkoopRows, st.verkoopRows, kopIndex, st.matchDagen, zoek);
+    const kandidaten = M().koppelKandidaten(r, st.inkoopRows, st.verkoopRows, dekkingMap, st.matchDagen, zoek);
     const rest = Math.round((bedrag - gekoppeldBedrag(r)) * 100) / 100;
     // Suggestie vooraf aanvinken: kleinste combinatie die het bedrag precies dekt.
     if (!zoek && !koppelSelectie.size && !r.koppelingRaw) {
@@ -481,12 +483,13 @@
       const li = document.createElement("li");
       li.className = "boek-item koppel-kandidaat" + (sel ? " selected" : "");
       const nr = f.factuurnummer ? ` · ${escapeHtml(f.factuurnummer)}` : "";
+      const deels = f.deels ? ` · deels betaald, nog ${M().fmtEur(f.rest)} van ${M().fmtEur(f.bedrag)}` : "";
       li.innerHTML = `
         <div class="bi-head">
           <span class="bi-title"><span class="koppel-check">${sel ? "☑" : "☐"}</span> ${escapeHtml(f.partij)}${nr}</span>
-          <span class="bi-amount${tegen ? " uit" : ""}">${tegen ? "− " : ""}${M().fmtEur(f.bedrag)}</span>
+          <span class="bi-amount${tegen ? " uit" : ""}">${tegen ? "− " : ""}${M().fmtEur(f.rest != null ? f.rest : f.bedrag)}</span>
         </div>
-        <div class="bi-sub"><span>${escapeHtml(f.boek)}${tegen ? " (verrekend)" : ""} · ${escapeHtml((f.omschrijving || "").slice(0, 40))}</span><span>${f.datumStr}</span></div>`;
+        <div class="bi-sub"><span>${escapeHtml(f.boek)}${tegen ? " (verrekend)" : ""}${deels} · ${escapeHtml((f.omschrijving || "").slice(0, 40))}</span><span>${f.datumStr}</span></div>`;
       li.addEventListener("click", () => {
         if (koppelSelectie.has(key)) koppelSelectie.delete(key);
         else koppelSelectie.set(key, f);
@@ -502,7 +505,10 @@
           : `Geen kandidaten binnen ±${st.matchDagen} dagen — zoek hierboven op naam of factuurnummer.`
       }</li>`;
     }
-    const som = [...koppelSelectie.values()].reduce((s, f) => s + (f.teken || 1) * f.bedrag, 0);
+    const som = [...koppelSelectie.values()].reduce(
+      (s, f) => s + (f.teken || 1) * (f.rest != null ? f.rest : f.bedrag),
+      0
+    );
     const somEl = $("#bank-m-som");
     const knop = $("#btn-bank-m-koppel");
     somEl.classList.toggle("hidden", !koppelSelectie.size);
@@ -522,7 +528,7 @@
     const r = modalRow;
     const st = App().state;
     const sel = [...koppelSelectie.values()];
-    const som = sel.reduce((s, f) => s + (f.teken || 1) * f.bedrag, 0);
+    const som = sel.reduce((s, f) => s + (f.teken || 1) * (f.rest != null ? f.rest : f.bedrag), 0);
     const rest = Math.round(((bankBedrag(r) || 0) - gekoppeldBedrag(r)) * 100) / 100;
     if (Math.abs(som - rest) >= 0.005) {
       const ok = await App().showConfirm(

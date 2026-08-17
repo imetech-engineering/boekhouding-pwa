@@ -595,33 +595,59 @@
   }
 
   /**
+   * Gedekt bedrag per factuur ("boek|excelRow" → €), afgeleid uit de koppelingen.
+   * Bankregel met één koppeling: het bankbedrag dekt die factuur — zo kan één
+   * factuur over meerdere bankregels betaald worden (deelbetalingen). Bankregel
+   * met meerdere koppelingen (verzamelbetaling): die facturen zijn volledig gedekt.
+   */
+  function factuurDekking(bankRows, inkoopRows, verkoopRows) {
+    const dekking = new Map();
+    for (const b of bankRows) {
+      if (b.isEmpty || !b.koppelingRaw) continue;
+      const ks = parseKoppelingen(b.koppelingRaw, inkoopRows, verkoopRows).filter((k) => k.row);
+      if (!ks.length) continue;
+      const bedrag = b.in != null ? b.in : b.uit;
+      if (ks.length === 1 && bedrag != null) {
+        const key = `${ks[0].boek}|${ks[0].row.excelRow}`;
+        dekking.set(key, (dekking.get(key) || 0) + bedrag);
+      } else {
+        for (const k of ks) dekking.set(`${k.boek}|${k.row.excelRow}`, Infinity);
+      }
+    }
+    return dekking;
+  }
+
+  /**
    * Kandidaat-facturen om handmatig aan een bankregel te koppelen.
    * Richting: bank-uit → inkoop, bank-in → verkoop. Al gekoppelde facturen doen niet mee.
    * Zonder zoekterm: datum binnen ±dagen en bedrag ≤ bankbedrag (deelbetalingen kunnen samen
    * één afschrijving dekken). Met zoekterm: alle facturen op partij/factuurnummer/omschrijving.
    */
-  function koppelKandidaten(bankRow, inkoopRows, verkoopRows, index, dagen = MATCH_DAYS, zoek = "") {
+  function koppelKandidaten(bankRow, inkoopRows, verkoopRows, dekking, dagen = MATCH_DAYS, zoek = "") {
     const isIn = bankRow.in != null;
     const bedrag = isIn ? bankRow.in : bankRow.uit;
     const q = String(zoek || "").trim().toLowerCase();
     const uit = [];
     // teken +1 = hoofdrichting; teken −1 = tegenrichting (verrekening: bij een
     // uitbetaling worden ingehouden fees als inkoopfactuur afgetrokken — netto klopt dan).
+    // Deels gedekte facturen (deelbetalingen) blijven kandidaat met hun restbedrag.
     const voegToe = (rows, boekNaam, teken, maxBedrag) => {
       const boekKey = boekNaam.toLowerCase();
       for (const f of rows) {
         if (f.isEmpty || f.bedrag == null || !f.datum) continue;
         // Reiskosten en afschrijvingen hebben per definitie geen bankregel
         if (f.categorie === "Reiskosten" || f.categorie === "Afschrijving") continue;
-        if (index && index.has(`${boekKey}|${f.excelRow}`)) continue;
+        const gedekt = dekking ? dekking.get(`${boekKey}|${f.excelRow}`) || 0 : 0;
+        const rest = Math.round((f.bedrag - gedekt) * 100) / 100;
+        if (rest < 0.01) continue; // volledig gedekt
         if (q) {
           const hay = `${f.partij} ${f.factuurnummer} ${f.omschrijving}`.toLowerCase();
           if (!hay.includes(q)) continue;
         } else {
           if (!bankRow.datum || daysBetween(f.datum, bankRow.datum) > dagen) continue;
-          if (teken > 0 && maxBedrag != null && f.bedrag > maxBedrag + 0.005) continue;
+          if (teken > 0 && maxBedrag != null && rest > maxBedrag + 0.005) continue;
         }
-        uit.push({ ...f, boek: boekNaam, teken });
+        uit.push({ ...f, boek: boekNaam, teken, rest, deels: gedekt > 0.005 });
       }
     };
     const hoofd = isIn ? [verkoopRows, "Verkoop"] : [inkoopRows, "Inkoop"];
@@ -629,7 +655,7 @@
     voegToe(tegen[0], tegen[1], -1, null);
     // Hoofdrichting mag groter zijn dan het bankbedrag zolang verrekeningen
     // het verschil kunnen dekken (uitbetaling = omzet − fees).
-    const tegenSom = uit.reduce((s, f) => s + f.bedrag, 0);
+    const tegenSom = uit.reduce((s, f) => s + f.rest, 0);
     voegToe(hoofd[0], hoofd[1], 1, bedrag != null ? bedrag + tegenSom : null);
     uit.sort((a, b) => {
       if (a.teken !== b.teken) return b.teken - a.teken; // hoofdrichting eerst
@@ -650,7 +676,7 @@
     const doel = Math.round(doelBedrag * 100);
     const zoekIn = (set) => {
       const n = Math.min(set.length, 25);
-      const cents = set.slice(0, n).map((f) => Math.round(f.bedrag * 100) * (f.teken || 1));
+      const cents = set.slice(0, n).map((f) => Math.round((f.rest != null ? f.rest : f.bedrag) * 100) * (f.teken || 1));
       for (let size = 1; size <= 4; size++) {
         const pick = [];
         const zoekSub = (start, rest) => {
@@ -1074,7 +1100,7 @@
     normalizeParty, partyNamesMatch, buildIntel, partyDefaults, findDuplicate,
     bankMatchesForInvoice, invoiceMatchesForBankRow,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
-    koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels,
+    koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,

@@ -139,13 +139,10 @@
             </div>
             <img id="inkoop-img-preview" class="img-preview hidden" alt="Factuur" />
           </div>
-          <div class="btn-row">
+          <div id="inkoop-page-row" class="btn-row hidden">
             <button type="button" id="btn-inkoop-page-prev" class="btn-secondary btn-compact hidden">◀</button>
             <span id="inkoop-page-label" class="page-label hidden"></span>
             <button type="button" id="btn-inkoop-page-next" class="btn-secondary btn-compact hidden">▶</button>
-            <button type="button" id="btn-inkoop-groot" class="btn-secondary">⤢ Groot + tekst</button>
-            <button type="button" id="btn-inkoop-kies" class="btn-secondary">📎 Bestand kiezen</button>
-            <button type="button" id="btn-inkoop-deselect" class="btn-secondary">Deselecteer</button>
           </div>
         </div>
 
@@ -261,13 +258,10 @@
             </div>
             <img id="verkoop-img-preview" class="img-preview hidden" alt="Factuur" />
           </div>
-          <div class="btn-row">
+          <div id="verkoop-page-row" class="btn-row hidden">
             <button type="button" id="btn-verkoop-page-prev" class="btn-secondary btn-compact hidden">◀</button>
             <span id="verkoop-page-label" class="page-label hidden"></span>
             <button type="button" id="btn-verkoop-page-next" class="btn-secondary btn-compact hidden">▶</button>
-            <button type="button" id="btn-verkoop-groot" class="btn-secondary">⤢ Groot + tekst</button>
-            <button type="button" id="btn-verkoop-kies" class="btn-secondary">📎 Bestand kiezen</button>
-            <button type="button" id="btn-verkoop-deselect" class="btn-secondary">Deselecteer</button>
           </div>
         </div>
 
@@ -437,6 +431,42 @@
         </div>
 
         <div class="card">
+          <h2>Saldo alle rekeningen</h2>
+          <div class="kpi-row">
+            <div class="kpi kpi-rabo"><span class="kpi-label">Rabo lopend</span><span id="kpi-saldo-rabo" class="kpi-value">—</span></div>
+            <div class="kpi kpi-knab"><span class="kpi-label">Knab lopend</span><span id="kpi-saldo-knab" class="kpi-value">—</span></div>
+          </div>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Spaar</span><span id="kpi-saldo-spaar" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Totaal</span><span id="kpi-saldo-totaal" class="kpi-value">—</span></div>
+          </div>
+          <p id="ovz-spaar-uitleg" class="sub">—</p>
+          <button type="button" id="btn-ovz-spaar" class="btn-secondary btn-inline hidden">Spaarregels tonen</button>
+          <div id="ovz-spaar-regels" class="hidden"></div>
+        </div>
+
+        <div class="card">
+          <h2>Prognose <span id="prog-jaar" class="preview-name"></span></h2>
+          <p id="prog-basis" class="sub">—</p>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Omzet</span><span id="kpi-prog-omzet" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Kosten</span><span id="kpi-prog-kosten" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Winst</span><span id="kpi-prog-winst" class="kpi-value">—</span></div>
+          </div>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Netto over na belasting</span><span id="kpi-prog-netto" class="kpi-value">—</span></div>
+          </div>
+          <div class="loc-table-wrap">
+            <table class="loc-table" aria-label="Van winst naar netto">
+              <tbody id="prog-body"></tbody>
+            </table>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-prog-aannames" class="btn-secondary">⚙︎ Aannames en tarieven</button>
+          </div>
+        </div>
+
+        <div class="card">
           <h2>Onbetaalde verkoopfacturen</h2>
           <div class="kpi-row">
             <div class="kpi"><span class="kpi-label">Openstaand</span><span id="kpi-onbetaald" class="kpi-value">—</span></div>
@@ -448,6 +478,7 @@
         <div class="card">
           <h2>Verloop per maand</h2>
           <div id="ovz-maanden" class="ovz-months"></div>
+          <p id="ovz-maand-detail" class="sub">Tik op een maand voor de bedragen.</p>
           <p class="sub"><span class="legend-dot legend-omzet"></span> omzet &nbsp; <span class="legend-dot legend-kosten"></span> kosten</p>
         </div>
 
@@ -793,18 +824,21 @@
       </div>
     </div>
 
-    <!-- Zelf het factuurbestand kiezen bij een geboekte regel -->
-    <div id="doc-pick-modal" class="modal hidden" role="dialog" aria-label="Bestand kiezen">
-      <div class="modal-backdrop"></div>
+    <!-- Aannames en tarieven achter de prognose -->
+    <div id="prog-modal" class="modal hidden" role="dialog" aria-label="Aannames en tarieven">
+      <div class="modal-backdrop" data-close-modal></div>
       <div class="modal-sheet modal-sheet-tall">
-        <h2>Bestand kiezen</h2>
-        <p class="sub">Uit "nog te verwerken" en "verwerkt"; de waarschijnlijkste staan bovenaan.</p>
-        <input id="doc-pick-search" placeholder="🔍 Zoek op bestandsnaam…" autocomplete="off" />
-        <p id="doc-pick-busy" class="sub hidden">Bestanden ophalen…</p>
-        <p id="doc-pick-empty" class="sub hidden">Geen bestanden gevonden.</p>
-        <ul id="doc-pick-list" class="file-list"></ul>
+        <h2>Aannames</h2>
+        <label class="check-row"><input type="checkbox" id="set-urencriterium" /> Voldoe aan het urencriterium (1225 uur) — zelfstandigenaftrek</label>
+        <label class="check-row"><input type="checkbox" id="set-startersaftrek" /> Startersaftrek dit jaar</label>
+        <label class="check-row"><input type="checkbox" id="set-wbso" /> WBSO: S&amp;O-aftrek (vast bedrag)</label>
+        <label class="check-row"><input type="checkbox" id="set-wbso-starter" /> S&amp;O-starter (verhoging)</label>
+        <h2 id="prog-tarief-titel">Tarieven</h2>
+        <p class="sub">Standaardwaarden per belastingjaar. Kloppen ze niet meer, pas ze hier aan — je correctie wordt in OneDrive bewaard en gaat mee naar je andere apparaten.</p>
+        <div id="prog-tarieven" class="prog-tarieven"></div>
         <div class="btn-row">
-          <button type="button" id="btn-doc-pick-cancel" class="btn-secondary">Annuleren</button>
+          <button type="button" id="btn-prog-tarief-reset" class="btn-secondary">Standaardtarieven terug</button>
+          <button type="button" id="btn-prog-sluit" class="btn-primary">Klaar</button>
         </div>
       </div>
     </div>

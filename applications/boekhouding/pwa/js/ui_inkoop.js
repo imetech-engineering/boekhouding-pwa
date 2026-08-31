@@ -10,7 +10,6 @@
   let filenameParsed = null;
   let pdfDoc = null;
   let pdfPageNum = 1;
-  let previewImgUrl = null; // foto in beeld (PDF's gaan via pdfDoc)
   let bankMatchRows = [];
   let prefillBankRows = [];
   let editRow = null; // Excel-rij die bewerkt wordt (null = nieuwe regel)
@@ -49,12 +48,10 @@
   async function toonVoorbeeld(item, parentFolder) {
     pdfDoc = null;
     pdfPageNum = 1;
-    previewImgUrl = null;
     $("#inkoop-text-layer").innerHTML = "";
     $("#inkoop-preview-card").classList.remove("hidden");
     $("#inkoop-preview-status").classList.add("hidden");
     $("#inkoop-preview-wrap").classList.remove("hidden");
-    $("#btn-inkoop-groot").classList.remove("hidden");
     $("#inkoop-preview-name").textContent = item.name;
     $("#inkoop-img-preview").classList.add("hidden");
     $("#inkoop-pdf-canvas").classList.remove("hidden");
@@ -74,7 +71,6 @@
       return pdfDoc;
     }
     const url = await global.BoekGraph.downloadObjectUrl(fileItem.id, token);
-    previewImgUrl = url;
     const img = $("#inkoop-img-preview");
     img.src = url;
     img.classList.remove("hidden");
@@ -139,6 +135,7 @@
       $("#inkoop-text-layer").innerHTML = "";
     }
     const multi = pdfDoc.numPages > 1;
+    $("#inkoop-page-row").classList.toggle("hidden", !multi);
     $("#btn-inkoop-page-prev").classList.toggle("hidden", !multi);
     $("#btn-inkoop-page-next").classList.toggle("hidden", !multi);
     const label = $("#inkoop-page-label");
@@ -146,14 +143,8 @@
     label.textContent = `${pdfPageNum}/${pdfDoc.numPages}`;
   }
 
-  /** Zelfde bestand groot in beeld, met tekst die je kunt selecteren en kopiëren. */
-  function toonGroot() {
-    const naam = $("#inkoop-preview-name").textContent;
-    if (pdfDoc) global.BoekDocPreview.open({ naam, pdf: pdfDoc, pageNum: pdfPageNum });
-    else if (previewImgUrl) global.BoekDocPreview.open({ naam, imgUrl: previewImgUrl });
-  }
-
   function hidePdfNav() {
+    $("#inkoop-page-row").classList.add("hidden");
     $("#btn-inkoop-page-prev").classList.add("hidden");
     $("#btn-inkoop-page-next").classList.add("hidden");
     $("#inkoop-page-label").classList.add("hidden");
@@ -336,7 +327,7 @@
     // Ondertussen kan er al een andere regel gekozen zijn.
     if (editRow !== h.excelRow) return;
     if (!gevonden) {
-      toonZoekmelding("Geen bestand gevonden bij deze regel — kies het zelf met 📎 Bestand kiezen.");
+      toonZoekmelding("Geen bestand gevonden bij deze regel — zoek hem op in de lijst hierboven.");
       return;
     }
     try {
@@ -352,27 +343,10 @@
     $("#inkoop-preview-card").classList.remove("hidden");
     $("#inkoop-preview-name").textContent = "";
     $("#inkoop-preview-wrap").classList.add("hidden");
-    $("#btn-inkoop-groot").classList.add("hidden");
     hidePdfNav();
     const st = $("#inkoop-preview-status");
     st.textContent = msg;
     st.classList.remove("hidden");
-  }
-
-  /** Zelf het bijbehorende bestand aanwijzen als de automaat het niet vindt. */
-  async function kiesBestand() {
-    const rij = {
-      factuurnummer: $("#inkoop-fnr").value.trim(),
-      partij: $("#inkoop-leverancier").value.trim(),
-      datum: M().isoToDate($("#inkoop-datum").value),
-    };
-    const gekozen = await global.BoekDocFinder.kies("inkoop", rij);
-    if (!gekozen) return;
-    try {
-      await toonVoorbeeld(gekozen);
-    } catch (e) {
-      App().showToast(`Factuur laden mislukt: ${e.message || e}`, true);
-    }
   }
 
   async function deleteRow(h) {
@@ -603,9 +577,6 @@
       clearForm();
       deselectFile();
     });
-    $("#btn-inkoop-deselect").addEventListener("click", deselectFile);
-    $("#btn-inkoop-groot").addEventListener("click", toonGroot);
-    $("#btn-inkoop-kies").addEventListener("click", kiesBestand);
     $("#btn-inkoop-cancel-edit").addEventListener("click", clearForm);
     $("#btn-inkoop-page-prev").addEventListener("click", () => {
       if (pdfDoc && pdfPageNum > 1) {

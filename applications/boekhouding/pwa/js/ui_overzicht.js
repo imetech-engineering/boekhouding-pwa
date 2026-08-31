@@ -10,6 +10,11 @@
   let thuisKeuze = null;
 
   const MAANDEN = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+  const MAAND_NAMEN = [
+    "Januari", "Februari", "Maart", "April", "Mei", "Juni",
+    "Juli", "Augustus", "September", "Oktober", "November", "December",
+  ];
+  let gekozenMaand = null; // aangetikte maand in het verloop, null = heel jaar
 
   function escapeHtml(s) {
     const d = document.createElement("div");
@@ -20,10 +25,10 @@
   function renderKerncijfers() {
     const st = App().state;
     const c = M().maandCijfers(st.inkoopRows, st.verkoopRows, jaar);
-    $("#kpi-omzet").textContent = M().fmtEur(c.omzet);
-    $("#kpi-kosten").textContent = M().fmtEur(c.kosten);
+    $("#kpi-omzet").textContent = M().fmtEurKort(c.omzet);
+    $("#kpi-kosten").textContent = M().fmtEurKort(c.kosten);
     const res = $("#kpi-resultaat");
-    res.textContent = M().fmtEur(c.resultaat);
+    res.textContent = M().fmtEurKort(c.resultaat);
     res.classList.toggle("neg", c.resultaat < 0);
 
     // Maandstaafjes, geschaald op de hoogste waarde van dat jaar
@@ -32,17 +37,219 @@
     wrap.innerHTML = "";
     c.maanden.forEach((m, i) => {
       const col = document.createElement("div");
-      col.className = "ovz-month";
+      col.className = "ovz-month" + (gekozenMaand === i ? " selected" : "");
       col.title =
-        `${MAANDEN[i]}: omzet ${M().fmtEur(m.omzet)}, kosten ${M().fmtEur(m.kosten)}`;
+        `${MAAND_NAMEN[i]}: omzet ${M().fmtEur(m.omzet)}, kosten ${M().fmtEur(m.kosten)}`;
       col.innerHTML = `
         <span class="ovz-pair">
           <i class="b-omzet" style="height:${(m.omzet / max) * 100}%"></i>
           <i class="b-kosten" style="height:${(m.kosten / max) * 100}%"></i>
         </span>
         <span class="ovz-month-label">${MAANDEN[i]}</span>`;
+      // Tik = die maand in cijfers eronder; nog eens tikken zet hem weer uit.
+      col.addEventListener("click", () => {
+        gekozenMaand = gekozenMaand === i ? null : i;
+        App().haptic(10);
+        renderKerncijfers();
+      });
       wrap.appendChild(col);
     });
+    renderMaandDetail(c);
+  }
+
+  /** Regel onder de staafjes: het jaar in cijfers, of de aangetikte maand. */
+  function renderMaandDetail(c) {
+    const el = $("#ovz-maand-detail");
+    if (gekozenMaand == null) {
+      const beste = c.maanden.reduce(
+        (b, m, i) => (m.omzet > c.maanden[b].omzet ? i : b), 0
+      );
+      el.innerHTML =
+        `Gemiddeld per maand: omzet ${M().fmtEur(c.omzet / 12)}, kosten ${M().fmtEur(c.kosten / 12)}. ` +
+        `Beste maand: ${MAAND_NAMEN[beste]} (${M().fmtEur(c.maanden[beste].omzet)}). ` +
+        `<em>Tik op een maand voor die bedragen.</em>`;
+      return;
+    }
+    const m = c.maanden[gekozenMaand];
+    const res = m.omzet - m.kosten;
+    el.innerHTML =
+      `<strong>${MAAND_NAMEN[gekozenMaand]} ${jaar}</strong> — omzet ${M().fmtEur(m.omzet)}, ` +
+      `kosten ${M().fmtEur(m.kosten)}, resultaat ` +
+      `<strong class="${res >= 0 ? "pos" : "neg"}">${M().fmtEur(res)}</strong> ` +
+      `<em>(nog eens tikken = terug naar het jaar)</em>`;
+  }
+
+  // === Saldo van alle rekeningen (lopend + spaar uit het bankboek) ===
+  function renderSaldi() {
+    const s = M().alleSaldi(App().state.bankRows);
+    $("#kpi-saldo-rabo").textContent = M().fmtEurKort(s.lopend.Rabo);
+    $("#kpi-saldo-knab").textContent = M().fmtEurKort(s.lopend.Knab);
+    $("#kpi-saldo-spaar").textContent = M().fmtEurKort(s.spaarTotaal);
+    $("#kpi-saldo-totaal").textContent = M().fmtEurKort(s.totaal);
+    for (const [id, waarde] of [
+      ["#kpi-saldo-rabo", s.lopend.Rabo], ["#kpi-saldo-knab", s.lopend.Knab],
+      ["#kpi-saldo-spaar", s.spaarTotaal], ["#kpi-saldo-totaal", s.totaal],
+    ]) {
+      $(id).classList.toggle("neg", waarde < 0);
+    }
+    const zonder = s.regels.filter((r) => !r.teltMee).length;
+    $("#ovz-spaar-uitleg").innerHTML =
+      s.regels.length
+        ? `Spaarsaldo is afgeleid uit ${s.regels.length} bankregel(s) met "spaar" erin ` +
+          `(Rabo ${M().fmtEur(s.spaar.Rabo)}, Knab ${M().fmtEur(s.spaar.Knab)}).` +
+          (zonder ? ` <strong>${zonder} regel(s) zonder rekening tellen niet mee.</strong>` : "")
+        : 'Geen bankregels met "spaar" gevonden — het spaarsaldo is dan € 0,00.';
+    $("#btn-ovz-spaar").classList.toggle("hidden", !s.regels.length);
+    const lijst = $("#ovz-spaar-regels");
+    lijst.innerHTML = s.regels
+      .map(
+        (r) =>
+          `<div class="ovz-lijst-rij"><span>${escapeHtml(r.datumStr)} · ${escapeHtml(r.omschrijving)}` +
+          `${r.teltMee ? "" : " ⚠️ geen rekening"}</span>` +
+          `<span class="num ${r.bedrag >= 0 ? "pos" : "neg"}">${M().fmtEur(r.bedrag)}</span></div>`
+      )
+      .join("");
+  }
+
+
+
+  // === Prognose: van omzet naar wat er netto overblijft ===
+  const TARIEF_VELDEN = [
+    ["zelfstandigenaftrek", "Zelfstandigenaftrek (€)", "eur"],
+    ["startersaftrek", "Startersaftrek (€)", "eur"],
+    ["soAftrek", "S&O-aftrek WBSO (€)", "eur"],
+    ["soAftrekStarter", "S&O-starter, extra (€)", "eur"],
+    ["mkbVrijstelling", "MKB-winstvrijstelling (%)", "pct"],
+    ["zvwTarief", "Zvw-bijdrage (%)", "pct"],
+    ["zvwMax", "Zvw, maximale grondslag (€)", "eur"],
+    ["ahkMax", "Algemene heffingskorting, max (€)", "eur"],
+    ["ahkStart", "Afbouw heffingskorting vanaf (€)", "eur"],
+    ["ahkAfbouw", "Afbouwpercentage heffingskorting (%)", "pct"],
+  ];
+
+  /** Vinkjes en tariefcorrecties uit de instellingen; alles standaard aan. */
+  function fiscaal() {
+    const f = App().state.settings.fiscaal || {};
+    return {
+      urencriterium: f.urencriterium !== false,
+      startersaftrek: f.startersaftrek !== false,
+      wbso: f.wbso !== false,
+      wbsoStarter: f.wbsoStarter !== false,
+      tarieven: f.tarieven || {},
+    };
+  }
+
+  function bewaarFiscaal(patch) {
+    const f = { ...(App().state.settings.fiscaal || {}), ...patch };
+    App().saveSettings({ fiscaal: f });
+    renderPrognose();
+  }
+
+  function renderPrognose() {
+    const st = App().state;
+    const o = fiscaal();
+    const t = M().ibTarieven(jaar, o.tarieven[jaar]);
+    const p = M().jaarPrognose(st.inkoopRows, st.verkoopRows, jaar);
+    const n = M().nettoWinst(p.winst, o, t);
+
+    $("#prog-jaar").textContent = String(jaar);
+    $("#prog-basis").textContent = p.isPrognose
+      ? `Heel ${jaar} doorgetrokken uit ${Math.round(p.deel * 100)}% van het jaar dat om is ` +
+        `(tot nu toe: omzet ${M().fmtEur(p.ytd.omzet)}, kosten ${M().fmtEur(p.ytd.kosten)}).`
+      : `Werkelijke cijfers van ${jaar}, netto en exclusief BTW.`;
+    $("#kpi-prog-omzet").textContent = M().fmtEurKort(p.omzet);
+    $("#kpi-prog-kosten").textContent = M().fmtEurKort(p.kosten);
+    const winstEl = $("#kpi-prog-winst");
+    winstEl.textContent = M().fmtEurKort(p.winst);
+    winstEl.classList.toggle("neg", p.winst < 0);
+    const nettoEl = $("#kpi-prog-netto");
+    nettoEl.textContent = M().fmtEurKort(n.netto);
+    nettoEl.classList.toggle("neg", n.netto < 0);
+
+    const pct = (x) => `${String(Math.round(x * 1000) / 10).replace(".", ",")}%`;
+    // soort: "kop" = tussenstand (vet), "info" = toelichting, anders een bedragregel
+    const regels = [
+      ["Winst uit onderneming", n.winst, "kop"],
+      ["− Zelfstandigenaftrek", -n.zelfstandigenaftrek, ""],
+      ["− Startersaftrek", -n.startersaftrek, ""],
+      ["− S&O-aftrek (WBSO)", -n.soAftrek, ""],
+      ["Winst na ondernemersaftrek", n.naAftrek, "kop"],
+      [`− MKB-winstvrijstelling (${pct(t.mkbVrijstelling)})`, -n.mkbVrijstelling, ""],
+      ["Belastbare winst", n.belastbaar, "kop"],
+      ["Inkomstenbelasting", -n.ib, "altijd"],
+      ["waarvan heffingskortingen", n.heffingskortingen, "info"],
+      [`Zvw-bijdrage (${pct(t.zvwTarief)})`, -n.zvw, "altijd"],
+      ["Netto over", n.netto, "kop"],
+    ];
+    const body = $("#prog-body");
+    body.innerHTML = "";
+    for (const [label, ruw, soort] of regels) {
+      // −0 is ook gewoon nul, en aftrekposten van nul laten we weg.
+      const bedrag = Math.abs(ruw) < 0.005 ? 0 : ruw;
+      if (!soort && bedrag === 0) continue;
+      const tr = document.createElement("tr");
+      if (soort === "info") {
+        tr.innerHTML = `<td class="prog-info">${label}</td><td class="num prog-info">${M().fmtEur(bedrag)}</td>`;
+      } else if (soort === "kop") {
+        tr.innerHTML = `<td><strong>${label}</strong></td>` +
+          `<td class="num ${bedrag < 0 ? "neg" : "pos"}"><strong>${M().fmtEur(bedrag)}</strong></td>`;
+      } else {
+        tr.innerHTML = `<td>${label}</td><td class="num ${bedrag < 0 ? "neg" : "pos"}">${M().fmtEur(bedrag)}</td>`;
+      }
+      body.appendChild(tr);
+    }
+  }
+
+  function openAannames() {
+    const o = fiscaal();
+    $("#set-urencriterium").checked = o.urencriterium;
+    $("#set-startersaftrek").checked = o.startersaftrek;
+    $("#set-wbso").checked = o.wbso;
+    $("#set-wbso-starter").checked = o.wbsoStarter;
+    renderTarieven();
+    $("#prog-modal").classList.remove("hidden");
+  }
+
+  function renderTarieven() {
+    const o = fiscaal();
+    const t = M().ibTarieven(jaar, o.tarieven[jaar]);
+    $("#prog-tarief-titel").textContent = `Tarieven ${jaar}`;
+    const wrap = $("#prog-tarieven");
+    wrap.innerHTML = "";
+    const schijven = t.schijven
+      .map(([grens, tarief]) =>
+        `${grens === Infinity ? "daarboven" : `tot ${M().fmtEurKort(grens)}`} ` +
+        `${String(Math.round(tarief * 10000) / 100).replace(".", ",")}%`
+      )
+      .join(" · ");
+    const uitleg = document.createElement("p");
+    uitleg.className = "sub";
+    uitleg.textContent = `Schijven box 1: ${schijven}`;
+    wrap.appendChild(uitleg);
+    for (const [key, label, soort] of TARIEF_VELDEN) {
+      const rij = document.createElement("label");
+      rij.className = "prog-tarief-rij";
+      const waarde = soort === "pct" ? Math.round(t[key] * 10000) / 100 : t[key];
+      rij.innerHTML = `<span>${label}</span>`;
+      const input = document.createElement("input");
+      input.inputMode = "decimal";
+      input.value = String(waarde).replace(".", ",");
+      input.addEventListener("change", () => {
+        const v = M().parseUserAmount(input.value);
+        if (v == null || v < 0) {
+          App().showToast("Ongeldige waarde", true);
+          renderTarieven();
+          return;
+        }
+        const o2 = fiscaal();
+        const perJaar = { ...(o2.tarieven[jaar] || {}) };
+        perJaar[key] = soort === "pct" ? v / 100 : v;
+        bewaarFiscaal({ tarieven: { ...o2.tarieven, [jaar]: perJaar } });
+        renderTarieven();
+      });
+      rij.appendChild(input);
+      wrap.appendChild(rij);
+    }
   }
 
   function renderKwartalen() {
@@ -674,6 +881,8 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
   function render() {
     $("#ovz-year").value = String(jaar);
     renderKerncijfers();
+    renderSaldi();
+    renderPrognose();
     renderKwartalen();
     renderBtw();
     renderRanglijsten();
@@ -722,12 +931,43 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     $("#btn-jaarrapport").addEventListener("click", openJaarrapport);
     $("#btn-ovz-year-prev").addEventListener("click", () => {
       jaar -= 1;
+      gekozenMaand = null;
       render();
     });
     $("#btn-ovz-year-next").addEventListener("click", () => {
       jaar += 1;
+      gekozenMaand = null;
       render();
     });
+
+    $("#btn-ovz-spaar").addEventListener("click", () => {
+      const lijst = $("#ovz-spaar-regels");
+      const dicht = lijst.classList.toggle("hidden");
+      $("#btn-ovz-spaar").textContent = dicht ? "Spaarregels tonen" : "Spaarregels verbergen";
+    });
+
+    $("#btn-prog-aannames").addEventListener("click", openAannames);
+    $("#btn-prog-sluit").addEventListener("click", () => {
+      $("#prog-modal").classList.add("hidden");
+    });
+    $("#btn-prog-tarief-reset").addEventListener("click", () => {
+      const o = fiscaal();
+      const rest = { ...o.tarieven };
+      delete rest[jaar];
+      bewaarFiscaal({ tarieven: rest });
+      renderTarieven();
+      App().showToast(`Standaardtarieven ${jaar} terug`);
+    });
+    for (const [id, key] of [
+      ["set-urencriterium", "urencriterium"],
+      ["set-startersaftrek", "startersaftrek"],
+      ["set-wbso", "wbso"],
+      ["set-wbso-starter", "wbsoStarter"],
+    ]) {
+      document.getElementById(id).addEventListener("change", (ev) => {
+        bewaarFiscaal({ [key]: ev.target.checked });
+      });
+    }
 
     $("#btn-login").addEventListener("click", async () => {
       try {

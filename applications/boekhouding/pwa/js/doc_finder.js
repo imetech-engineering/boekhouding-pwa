@@ -1,8 +1,7 @@
 /**
  * Het originele factuurbestand terugzoeken bij een al geboekte regel.
  * Kijkt in zowel "nog te verwerken" als "verwerkt" en matcht op
- * factuurnummer, datum en partij. Vindt de app niets overtuigends, dan kun
- * je het bestand zelf uit dezelfde mappen kiezen (kies()).
+ * factuurnummer, datum en partij.
  */
 (function (global) {
   const App = () => global.BoekApp;
@@ -71,81 +70,5 @@
     }
   }
 
-  // === Zelf een bestand kiezen ===
-  const $ = (sel) => document.querySelector(sel);
-  let kiesLijst = [];
-  let kiesKlaar = null;
-
-  function escapeHtml(t) {
-    const d = document.createElement("div");
-    d.textContent = t == null ? "" : String(t);
-    return d.innerHTML;
-  }
-
-  function renderKiesLijst() {
-    const q = $("#doc-pick-search").value.trim().toLowerCase();
-    const list = $("#doc-pick-list");
-    list.innerHTML = "";
-    let getoond = 0;
-    for (const item of kiesLijst) {
-      if (q && !item.name.toLowerCase().includes(q)) continue;
-      const li = document.createElement("li");
-      li.className = "file-item";
-      const icon = item.folder ? "📁" : /\.pdf$/i.test(item.name) ? "📄" : "🖼️";
-      li.innerHTML = `<span class="fi-icon">${icon}</span><span class="fi-name">${escapeHtml(item.name)}</span>`;
-      li.addEventListener("click", () => sluitKies(item));
-      list.appendChild(li);
-      if (++getoond >= 60) break;
-    }
-    $("#doc-pick-empty").classList.toggle("hidden", getoond > 0);
-  }
-
-  function sluitKies(item) {
-    $("#doc-pick-modal").classList.add("hidden");
-    const klaar = kiesKlaar;
-    kiesKlaar = null;
-    kiesLijst = [];
-    klaar?.(item || null);
-  }
-
-  /**
-   * Toont alle facturen uit beide mappen, de meest waarschijnlijke bovenaan,
-   * en geeft het gekozen bestand terug (of null bij annuleren).
-   */
-  async function kies(kind, row) {
-    const modal = $("#doc-pick-modal");
-    if (!modal) return null;
-    $("#doc-pick-search").value = "";
-    $("#doc-pick-list").innerHTML = "";
-    $("#doc-pick-empty").classList.add("hidden");
-    $("#doc-pick-busy").classList.remove("hidden");
-    modal.classList.remove("hidden");
-    try {
-      const token = await App().ensureLoggedIn();
-      // Verse lijst: je zoekt hier juist omdat de automaat het niet vond.
-      if (App().state.docCache) delete App().state.docCache[kind];
-      const items = await folderItems(kind, token);
-      kiesLijst = [...items].sort((a, b) => score(kind, b, row || {}) - score(kind, a, row || {}));
-    } catch (e) {
-      App().showToast(`Bestanden ophalen mislukt: ${e.message || e}`, true);
-      kiesLijst = [];
-    }
-    $("#doc-pick-busy").classList.add("hidden");
-    renderKiesLijst();
-    return new Promise((resolve) => {
-      kiesKlaar = resolve;
-    });
-  }
-
-  function init() {
-    if (!$("#doc-pick-modal")) return;
-    $("#doc-pick-search").addEventListener("input", renderKiesLijst);
-    $("#btn-doc-pick-cancel").addEventListener("click", () => sluitKies(null));
-    $("#doc-pick-modal .modal-backdrop").addEventListener("click", () => sluitKies(null));
-  }
-
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-  else init();
-
-  global.BoekDocFinder = { findFor, kies };
+  global.BoekDocFinder = { findFor };
 })(window);

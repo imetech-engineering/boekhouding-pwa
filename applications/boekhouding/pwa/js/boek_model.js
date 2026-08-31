@@ -124,6 +124,12 @@
     );
   }
 
+  /** Compacte weergave voor tegels: hele euro's, zodat het bedrag past. */
+  function fmtEurKort(v) {
+    if (v == null || !Number.isFinite(v)) return "—";
+    return "€ " + Math.round(v).toLocaleString("nl-NL");
+  }
+
   function fmtAmountInput(v) {
     if (v == null || !Number.isFinite(v)) return "";
     return v.toFixed(2).replace(".", ",");
@@ -1035,6 +1041,208 @@
     return [...set].sort((a, b) => b - a);
   }
 
+  // === Spaarrekeningen en totaalvermogen ===
+  // Het bankboek bevat alleen de lopende rekeningen. Wat er naar de spaarrekening
+  // gaat staat er wél in, als gewone regel met "spaar" in de omschrijving of
+  // opmerking: Uit = erheen, In = eraf. Daaruit is het spaarsaldo af te leiden.
+  const SPAAR_RE = /spaar/i;
+
+  function isSpaarTransfer(r) {
+    return SPAAR_RE.test(`${r.omschrijving || ""} ${r.opmerking || ""}`);
+  }
+
+  /**
+   * Wat er in totaal op alle rekeningen staat: de lopende saldi uit het bankboek
+   * plus de spaarpotjes. De spaarregels komen mee terug, zodat je in de app kunt
+   * nakijken waar het saldo vandaan komt.
+   */
+  function alleSaldi(bankRows) {
+    const lopend = saldiPerRekening(bankRows);
+    const spaar = { Rabo: 0, Knab: 0 };
+    const regels = [];
+    for (const r of bankRows) {
+      if (r.isEmpty || !isSpaarTransfer(r)) continue;
+      if (r.in == null && r.uit == null) continue;
+      const rek = spaar[r.rekening] !== undefined ? r.rekening : null;
+      const bedrag = Math.round(((r.uit || 0) - (r.in || 0)) * 100) / 100;
+      if (rek) spaar[rek] = Math.round((spaar[rek] + bedrag) * 100) / 100;
+      regels.push({
+        excelRow: r.excelRow,
+        datumStr: r.datumStr,
+        omschrijving: r.omschrijving,
+        rekening: r.rekening,
+        bedrag,
+        teltMee: !!rek,
+      });
+    }
+    regels.sort((a, b) => b.excelRow - a.excelRow);
+    const spaarTotaal = Math.round((spaar.Rabo + spaar.Knab) * 100) / 100;
+    return {
+      lopend: { Rabo: lopend.Rabo, Knab: lopend.Knab },
+      spaar,
+      spaarTotaal,
+      regels,
+      totaal: Math.round((lopend.Rabo + lopend.Knab + spaarTotaal) * 100) / 100,
+    };
+  }
+
+  // === Jaarprognose en belasting ===
+  /**
+   * Tarieven per jaar, op één plek zodat ze bij een nieuw belastingjaar in één
+   * keer bij te werken zijn. In de app zijn ze bij "Aannames" te controleren en
+   * aan te passen; die aanpassing gaat mee in de OneDrive-instellingen.
+   */
+  const IB_TARIEVEN = {
+    2025: {
+      schijven: [[38441, 0.3582], [76817, 0.3748], [Infinity, 0.495]],
+      zelfstandigenaftrek: 2470,
+      startersaftrek: 2123,
+      soAftrek: 15738,
+      soAftrekStarter: 7875,
+      mkbVrijstelling: 0.127,
+      zvwTarief: 0.0526,
+      zvwMax: 75864,
+      ahkMax: 3068,
+      ahkStart: 28406,
+      ahkAfbouw: 0.06337,
+      arbeidskorting: [
+        [12169, 0, 0.08053],
+        [26288, 980, 0.3003],
+        [43071, 5220, 0.02258],
+        [129078, 5599, -0.0651],
+      ],
+    },
+    2026: {
+      schijven: [[38883, 0.357], [79137, 0.3756], [Infinity, 0.495]],
+      zelfstandigenaftrek: 1200,
+      startersaftrek: 2123,
+      soAftrek: 16000,
+      soAftrekStarter: 8000,
+      mkbVrijstelling: 0.127,
+      zvwTarief: 0.0526,
+      zvwMax: 78000,
+      ahkMax: 3115,
+      ahkStart: 29000,
+      ahkAfbouw: 0.06337,
+      arbeidskorting: [
+        [12400, 0, 0.08053],
+        [26800, 999, 0.3003],
+        [43900, 5322, 0.02258],
+        [131000, 5708, -0.0651],
+      ],
+    },
+  };
+
+  /** Tarieven van een jaar, met eventuele eigen correcties eroverheen. */
+  function ibTarieven(jaar, overrides) {
+    const jaren = Object.keys(IB_TARIEVEN).map(Number).sort((a, b) => a - b);
+    const dichtst = IB_TARIEVEN[jaar] || IB_TARIEVEN[jaren[jaren.length - 1]];
+    return { ...dichtst, ...(overrides || {}) };
+  }
+
+  /**
+   * Jaarprognose: omzet en kosten tot nu toe, doorgetrokken naar een heel jaar.
+   * Voor een afgesloten jaar is de "prognose" gewoon het werkelijke cijfer.
+   */
+  function jaarPrognose(inkoopRows, verkoopRows, jaar, nu = new Date()) {
+    const c = maandCijfers(inkoopRows, verkoopRows, jaar);
+    const huidig = nu.getFullYear();
+    let deel = 1; // hoeveel van het jaar er om is (0–1)
+    if (jaar === huidig) {
+      const start = Date.UTC(jaar, 0, 1);
+      const eind = Date.UTC(jaar + 1, 0, 1);
+      const nuUtc = Date.UTC(nu.getFullYear(), nu.getMonth(), nu.getDate());
+      deel = Math.min(1, Math.max(1 / 365, (nuUtc - start) / (eind - start)));
+    } else if (jaar > huidig) {
+      deel = 0;
+    }
+    const factor = deel > 0 ? 1 / deel : 0;
+    const omzet = Math.round(c.omzet * factor * 100) / 100;
+    const kosten = Math.round(c.kosten * factor * 100) / 100;
+    return {
+      isPrognose: jaar >= huidig,
+      deel,
+      ytd: { omzet: c.omzet, kosten: c.kosten, winst: c.resultaat },
+      omzet,
+      kosten,
+      winst: Math.round((omzet - kosten) * 100) / 100,
+    };
+  }
+
+  function schijfBelasting(belastbaar, schijven) {
+    let rest = Math.max(0, belastbaar);
+    let vorige = 0;
+    let som = 0;
+    for (const [grens, tarief] of schijven) {
+      const deel = Math.min(rest, grens - vorige);
+      if (deel <= 0) break;
+      som += deel * tarief;
+      rest -= deel;
+      vorige = grens;
+    }
+    return som;
+  }
+
+  /** Arbeidskorting via de opbouw-/afbouwtabel; boven de laatste grens is hij nul. */
+  function arbeidskorting(inkomen, tabel) {
+    let vorige = 0;
+    for (const [grens, basis, perc] of tabel) {
+      if (inkomen <= grens) return Math.max(0, basis + perc * (inkomen - vorige));
+      vorige = grens;
+    }
+    return 0;
+  }
+
+  function algemeneHeffingskorting(inkomen, t) {
+    if (inkomen <= t.ahkStart) return t.ahkMax;
+    const afbouw = (inkomen - t.ahkStart) * t.ahkAfbouw;
+    return Math.max(0, t.ahkMax - afbouw);
+  }
+
+  /**
+   * Van winst naar wat er netto overblijft: ondernemersaftrek (zelfstandigen-,
+   * starters- en S&O-aftrek), MKB-winstvrijstelling, inkomstenbelasting minus
+   * heffingskortingen en de inkomensafhankelijke Zvw-bijdrage.
+   * Uitgangspunt: geen ander box 1-inkomen naast de onderneming.
+   */
+  function nettoWinst(winst, opties, tarieven) {
+    const t = tarieven;
+    const o = opties || {};
+    const w = Math.max(0, winst);
+    const zelfstandigen = o.urencriterium ? Math.min(w, t.zelfstandigenaftrek) : 0;
+    const starters = o.urencriterium && o.startersaftrek
+      ? Math.min(w - zelfstandigen, t.startersaftrek)
+      : 0;
+    const so = o.wbso
+      ? Math.min(w - zelfstandigen - starters, t.soAftrek + (o.wbsoStarter ? t.soAftrekStarter : 0))
+      : 0;
+    const naAftrek = Math.max(0, w - zelfstandigen - starters - so);
+    const mkb = Math.round(naAftrek * t.mkbVrijstelling * 100) / 100;
+    const belastbaar = Math.round((naAftrek - mkb) * 100) / 100;
+    const bruto = schijfBelasting(belastbaar, t.schijven);
+    const ahk = algemeneHeffingskorting(belastbaar, t);
+    const ak = arbeidskorting(belastbaar, t.arbeidskorting);
+    const ib = Math.max(0, bruto - ahk - ak);
+    const zvw = Math.min(belastbaar, t.zvwMax) * t.zvwTarief;
+    const rond = (x) => Math.round(x * 100) / 100;
+    return {
+      winst: rond(w),
+      zelfstandigenaftrek: rond(zelfstandigen),
+      startersaftrek: rond(starters),
+      soAftrek: rond(so),
+      naAftrek: rond(naAftrek),
+      mkbVrijstelling: rond(mkb),
+      belastbaar,
+      brutoBelasting: rond(bruto),
+      heffingskortingen: rond(Math.min(bruto, ahk + ak)),
+      algemeneHeffingskorting: rond(ahk),
+      arbeidskorting: rond(ak),
+      ib: rond(ib),
+      zvw: rond(zvw),
+      netto: rond(w - ib - zvw),
+    };
+  }
+
   /** Omzet, kosten en resultaat per maand (netto, dus exclusief BTW). */
   function maandCijfers(inkoopRows, verkoopRows, jaar) {
     const maanden = Array.from({ length: 12 }, () => ({ omzet: 0, kosten: 0 }));
@@ -1153,7 +1361,7 @@
     TABLE_BANK, TABLE_VERKOOP, TABLE_INKOOP,
     BANK, INK, VRK, MATCH_DAYS, REKENINGEN,
     serialToDate, dateToIso, isoToDate, formatDateNl, todayIso, daysBetween, isoToYymmdd,
-    parseCellAmount, parseUserAmount, fmtEur, fmtAmountInput, cellText, cellBool,
+    parseCellAmount, parseUserAmount, fmtEur, fmtEurKort, fmtAmountInput, cellText, cellBool,
     parseBankRows, parseInkoopRows, parseVerkoopRows,
     firstEmptyBankSlot, lastFilledBankRowBefore, saldoFormula, saldiPerRekening,
     priveOverzicht, firstEmptyBoekSlot,
@@ -1169,5 +1377,6 @@
     kwartaalOverzicht,
     beschikbareJaren, maandCijfers, btwAangifte, topGroepen, reisTotaal,
     kiaTotaal, boekwaardeActiva,
+    alleSaldi, isSpaarTransfer, jaarPrognose, nettoWinst, ibTarieven, IB_TARIEVEN,
   };
 })(window);

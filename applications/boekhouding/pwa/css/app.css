@@ -1134,6 +1134,18 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   flex-direction: column;
   align-items: center;
   height: 100%;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+/* Aangetikte maand: de bedragen staan eronder in de detailregel. */
+.ovz-month.selected {
+  background: var(--accent-light);
+}
+
+.ovz-month.selected .ovz-month-label {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .ovz-pair {
@@ -1629,4 +1641,46 @@ a.link {
 
 .dv-tools {
   align-items: center;
+}
+
+/* ===== Prognose: aannames en tarieven ===== */
+.prog-tarieven {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.prog-tarief-rij {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.prog-tarief-rij input {
+  text-align: right;
+}
+
+/* Toelichtingsregel in de prognosetabel (telt niet zelf mee). */
+/* Eenvoudige tekst-plus-bedrag regel (spaarregels onder het totaalsaldo). */
+.ovz-lijst-rij {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+
+.ovz-lijst-rij:last-child {
+  border-bottom: 0;
+}
+
+.prog-info {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  padding-left: 14px;
 }

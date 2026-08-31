@@ -876,6 +876,48 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   align-self: center;
 }
 
+/* Tekstlaag over de PDF: onzichtbare letters op hun echte plek, zodat je in het
+   voorbeeld kunt selecteren en kopiëren (pdf.js schaalt met --scale-factor). */
+.pdf-stage {
+  position: relative;
+  line-height: 0;
+}
+
+.pdf-text-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.pdf-text-layer span,
+.pdf-text-layer br {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-text-layer ::selection {
+  background: rgba(14, 138, 91, 0.35);
+}
+
+.pdf-text-layer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: -1;
+  cursor: default;
+  user-select: none;
+}
+
 .hist-search {
   margin-bottom: 8px;
 }
@@ -1359,6 +1401,26 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   width: 100%;
   height: 168px;
   object-fit: cover;
+  cursor: pointer;
+}
+
+/* Voorbeeld van een toegevoegd bestand: hele pagina in beeld, niet bijgesneden. */
+.scan-page img.scan-thumb-doc {
+  object-fit: contain;
+  background: #fff;
+}
+
+.scan-page-naam {
+  padding: 4px 6px 0;
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  color: var(--text-secondary);
+  text-align: center;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 
 .scan-page-doc {
@@ -1501,4 +1563,70 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
 a.link {
   color: var(--accent);
   word-break: break-all;
+}
+
+/* ===== Voorbeeldvenster (groot bekijken + tekst selecteren) ===== */
+.modal-viewer {
+  z-index: 55;
+}
+
+.dv-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.dv-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dv-head .preview-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.dv-body {
+  overflow: auto;
+  max-height: 58dvh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  -webkit-overflow-scrolling: touch;
+}
+
+.dv-stage {
+  position: relative;
+  width: 100%;
+  line-height: 0;
+}
+
+.dv-stage canvas,
+.dv-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.dv-text-panel textarea {
+  width: 100%;
+  min-height: 120px;
+  max-height: 26dvh;
+  padding: 10px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.dv-tools {
+  align-items: center;
 }

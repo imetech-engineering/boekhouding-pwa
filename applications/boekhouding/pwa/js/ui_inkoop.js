@@ -10,6 +10,7 @@
   let filenameParsed = null;
   let pdfDoc = null;
   let pdfPageNum = 1;
+  let previewImgUrl = null; // foto in beeld (PDF's gaan via pdfDoc)
   let bankMatchRows = [];
   let prefillBankRows = [];
   let editRow = null; // Excel-rij die bewerkt wordt (null = nieuwe regel)
@@ -48,6 +49,8 @@
   async function toonVoorbeeld(item, parentFolder) {
     pdfDoc = null;
     pdfPageNum = 1;
+    previewImgUrl = null;
+    $("#inkoop-text-layer").innerHTML = "";
     $("#inkoop-preview-card").classList.remove("hidden");
     $("#inkoop-preview-name").textContent = item.name;
     $("#inkoop-img-preview").classList.add("hidden");
@@ -68,6 +71,7 @@
       return pdfDoc;
     }
     const url = await global.BoekGraph.downloadObjectUrl(fileItem.id, token);
+    previewImgUrl = url;
     const img = $("#inkoop-img-preview");
     img.src = url;
     img.classList.remove("hidden");
@@ -123,12 +127,27 @@
     if (!pdfDoc) return;
     const canvas = $("#inkoop-pdf-canvas");
     await global.BoekPdf.renderPage(pdfDoc, pdfPageNum, canvas, canvas.parentElement.clientWidth || 600);
+    // Selecteerbare tekst over het beeld heen; mislukt dat, dan blijft het beeld staan.
+    try {
+      await global.BoekPdf.renderTextLayer(
+        pdfDoc, pdfPageNum, $("#inkoop-text-layer"), canvas.getBoundingClientRect().width
+      );
+    } catch (_) {
+      $("#inkoop-text-layer").innerHTML = "";
+    }
     const multi = pdfDoc.numPages > 1;
     $("#btn-inkoop-page-prev").classList.toggle("hidden", !multi);
     $("#btn-inkoop-page-next").classList.toggle("hidden", !multi);
     const label = $("#inkoop-page-label");
     label.classList.toggle("hidden", !multi);
     label.textContent = `${pdfPageNum}/${pdfDoc.numPages}`;
+  }
+
+  /** Zelfde bestand groot in beeld, met tekst die je kunt selecteren en kopiëren. */
+  function toonGroot() {
+    const naam = $("#inkoop-preview-name").textContent;
+    if (pdfDoc) global.BoekDocPreview.open({ naam, pdf: pdfDoc, pageNum: pdfPageNum });
+    else if (previewImgUrl) global.BoekDocPreview.open({ naam, imgUrl: previewImgUrl });
   }
 
   function hidePdfNav() {
@@ -548,6 +567,7 @@
       deselectFile();
     });
     $("#btn-inkoop-deselect").addEventListener("click", deselectFile);
+    $("#btn-inkoop-groot").addEventListener("click", toonGroot);
     $("#btn-inkoop-cancel-edit").addEventListener("click", clearForm);
     $("#btn-inkoop-page-prev").addEventListener("click", () => {
       if (pdfDoc && pdfPageNum > 1) {

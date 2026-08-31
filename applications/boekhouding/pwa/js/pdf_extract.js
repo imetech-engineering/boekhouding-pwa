@@ -22,63 +22,101 @@
     return pdfjs().getDocument({ data: arrayBuffer }).promise;
   }
 
-  /** Render één pagina naar een canvas (schaal naar breedte). */
+  /**
+   * Render één pagina naar een canvas (schaal naar breedte). Geeft de gebruikte
+   * CSS-maten terug, zodat er een tekstlaag op dezelfde plek overheen kan.
+   */
   async function renderPage(pdf, pageNum, canvas, targetWidth) {
     const page = await pdf.getPage(pageNum);
     const base = page.getViewport({ scale: 1 });
-    const scale = Math.min(3, (targetWidth || 600) / base.width) * (global.devicePixelRatio || 1);
-    const viewport = page.getViewport({ scale });
+    const cssScale = Math.min(3, (targetWidth || 600) / base.width);
+    const viewport = page.getViewport({ scale: cssScale * (global.devicePixelRatio || 1) });
     canvas.width = viewport.width;
     canvas.height = viewport.height;
     canvas.style.width = "100%";
     canvas.style.height = "auto";
     await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    return { cssScale, cssWidth: base.width * cssScale, cssHeight: base.height * cssScale };
   }
 
-  /** Tekst per pagina, regels gereconstrueerd op y-positie. */
+  /**
+   * Onzichtbare, selecteerbare tekst precies over de gerenderde pagina heen —
+   * daarmee kun je in het voorbeeld tekst aanwijzen, selecteren en kopiëren.
+   * Stil als pdf.js deze laag niet aankan; het beeld blijft dan gewoon staan.
+   */
+  async function renderTextLayer(pdf, pageNum, container, cssWidth) {
+    if (!container) return null;
+    container.innerHTML = "";
+    const lib = pdfjs();
+    if (typeof lib.renderTextLayer !== "function") return null;
+    const page = await pdf.getPage(pageNum);
+    const base = page.getViewport({ scale: 1 });
+    const scale = (cssWidth || base.width) / base.width;
+    const viewport = page.getViewport({ scale });
+    // pdf.js 3.x plaatst de letters met calc(var(--scale-factor) * …).
+    container.style.setProperty("--scale-factor", String(scale));
+    container.style.width = `${viewport.width}px`;
+    container.style.height = `${viewport.height}px`;
+    const textContent = await page.getTextContent();
+    const task = lib.renderTextLayer({
+      textContent,
+      textContentSource: textContent,
+      container,
+      viewport,
+      textDivs: [],
+    });
+    await (task?.promise || task);
+    return viewport;
+  }
+
+  /** Tekst van één pagina, regels gereconstrueerd op y-positie. */
+  async function pageText(pdf, pageNum) {
+    let fullText = "";
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const linesMap = new Map();
+    for (const item of content.items) {
+      if (!item.str) continue;
+      const y = Math.round(item.transform[5]);
+      let key = null;
+      for (const k of linesMap.keys()) {
+        if (Math.abs(k - y) <= 2) { key = k; break; }
+      }
+      if (key == null) { key = y; linesMap.set(key, []); }
+      linesMap.get(key).push({
+        x: item.transform[4],
+        w: item.width || 0,
+        h: item.height || Math.abs(item.transform[3]) || 10,
+        str: item.str,
+      });
+    }
+    const ys = [...linesMap.keys()].sort((a, b) => b - a);
+    for (const y of ys) {
+      // Fragmenten aan elkaar plakken op basis van de werkelijke tussenruimte:
+      // zonder gat aaneen (anders wordt "03-08-2026" tot "03 - 08 - 2026"),
+      // groot gat → dubbele spatie zodat tabelkolommen te splitsen zijn.
+      const parts = linesMap.get(y).sort((a, b) => a.x - b.x);
+      let line = "";
+      let prevEnd = null;
+      for (const it of parts) {
+        if (prevEnd != null) {
+          const gap = it.x - prevEnd;
+          const spaceW = (it.h || 10) * 0.22;
+          if (gap >= spaceW * 4) line += "  ";
+          else if (gap >= spaceW * 0.6) line += " ";
+        }
+        line += it.str;
+        prevEnd = it.x + it.w;
+      }
+      fullText += line + "\n";
+    }
+    return fullText + "\n";
+  }
+
+  /** Tekst van het hele document. */
   async function extractText(pdf) {
     let fullText = "";
-    for (let p = 1; p <= pdf.numPages; p++) {
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      const linesMap = new Map();
-      for (const item of content.items) {
-        if (!item.str) continue;
-        const y = Math.round(item.transform[5]);
-        let key = null;
-        for (const k of linesMap.keys()) {
-          if (Math.abs(k - y) <= 2) { key = k; break; }
-        }
-        if (key == null) { key = y; linesMap.set(key, []); }
-        linesMap.get(key).push({
-          x: item.transform[4],
-          w: item.width || 0,
-          h: item.height || Math.abs(item.transform[3]) || 10,
-          str: item.str,
-        });
-      }
-      const ys = [...linesMap.keys()].sort((a, b) => b - a);
-      for (const y of ys) {
-        // Fragmenten aan elkaar plakken op basis van de werkelijke tussenruimte:
-        // zonder gat aaneen (anders wordt "03-08-2026" tot "03 - 08 - 2026"),
-        // groot gat → dubbele spatie zodat tabelkolommen te splitsen zijn.
-        const parts = linesMap.get(y).sort((a, b) => a.x - b.x);
-        let line = "";
-        let prevEnd = null;
-        for (const it of parts) {
-          if (prevEnd != null) {
-            const gap = it.x - prevEnd;
-            const spaceW = (it.h || 10) * 0.22;
-            if (gap >= spaceW * 4) line += "  ";
-            else if (gap >= spaceW * 0.6) line += " ";
-          }
-          line += it.str;
-          prevEnd = it.x + it.w;
-        }
-        fullText += line + "\n";
-      }
-      fullText += "\n";
-    }
+    for (let p = 1; p <= pdf.numPages; p++) fullText += await pageText(pdf, p);
     return fullText;
   }
 
@@ -361,5 +399,5 @@
     return result;
   }
 
-  global.BoekPdf = { loadPdf, renderPage, extractText, extractInvoiceData };
+  global.BoekPdf = { loadPdf, renderPage, renderTextLayer, pageText, extractText, extractInvoiceData };
 })(window);

@@ -13,7 +13,9 @@
   /**
    * pages bevat twee soorten items:
    *   { kind:"scan", src: canvas, corners: [{x,y}×4], out: canvas }  — gefotografeerd
-   *   { kind:"file", file: File, naam: string, ext: string }         — bestaand bestand
+   *   { kind:"file", file: File, naam, ext, thumb, url, pdf, tekst } — bestaand bestand
+   * Bij een bestand is thumb het voorbeeldplaatje (eerste PDF-pagina of de foto
+   * zelf) en tekst de uitgelezen PDF-tekst, waar de herkenning op werkt.
    */
   let pages = [];
   let cropIndex = -1; // pagina die nu bijgesneden wordt
@@ -68,30 +70,95 @@
   async function onFilesChosen(ev) {
     const gekozen = [...(ev.target.files || [])];
     if (!gekozen.length) return;
-    setBusy(true, "Bestand toevoegen…");
+    setBusy(true, gekozen.length > 1 ? "Bestanden toevoegen…" : "Bestand toevoegen…");
     try {
-      for (const file of gekozen) {
-        const ext = (file.name.match(/\.[^.]+$/) || [".pdf"])[0].toLowerCase();
-        pages.push({ kind: "file", file, naam: file.name, ext });
-        // Uit een PDF halen we alvast leverancier, datum en factuurnummer.
-        if (ext === ".pdf" && !$("#scan-leverancier").value) {
-          try {
-            const pdf = await global.BoekPdf.loadPdf(await file.arrayBuffer());
-            const ex = global.BoekPdf.extractInvoiceData(await global.BoekPdf.extractText(pdf));
-            if (ex.datum) $("#scan-datum").value = ex.datum;
-            if (ex.bedrijf) $("#scan-leverancier").value = ex.bedrijf;
-            if (ex.factuurnummer && !$("#scan-fnr").value) $("#scan-fnr").value = ex.factuurnummer;
-          } catch (_) {
-            /* gegevens uitlezen is meegenomen, geen reden om te stoppen */
-          }
-        }
-      }
+      let gevuld = 0;
+      for (const file of gekozen) gevuld += herkenUitPagina(await voegBestandToe(file));
       showSaveStep();
+      if (gevuld) meldHerkenning(gevuld);
     } catch (e) {
       App().showToast(e.message || String(e), true);
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * Zet een gekozen bestand in de lijst en maakt er meteen een voorbeeld bij:
+   * de eerste PDF-pagina of de foto zelf. Bij een PDF halen we de tekst er
+   * alvast uit — daar draait de herkenning op en die kun je later ook lezen,
+   * selecteren en kopiëren in het grote voorbeeld.
+   */
+  async function voegBestandToe(file) {
+    const isPdf = /\.pdf$/i.test(file.name) || (file.type || "").includes("pdf");
+    const ext = (file.name.match(/\.[^.]+$/) || [isPdf ? ".pdf" : ".jpg"])[0].toLowerCase();
+    const page = { kind: "file", file, naam: file.name, ext };
+    pages.push(page);
+    try {
+      if (isPdf) {
+        page.pdf = await global.BoekPdf.loadPdf(await file.arrayBuffer());
+        page.thumb = await pdfMiniatuur(page.pdf);
+        page.tekst = await global.BoekPdf.extractText(page.pdf);
+      } else {
+        page.url = URL.createObjectURL(file);
+        page.thumb = page.url;
+      }
+    } catch (_) {
+      /* zonder voorbeeld of tekst gaat het bestand gewoon mee */
+    }
+    return page;
+  }
+
+  async function pdfMiniatuur(pdf) {
+    const canvas = document.createElement("canvas");
+    await global.BoekPdf.renderPage(pdf, 1, canvas, 264);
+    return canvas.toDataURL("image/jpeg", 0.7);
+  }
+
+  /** Vult alleen nog lege velden; geeft terug hoeveel er ingevuld zijn. */
+  function vulVelden(ex) {
+    let n = 0;
+    // De datum staat standaard op vandaag: die mag de herkenning overschrijven,
+    // een datum die er al bewust staat niet.
+    if (ex.datum && $("#scan-datum").value === M().todayIso()) {
+      $("#scan-datum").value = ex.datum;
+      n++;
+    }
+    if (ex.bedrijf && !$("#scan-leverancier").value) {
+      $("#scan-leverancier").value = ex.bedrijf;
+      n++;
+    }
+    if (ex.factuurnummer && !$("#scan-fnr").value) {
+      $("#scan-fnr").value = ex.factuurnummer;
+      n++;
+    }
+    if (n) updateFilenamePreview();
+    return n;
+  }
+
+  /**
+   * Gegevens uit een toegevoegd bestand halen — zelfde volgorde als bij het
+   * inboeken: eerst de bestandsnaam (yymmdd bedrijf factuurnummer), daarna de
+   * tekst uit de PDF. Foto's gaan via OCR in ocrVulVelden.
+   */
+  function herkenUitPagina(page) {
+    let gevuld = 0;
+    const uitNaam = M().parseInkoopFilename(page.naam || "");
+    gevuld += vulVelden({
+      datum: uitNaam.datumIso,
+      bedrijf: uitNaam.bedrijf,
+      factuurnummer: uitNaam.factuurnummer,
+    });
+    if (page.tekst) gevuld += vulVelden(global.BoekPdf.extractInvoiceData(page.tekst));
+    return gevuld;
+  }
+
+  function meldHerkenning(gevuld, bron = "het bestand") {
+    const status = $("#scan-ocr-status");
+    status.classList.toggle("hidden", !gevuld);
+    status.textContent = gevuld
+      ? `🔍 ${gevuld} gegeven${gevuld === 1 ? "" : "s"} uit ${bron} gehaald — controleer even.`
+      : "";
   }
 
   function setBusy(on, msg) {
@@ -284,51 +351,30 @@
     else closeModal();
   }
 
-  // === OCR: tekst uit de bon lezen en velden vullen ===
+  // === OCR: tekst uit de bon of foto lezen en velden vullen ===
   let ocrBezig = false;
 
-  async function laadTesseract() {
-    if (global.Tesseract) return global.Tesseract;
-    await new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
-      s.onload = res;
-      s.onerror = rej;
-      document.head.appendChild(s);
-    });
-    return global.Tesseract;
+  /** Waar OCR iets aan heeft: een gescande pagina of een toegevoegde foto. */
+  function ocrBron() {
+    const scan = pages.find((p) => p.kind === "scan" && p.out);
+    if (scan) return scan.out;
+    const foto = pages.find((p) => p.kind === "file" && p.ext !== ".pdf" && p.file);
+    return foto ? foto.file : null;
   }
 
-  /** Leest de eerste gescande pagina en vult lege velden. Stil bij fouten. */
+  /** Leest de eerste foto en vult lege velden. Stil bij fouten. */
   async function ocrVulVelden() {
     if (ocrBezig) return;
-    const page = pages.find((p) => p.kind === "scan" && p.out);
-    if (!page) return;
+    const bron = ocrBron();
+    if (!bron) return;
     if ($("#scan-leverancier").value && $("#scan-fnr").value) return;
     ocrBezig = true;
     const status = $("#scan-ocr-status");
     status.classList.remove("hidden");
     status.textContent = "🔍 Bon lezen…";
     try {
-      const T = await laadTesseract();
-      const { data } = await T.recognize(page.out, "nld");
-      const ex = global.BoekPdf.extractInvoiceData(data.text || "");
-      let gevuld = 0;
-      if (ex.datum && $("#scan-datum").value === M().todayIso()) {
-        $("#scan-datum").value = ex.datum;
-        gevuld++;
-      }
-      if (ex.bedrijf && !$("#scan-leverancier").value) {
-        $("#scan-leverancier").value = ex.bedrijf;
-        gevuld++;
-      }
-      if (ex.factuurnummer && !$("#scan-fnr").value) {
-        $("#scan-fnr").value = ex.factuurnummer;
-        gevuld++;
-      }
-      updateFilenamePreview();
-      status.textContent = gevuld ? "🔍 Gegevens uit de bon gelezen — controleer even." : "";
-      if (!gevuld) status.classList.add("hidden");
+      const tekst = await global.BoekOcr.tekstUit(bron);
+      meldHerkenning(vulVelden(global.BoekPdf.extractInvoiceData(tekst)), "de foto");
     } catch (_) {
       status.classList.add("hidden");
     } finally {
@@ -350,6 +396,28 @@
 
   const bruikbaar = (p) => (p.kind === "file" ? true : !!p.out);
 
+  /**
+   * Pagina groot in beeld: bladeren, zoomen en tekst selecteren/kopiëren.
+   * Bij een PDF komt de tekst uit het bestand, bij een foto uit OCR.
+   */
+  function toonGroot(page) {
+    const nr = pages.indexOf(page) + 1;
+    if (page.kind !== "file") return global.BoekDocPreview.open({ naam: `Pagina ${nr}`, canvas: page.out });
+    if (page.pdf) return global.BoekDocPreview.open({ naam: page.naam, pdf: page.pdf });
+    return global.BoekDocPreview.open(
+      page.url ? { naam: page.naam, imgUrl: page.url } : { naam: page.naam, file: page.file }
+    );
+  }
+
+  /** Object-URL van een voorbeeld vrijgeven zodra de pagina weg is. */
+  function vergeetPagina(page) {
+    if (page?.url) {
+      URL.revokeObjectURL(page.url);
+      page.url = null;
+      page.thumb = null;
+    }
+  }
+
   function renderPages() {
     const wrap = $("#scan-pages");
     wrap.innerHTML = "";
@@ -358,7 +426,8 @@
       const item = document.createElement("div");
       item.className = "scan-page";
 
-      if (page.kind === "file") {
+      if (page.kind === "file" && !page.thumb) {
+        // Geen voorbeeld te maken (bijv. een beveiligde PDF) → naam met icoon.
         const doc = document.createElement("div");
         doc.className = "scan-page-doc";
         const isPdf = page.ext === ".pdf";
@@ -367,9 +436,20 @@
         item.appendChild(doc);
       } else {
         const img = document.createElement("img");
-        img.alt = `Pagina ${i + 1}`;
-        img.src = page.out.toDataURL("image/jpeg", 0.5);
+        if (page.kind === "file") img.className = "scan-thumb-doc";
+        img.alt = page.kind === "file" ? page.naam : `Pagina ${i + 1}`;
+        img.src = page.kind === "file" ? page.thumb : page.out.toDataURL("image/jpeg", 0.5);
+        // Tik op het voorbeeld → groot bekijken (en tekst selecteren/kopiëren).
+        img.addEventListener("click", () => toonGroot(page));
         item.appendChild(img);
+      }
+
+      if (page.kind === "file") {
+        const naamStrook = document.createElement("span");
+        naamStrook.className = "scan-page-naam";
+        naamStrook.textContent = page.naam;
+        naamStrook.title = page.naam;
+        item.appendChild(naamStrook);
       }
 
       const label = document.createElement("span");
@@ -380,17 +460,20 @@
       const tools = document.createElement("div");
       tools.className = "scan-page-tools";
       tools.innerHTML =
+        '<button type="button" class="btn-icon" data-a="zoom" aria-label="Groot bekijken" title="Groot bekijken">🔍</button>' +
         (page.kind === "scan"
           ? '<button type="button" class="btn-icon" data-a="crop" aria-label="Opnieuw bijsnijden" title="Opnieuw bijsnijden">✎</button>' +
             '<button type="button" class="btn-icon" data-a="rot" aria-label="Draaien" title="Draaien">⟳</button>'
           : "") +
         '<button type="button" class="btn-icon btn-icon-danger" data-a="del" aria-label="Verwijderen" title="Verwijderen">✕</button>';
+      tools.querySelector('[data-a="zoom"]').addEventListener("click", () => toonGroot(page));
       tools.querySelector('[data-a="crop"]')?.addEventListener("click", () => openCrop(i));
       tools.querySelector('[data-a="rot"]')?.addEventListener("click", () => {
         page.out = S().rotate90(page.out);
         renderPages();
       });
       tools.querySelector('[data-a="del"]').addEventListener("click", () => {
+        vergeetPagina(page);
         pages.splice(i, 1);
         if (!pages.length) closeModal();
         else {
@@ -473,8 +556,15 @@
   }
 
   function closeModal() {
+    pages.forEach(vergeetPagina);
     pages = [];
     cropIndex = -1;
+    // Schoon beginnen, anders houdt de vorige leverancier de herkenning tegen.
+    $("#scan-datum").value = M().todayIso();
+    $("#scan-leverancier").value = "";
+    $("#scan-fnr").value = "";
+    $("#scan-filename").textContent = "";
+    $("#scan-ocr-status").classList.add("hidden");
     $("#scan-modal").classList.add("hidden");
     $("#scan-step-crop").classList.add("hidden");
     $("#scan-step-save").classList.add("hidden");
@@ -521,12 +611,16 @@
           setBusy(false);
         }
       } else {
-        // Meerdere bestanden of een PDF → ongewijzigd toevoegen
-        for (const f of files) {
-          const ext = (f.name.match(/\.[^.]+$/) || [f.type.includes("pdf") ? ".pdf" : ".jpg"])[0].toLowerCase();
-          pages.push({ kind: "file", file: f, naam: f.name, ext });
+        // Meerdere bestanden of een PDF → ongewijzigd toevoegen, mét voorbeeld
+        setBusy(true, "Gedeelde bestanden verwerken…");
+        try {
+          let gevuld = 0;
+          for (const f of files) gevuld += herkenUitPagina(await voegBestandToe(f));
+          showSaveStep();
+          if (gevuld) meldHerkenning(gevuld);
+        } finally {
+          setBusy(false);
         }
-        showSaveStep();
       }
     } catch (_) {
       /* geen gedeelde bestanden */

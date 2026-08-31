@@ -52,6 +52,9 @@
     previewImgUrl = null;
     $("#inkoop-text-layer").innerHTML = "";
     $("#inkoop-preview-card").classList.remove("hidden");
+    $("#inkoop-preview-status").classList.add("hidden");
+    $("#inkoop-preview-wrap").classList.remove("hidden");
+    $("#btn-inkoop-groot").classList.remove("hidden");
     $("#inkoop-preview-name").textContent = item.name;
     $("#inkoop-img-preview").classList.add("hidden");
     $("#inkoop-pdf-canvas").classList.remove("hidden");
@@ -328,11 +331,45 @@
   /** Bijbehorend bestand opzoeken en meteen tonen, net als bij het inboeken. */
   async function toonBijbehorendeFactuur(h) {
     verbergVoorbeeld();
+    toonZoekmelding("🔎 Bijbehorende factuur zoeken…");
     const gevonden = await global.BoekDocFinder.findFor("inkoop", h);
     // Ondertussen kan er al een andere regel gekozen zijn.
-    if (!gevonden || editRow !== h.excelRow) return;
+    if (editRow !== h.excelRow) return;
+    if (!gevonden) {
+      toonZoekmelding("Geen bestand gevonden bij deze regel — kies het zelf met 📎 Bestand kiezen.");
+      return;
+    }
     try {
       await toonVoorbeeld(gevonden);
+    } catch (e) {
+      App().showToast(`Factuur laden mislukt: ${e.message || e}`, true);
+      toonZoekmelding(`Factuur laden mislukt: ${e.message || e}`);
+    }
+  }
+
+  /** Voorbeeldkaart met alleen een melding: er is nog niets in beeld. */
+  function toonZoekmelding(msg) {
+    $("#inkoop-preview-card").classList.remove("hidden");
+    $("#inkoop-preview-name").textContent = "";
+    $("#inkoop-preview-wrap").classList.add("hidden");
+    $("#btn-inkoop-groot").classList.add("hidden");
+    hidePdfNav();
+    const st = $("#inkoop-preview-status");
+    st.textContent = msg;
+    st.classList.remove("hidden");
+  }
+
+  /** Zelf het bijbehorende bestand aanwijzen als de automaat het niet vindt. */
+  async function kiesBestand() {
+    const rij = {
+      factuurnummer: $("#inkoop-fnr").value.trim(),
+      partij: $("#inkoop-leverancier").value.trim(),
+      datum: M().isoToDate($("#inkoop-datum").value),
+    };
+    const gekozen = await global.BoekDocFinder.kies("inkoop", rij);
+    if (!gekozen) return;
+    try {
+      await toonVoorbeeld(gekozen);
     } catch (e) {
       App().showToast(`Factuur laden mislukt: ${e.message || e}`, true);
     }
@@ -568,6 +605,7 @@
     });
     $("#btn-inkoop-deselect").addEventListener("click", deselectFile);
     $("#btn-inkoop-groot").addEventListener("click", toonGroot);
+    $("#btn-inkoop-kies").addEventListener("click", kiesBestand);
     $("#btn-inkoop-cancel-edit").addEventListener("click", clearForm);
     $("#btn-inkoop-page-prev").addEventListener("click", () => {
       if (pdfDoc && pdfPageNum > 1) {

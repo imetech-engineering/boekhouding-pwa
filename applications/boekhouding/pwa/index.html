@@ -131,7 +131,8 @@
 
         <div id="inkoop-preview-card" class="card hidden">
           <h2>Voorbeeld <span id="inkoop-preview-name" class="preview-name"></span></h2>
-          <div class="pdf-wrap">
+          <p id="inkoop-preview-status" class="sub hidden"></p>
+          <div id="inkoop-preview-wrap" class="pdf-wrap">
             <div class="pdf-stage">
               <canvas id="inkoop-pdf-canvas"></canvas>
               <div id="inkoop-text-layer" class="pdf-text-layer"></div>
@@ -143,6 +144,7 @@
             <span id="inkoop-page-label" class="page-label hidden"></span>
             <button type="button" id="btn-inkoop-page-next" class="btn-secondary btn-compact hidden">▶</button>
             <button type="button" id="btn-inkoop-groot" class="btn-secondary">⤢ Groot + tekst</button>
+            <button type="button" id="btn-inkoop-kies" class="btn-secondary">📎 Bestand kiezen</button>
             <button type="button" id="btn-inkoop-deselect" class="btn-secondary">Deselecteer</button>
           </div>
         </div>
@@ -251,7 +253,8 @@
 
         <div id="verkoop-preview-card" class="card hidden">
           <h2>Voorbeeld <span id="verkoop-preview-name" class="preview-name"></span></h2>
-          <div class="pdf-wrap">
+          <p id="verkoop-preview-status" class="sub hidden"></p>
+          <div id="verkoop-preview-wrap" class="pdf-wrap">
             <div class="pdf-stage">
               <canvas id="verkoop-pdf-canvas"></canvas>
               <div id="verkoop-text-layer" class="pdf-text-layer"></div>
@@ -263,6 +266,7 @@
             <span id="verkoop-page-label" class="page-label hidden"></span>
             <button type="button" id="btn-verkoop-page-next" class="btn-secondary btn-compact hidden">▶</button>
             <button type="button" id="btn-verkoop-groot" class="btn-secondary">⤢ Groot + tekst</button>
+            <button type="button" id="btn-verkoop-kies" class="btn-secondary">📎 Bestand kiezen</button>
             <button type="button" id="btn-verkoop-deselect" class="btn-secondary">Deselecteer</button>
           </div>
         </div>
@@ -785,6 +789,22 @@
         <div class="btn-row">
           <button type="button" id="btn-dv-text" class="btn-secondary">🔤 Tekst</button>
           <button type="button" id="btn-dv-copy" class="btn-secondary">📋 Kopieer tekst</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zelf het factuurbestand kiezen bij een geboekte regel -->
+    <div id="doc-pick-modal" class="modal hidden" role="dialog" aria-label="Bestand kiezen">
+      <div class="modal-backdrop"></div>
+      <div class="modal-sheet modal-sheet-tall">
+        <h2>Bestand kiezen</h2>
+        <p class="sub">Uit "nog te verwerken" en "verwerkt"; de waarschijnlijkste staan bovenaan.</p>
+        <input id="doc-pick-search" placeholder="🔍 Zoek op bestandsnaam…" autocomplete="off" />
+        <p id="doc-pick-busy" class="sub hidden">Bestanden ophalen…</p>
+        <p id="doc-pick-empty" class="sub hidden">Geen bestanden gevonden.</p>
+        <ul id="doc-pick-list" class="file-list"></ul>
+        <div class="btn-row">
+          <button type="button" id="btn-doc-pick-cancel" class="btn-secondary">Annuleren</button>
         </div>
       </div>
     </div>

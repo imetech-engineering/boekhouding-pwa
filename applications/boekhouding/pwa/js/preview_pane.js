@@ -33,6 +33,16 @@
   }
 
   /**
+   * Alleen PDF's en afbeeldingen kunnen we laten zien. Een map bevat vaak ook
+   * andere bestanden (een besteloverzicht als .txt bijvoorbeeld); die slaan we
+   * over in plaats van er een foutmelding over te geven.
+   */
+  function toonbaar(f) {
+    const mime = f.file?.mimeType || mimeVanNaam(f.name);
+    return isPdfNaam(f.name) || mime.startsWith("image/");
+  }
+
+  /**
    * @param {string} prefix   "inkoop" of "verkoop" (de id's in de HTML)
    * @param {() => string} standaardMap  map waarin losse mappen staan
    */
@@ -193,17 +203,26 @@
       el("preview-name").textContent = item.name;
       el("page-row").classList.add("hidden");
 
+      if (!item.folder && !toonbaar(item)) {
+        melding(`"${item.name}" is geen afbeelding of PDF, dus er is niets te tonen.`);
+        return null;
+      }
       const token = await App().ensureLoggedIn();
       let bestanden = [item];
       if (item.folder) {
         mapNaam = item.name;
         const parent = parentFolder || item._folder || standaardMap();
         const kinderen = await global.BoekGraph.listFolder(`${parent}/${item.name}`, token);
-        bestanden = kinderen
-          .filter((c) => c.file)
+        const alles = kinderen.filter((c) => c.file);
+        bestanden = alles
+          .filter(toonbaar)
           .sort((a, b) => a.name.localeCompare(b.name, "nl"));
         if (!bestanden.length) {
-          melding(`De map "${item.name}" is leeg.`);
+          melding(
+            alles.length
+              ? `Geen afbeelding of PDF in de map "${item.name}".`
+              : `De map "${item.name}" is leeg.`
+          );
           return null;
         }
       }

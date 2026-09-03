@@ -60,6 +60,9 @@
       if (doc) {
         const text = await global.BoekPdf.extractText(doc);
         applyExtraction(global.BoekPdf.extractInvoiceData(text));
+      } else {
+        // Geen PDF (bijv. een AliExpress-map met foto's) → de bon laten lezen.
+        leesFotoTekst(item);
       }
     } catch (e) {
       App().showToast(`Voorbeeld laden mislukt: ${e.message || e}`, true);
@@ -67,6 +70,38 @@
     applyPartyDefaults();
     updateBankCheck();
     updateRenameButton();
+  }
+
+  const OCR_VELDEN = [
+    "inkoop-leverancier", "inkoop-fnr", "inkoop-datum", "inkoop-bedrag", "inkoop-btw",
+  ];
+
+  /**
+   * Foto-bon laten lezen (OCR, lokaal in de browser) en de lege velden vullen —
+   * zelfde herkenning als bij het fotograferen. Loopt op de achtergrond: het
+   * duurt even en het voorbeeld staat al in beeld.
+   */
+  async function leesFotoTekst(item) {
+    const img = pane.ocrBron();
+    if (!img) return;
+    if ($("#inkoop-leverancier").value && $("#inkoop-bedrag").value) return;
+    const gevuldVoor = OCR_VELDEN.filter((id) => document.getElementById(id).value).length;
+    pane.notitie("🔍 Bon lezen…");
+    try {
+      const tekst = await global.BoekOcr.tekstUit(img);
+      if (selectedFile !== item) return; // ondertussen een andere factuur gekozen
+      applyExtraction(global.BoekPdf.extractInvoiceData(tekst));
+      applyPartyDefaults();
+      updateRenameButton();
+      const gevuld = OCR_VELDEN.filter((id) => document.getElementById(id).value).length - gevuldVoor;
+      pane.notitie(
+        gevuld
+          ? `🔍 ${gevuld} gegeven${gevuld === 1 ? "" : "s"} uit de bon gelezen — controleer even.`
+          : ""
+      );
+    } catch (_) {
+      pane.notitie(""); // zonder verbinding of leesbare tekst: gewoon handmatig
+    }
   }
 
   function deselectFile() {

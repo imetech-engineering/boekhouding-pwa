@@ -46,6 +46,8 @@
 
     function toonKaart() {
       el("preview-card").classList.remove("hidden");
+      // Melding van het vorige bestand hoort hier niet meer te staan.
+      el("preview-status").textContent = "";
       el("preview-status").classList.add("hidden");
       el("preview-wrap").classList.remove("hidden");
     }
@@ -61,6 +63,19 @@
       const st = el("preview-status");
       st.textContent = tekst;
       st.classList.remove("hidden");
+    }
+
+    /** Kort bericht boven het voorbeeld, met het beeld gewoon in zicht. */
+    function notitie(tekst) {
+      const st = el("preview-status");
+      st.textContent = tekst || "";
+      st.classList.toggle("hidden", !tekst);
+    }
+
+    /** Het getoonde beeld, als dat een foto is — bruikbaar voor tekstherkenning. */
+    function ocrBron() {
+      const d = docs[docIndex];
+      return d && !d.isPdf && d.url ? el("img-preview") : null;
     }
 
     function verberg() {
@@ -230,7 +245,7 @@
       hertekenTimer = setTimeout(herteken, 250);
     });
 
-    return { toon, verberg, melding, herteken, isLeeg: () => docs.length === 0 };
+    return { toon, verberg, melding, notitie, ocrBron, herteken, isLeeg: () => docs.length === 0 };
   }
 
   global.BoekPreviewPane = { create };

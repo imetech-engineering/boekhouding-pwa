@@ -674,7 +674,8 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
   let koppelFactuur = null;
 
   const bankKeuze = new Map(); // excelRow → bankregel (multi-select in de kiezer)
-  let koppelDoel = 0; // nog te dekken bedrag (rest bij deelbetalingen)
+  let koppelDoel = 0; // nog te dekken bedrag (rest bij deelbetalingen), altijd positief
+  let koppelTeken = 1; // −1 bij een creditnota: de bank staat dan aan de andere kant
 
   function openFactuurKoppel(f) {
     const st = App().state;
@@ -683,21 +684,30 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     // Nog te dekken: factuurbedrag minus wat al aan bankregels hangt
     const dekking = M().factuurDekking(st.bankRows, st.inkoopRows, st.verkoopRows);
     const gedekt = dekking.get(`${f.boek}|${f.excelRow}`) || 0;
-    koppelDoel = Math.max(0, Math.round((f.bedrag - Math.min(gedekt, f.bedrag)) * 100) / 100);
+    // Rekenen in de richting van de factuur: bij een creditnota (negatief bedrag)
+    // is "nog te koppelen" het bedrag dat je nog terugkrijgt of terugbetaalt.
+    koppelTeken = (f.bedrag || 0) < 0 ? -1 : 1;
+    koppelDoel = Math.max(0, Math.round(((f.bedrag || 0) - gedekt) * koppelTeken * 100) / 100);
+    const heelBedrag = M().fmtEur(Math.abs(f.bedrag || 0));
+    const werkwoord =
+      koppelTeken < 0
+        ? f.boek === "verkoop" ? "terugbetaald" : "teruggekregen"
+        : f.boek === "verkoop" ? "ontvangen" : "betaald";
     $("#koppel-modal-title").textContent = `${f.partij}${f.factuurnummer ? " · " + f.factuurnummer : ""}`;
     $("#koppel-modal-info").textContent =
       koppelDoel < 0.01
         ? `${M().fmtEur(f.bedrag)} — volledig gekoppeld ✓`
-        : gedekt > 0.005
-          ? `Nog ${M().fmtEur(koppelDoel)} van ${M().fmtEur(f.bedrag)} te koppelen. Tik de bankregel(s) aan:`
-          : `Met welke bankregel(s) is deze ${M().fmtEur(f.bedrag)} ${
-              f.boek === "verkoop" ? "ontvangen" : "betaald"
-            }? Tik aan (meerdere kan, bijv. termijnen):`;
+        : Math.abs(gedekt) > 0.005
+          ? `Nog ${M().fmtEur(koppelDoel)} van ${heelBedrag} te koppelen. Tik de bankregel(s) aan:`
+          : `Met welke bankregel(s) is deze ${koppelTeken < 0 ? "creditnota van " : ""}${heelBedrag} ` +
+            `${werkwoord}? Tik aan (meerdere kan, bijv. termijnen):`;
     $("#koppel-zoek").value = "";
     renderGekoppeldeBankregels(f);
     // Eén exacte match op het restbedrag alvast aanvinken — één tik op Koppel is genoeg
     if (koppelDoel >= 0.01) {
-      const kandidaten = M().bankKandidatenVoorFactuur({ ...f, bedrag: koppelDoel }, st.bankRows, "");
+      const kandidaten = M().bankKandidatenVoorFactuur(
+        { ...f, bedrag: koppelDoel * koppelTeken }, st.bankRows, ""
+      );
       const exact = kandidaten.filter((b) => b.exact);
       if (exact.length === 1) bankKeuze.set(exact[0].excelRow, exact[0]);
     }
@@ -759,9 +769,10 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
   /** Bijdrage van een bankregel aan deze factuur: hoofdrichting positief,
    * tegenrichting (terugboeking/refund) negatief. */
   function bankKant(f, b) {
-    const isVerkoop = f.boek === "verkoop";
-    const plus = isVerkoop ? b.in : b.uit;
-    const min = isVerkoop ? b.uit : b.in;
+    // Welke kant van de bank hoort bij deze factuur? Een creditnota draait het om.
+    const wilIn = M().factuurRichting(f.boek, f.bedrag || 0) > 0;
+    const plus = wilIn ? b.in : b.uit;
+    const min = wilIn ? b.uit : b.in;
     return (plus || 0) - (min || 0);
   }
 
@@ -780,7 +791,9 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     $("#koppel-zoek").classList.remove("hidden");
     $("#btn-koppel-doe").classList.remove("hidden");
     const zoek = $("#koppel-zoek").value;
-    const kandidaten = M().bankKandidatenVoorFactuur({ ...f, bedrag: koppelDoel }, st.bankRows, zoek);
+    const kandidaten = M().bankKandidatenVoorFactuur(
+      { ...f, bedrag: koppelDoel * koppelTeken }, st.bankRows, zoek
+    );
     for (const b of kandidaten.slice(0, 8)) {
       const sel = bankKeuze.has(b.excelRow);
       const li = document.createElement("li");

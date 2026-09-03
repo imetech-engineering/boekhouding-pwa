@@ -139,7 +139,7 @@
     const partij = $("#inkoop-leverancier").value.trim();
     if (!partij) return;
     const d = M().partyDefaults(intel(), partij);
-    if (d.btw != null) $("#inkoop-btw").value = String(d.btw).replace(/\.0$/, "");
+    if (d.btw != null && !btwBedragAan()) $("#inkoop-btw").value = String(d.btw).replace(/\.0$/, "");
     if (d.land) $("#inkoop-land").value = M().normalizeLand(d.land);
     if (!$("#inkoop-categorie").value && d.categorie) $("#inkoop-categorie").value = d.categorie;
     if (!$("#inkoop-project").value && d.project) $("#inkoop-project").value = d.project;
@@ -150,6 +150,101 @@
       $("#inkoop-valuta-wrap").classList.remove("hidden");
     }
     if (!$("#inkoop-koers").value && d.wisselkoers) $("#inkoop-koers").value = d.wisselkoers;
+  }
+
+  // === BTW-bedrag in plaats van een percentage ===
+  // Zeldzaam (invoerkosten van een koerier bijvoorbeeld), dus standaard dicht.
+  // Het werkboek rekent met het percentage in kolom K, dus zetten we het bedrag
+  // om naar het percentage dat er precies bij hoort.
+
+  function btwBedragAan() {
+    return !$("#inkoop-btw-bedrag-wrap").classList.contains("hidden");
+  }
+
+  let btwPercVoorBedrag = ""; // percentage van vóór het uitklappen, om terug te zetten
+
+  function zetBtwBedragAan(aan, bedragInvullen = true) {
+    if (aan && !btwBedragAan()) btwPercVoorBedrag = $("#inkoop-btw").value;
+    $("#inkoop-btw-bedrag-wrap").classList.toggle("hidden", !aan);
+    $("#btn-inkoop-btw-bedrag").textContent = aan
+      ? "BTW-bedrag invullen ▴"
+      : "BTW-bedrag invullen ▾";
+    if (aan && bedragInvullen && !$("#inkoop-btw-bedrag").value) {
+      // Wat er nu uit het percentage rolt als startpunt, zodat je ziet wat je aanpast.
+      const nu = M().btwBedragVanPercentage(
+        M().parseUserAmount($("#inkoop-bedrag").value),
+        M().parseUserAmount($("#inkoop-btw").value.replace("%", ""))
+      );
+      if (nu != null) $("#inkoop-btw-bedrag").value = M().fmtAmountInput(nu);
+    }
+    if (!aan) {
+      $("#inkoop-btw-bedrag").value = "";
+      // Dichtklappen = toch met het percentage werken; dat van vóór terug.
+      $("#inkoop-btw").value = btwPercVoorBedrag;
+      btwPercVoorBedrag = "";
+      $("#inkoop-btw-bedrag-info").textContent =
+        "Voor facturen zonder vast percentage (invoerkosten, deels belast). Het percentage rekenen we er zelf bij.";
+    }
+    updateBtwBedrag();
+  }
+
+  /** Percentage volgt het ingevulde BTW-bedrag; het %-veld is dan alleen-lezen. */
+  function updateBtwBedrag() {
+    const veld = $("#inkoop-btw");
+    const aan = btwBedragAan();
+    const totaal = M().parseUserAmount($("#inkoop-bedrag").value);
+    const bedrag = aan ? M().parseUserAmount($("#inkoop-btw-bedrag").value) : null;
+    const perc = M().btwPercentageVanBedrag(totaal, bedrag);
+    veld.readOnly = aan && bedrag != null && perc != null;
+    veld.classList.toggle("veld-afgeleid", veld.readOnly);
+    if (!aan || bedrag == null) return;
+    const info = $("#inkoop-btw-bedrag-info");
+    if (perc == null) {
+      info.textContent = "Vul eerst het bedrag incl. BTW in.";
+      return;
+    }
+    veld.value = String(Math.round(perc * 100) / 100).replace(".", ",");
+    info.textContent =
+      `= ${M().fmtEur(totaal - bedrag)} excl. + ${M().fmtEur(bedrag)} BTW ` +
+      `(${String(Math.round(perc * 100) / 100).replace(".", ",")}%)`;
+  }
+
+  // === Vreemde valuta: het derde veld volgt uit de andere twee ===
+  const VALUTA_VELDEN = { orig: "inkoop-bedrag-orig", koers: "inkoop-koers", eur: "inkoop-bedrag" };
+
+  function valutaWaarden() {
+    const lees = (id) => M().parseUserAmount(document.getElementById(id).value);
+    return {
+      orig: lees(VALUTA_VELDEN.orig),
+      // De koers heeft meer dan twee decimalen, dus die niet afronden.
+      koers: M().parseUserNumber(document.getElementById(VALUTA_VELDEN.koers).value),
+      eur: lees(VALUTA_VELDEN.eur),
+    };
+  }
+
+  function valutaOmrekenen(bron) {
+    if ($("#inkoop-valuta-wrap").classList.contains("hidden")) return;
+    const patch = M().valutaAanvullen(bron, valutaWaarden());
+    for (const [veld, waarde] of Object.entries(patch)) {
+      document.getElementById(VALUTA_VELDEN[veld]).value =
+        veld === "koers" ? M().fmtKoers(waarde) : M().fmtAmountInput(waarde);
+    }
+    if (patch.eur !== undefined) {
+      updateBankCheck();
+      updateAfschrijfPreview();
+      updateBtwBedrag();
+    }
+    updateValutaInfo();
+  }
+
+  function updateValutaInfo() {
+    const munt = $("#inkoop-valuta").value.trim().toUpperCase() || "eenheid";
+    $("#inkoop-koers-label").textContent = `Wisselkoers (€ per 1 ${munt})`;
+    const { orig, koers, eur } = valutaWaarden();
+    $("#inkoop-valuta-info").textContent =
+      orig != null && koers != null && eur != null
+        ? `${M().fmtAmountInput(orig)} ${munt} × ${M().fmtKoers(koers)} = ${M().fmtEur(eur)}`
+        : "Vul er twee in, dan rekent de app de derde uit.";
   }
 
   // === Bankregel-koppeling ===
@@ -198,7 +293,7 @@
       omschrijving: $("#inkoop-omschrijving").value.trim(),
       factuurnummer: $("#inkoop-fnr").value.trim(),
       bedrag: M().parseUserAmount($("#inkoop-bedrag").value),
-      btw: $("#inkoop-btw").value.trim() === "" ? null : M().parseUserAmount($("#inkoop-btw").value.replace("%", "")),
+      btw: leesBtw(),
       verlegd: $("#inkoop-verlegd").checked,
       afschrijving: $("#inkoop-afschrijving").checked,
       afschrijvingJaren: Math.min(10, Math.max(2, parseInt($("#inkoop-afschrijf-jaren").value, 10) || 5)),
@@ -210,6 +305,22 @@
       valuta: $("#inkoop-valuta").value.trim(),
       wisselkoers: $("#inkoop-koers").value.trim(),
     };
+  }
+
+  /**
+   * BTW-percentage voor het werkboek: bij een handmatig BTW-bedrag het exacte
+   * percentage dat daarbij hoort, anders gewoon wat er in het %-veld staat.
+   */
+  function leesBtw() {
+    if (btwBedragAan()) {
+      const perc = M().btwPercentageVanBedrag(
+        M().parseUserAmount($("#inkoop-bedrag").value),
+        M().parseUserAmount($("#inkoop-btw-bedrag").value)
+      );
+      if (perc != null) return perc;
+    }
+    const ruw = $("#inkoop-btw").value.trim();
+    return ruw === "" ? null : M().parseUserAmount(ruw.replace("%", ""));
   }
 
   /** Alleen de velden leegmaken (gebruikt bij het selecteren van een nieuwe factuur). */
@@ -229,6 +340,8 @@
     $("#inkoop-afschrijf-wrap").classList.add("hidden");
     $("#inkoop-bank-check").checked = false;
     $("#inkoop-valuta-wrap").classList.add("hidden");
+    zetBtwBedragAan(false);
+    updateValutaInfo();
     prefillBankRows = [];
   }
 
@@ -263,6 +376,13 @@
     $("#inkoop-fnr").value = h.factuurnummer || "";
     $("#inkoop-bedrag").value = h.bedrag != null ? M().fmtAmountInput(h.bedrag) : "";
     $("#inkoop-btw").value = h.btw != null ? String(h.btw).replace(/\.0$/, "") : "";
+    // Krom percentage = destijds een handmatig BTW-bedrag; zo weer te zien en te wijzigen.
+    if (M().isHandmatigBtw(h.btw)) {
+      const bedrag = h.btwBedrag != null ? h.btwBedrag : M().btwBedragVanPercentage(h.bedrag, h.btw);
+      zetBtwBedragAan(true, false);
+      if (bedrag != null) $("#inkoop-btw-bedrag").value = M().fmtAmountInput(bedrag);
+      updateBtwBedrag();
+    }
     $("#inkoop-land").value = M().normalizeLand(h.land);
     $("#inkoop-categorie").value = h.categorie || "";
     $("#inkoop-project").value = h.project || "";
@@ -525,7 +645,14 @@
     $("#inkoop-leverancier").addEventListener("change", applyPartyDefaults);
     $("#btn-inkoop-valuta-toggle").addEventListener("click", () => {
       $("#inkoop-valuta-wrap").classList.toggle("hidden");
+      updateValutaInfo();
     });
+    $("#btn-inkoop-btw-bedrag").addEventListener("click", () => zetBtwBedragAan(!btwBedragAan()));
+    $("#inkoop-btw-bedrag").addEventListener("input", updateBtwBedrag);
+    $("#inkoop-bedrag-orig").addEventListener("input", () => valutaOmrekenen("orig"));
+    $("#inkoop-koers").addEventListener("input", () => valutaOmrekenen("koers"));
+    $("#inkoop-bedrag").addEventListener("input", () => valutaOmrekenen("eur"));
+    $("#inkoop-valuta").addEventListener("input", updateValutaInfo);
     $("#btn-inkoop-boek").addEventListener("click", () => boek(false));
     $("#btn-inkoop-boek-move").addEventListener("click", () => boek(true));
     $("#btn-inkoop-rename").addEventListener("click", renameFile);
@@ -534,6 +661,7 @@
       deselectFile();
     });
     $("#btn-inkoop-cancel-edit").addEventListener("click", clearForm);
+    $("#inkoop-bedrag").addEventListener("input", updateBtwBedrag);
     for (const id of ["inkoop-bedrag", "inkoop-datum"]) {
       document.getElementById(id).addEventListener("input", updateBankCheck);
       document.getElementById(id).addEventListener("change", updateBankCheck);

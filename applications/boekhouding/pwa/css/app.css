@@ -1684,3 +1684,9 @@ a.link {
   font-size: 0.75rem;
   padding-left: 14px;
 }
+
+/* Veld dat de app zelf invult (BTW% bij een handmatig BTW-bedrag). */
+.veld-afgeleid {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}

@@ -90,6 +90,40 @@
     if (!$("#verkoop-koers").value && d.wisselkoers) $("#verkoop-koers").value = d.wisselkoers;
   }
 
+  // === Vreemde valuta: het derde veld volgt uit de andere twee ===
+  const VALUTA_VELDEN = { orig: "verkoop-bedrag-orig", koers: "verkoop-koers", eur: "verkoop-bedrag" };
+
+  function valutaWaarden() {
+    const lees = (id) => M().parseUserAmount(document.getElementById(id).value);
+    return {
+      orig: lees(VALUTA_VELDEN.orig),
+      // De koers heeft meer dan twee decimalen, dus die niet afronden.
+      koers: M().parseUserNumber(document.getElementById(VALUTA_VELDEN.koers).value),
+      eur: lees(VALUTA_VELDEN.eur),
+    };
+  }
+
+  function valutaOmrekenen(bron) {
+    if ($("#verkoop-valuta-wrap").classList.contains("hidden")) return;
+    const patch = M().valutaAanvullen(bron, valutaWaarden());
+    for (const [veld, waarde] of Object.entries(patch)) {
+      document.getElementById(VALUTA_VELDEN[veld]).value =
+        veld === "koers" ? M().fmtKoers(waarde) : M().fmtAmountInput(waarde);
+    }
+    if (patch.eur !== undefined) updateBankCheck();
+    updateValutaInfo();
+  }
+
+  function updateValutaInfo() {
+    const munt = $("#verkoop-valuta").value.trim().toUpperCase() || "eenheid";
+    $("#verkoop-koers-label").textContent = `Wisselkoers (€ per 1 ${munt})`;
+    const { orig, koers, eur } = valutaWaarden();
+    $("#verkoop-valuta-info").textContent =
+      orig != null && koers != null && eur != null
+        ? `${M().fmtAmountInput(orig)} ${munt} × ${M().fmtKoers(koers)} = ${M().fmtEur(eur)}`
+        : "Vul er twee in, dan rekent de app de derde uit.";
+  }
+
   function updateBankCheck() {
     const bedrag = M().parseUserAmount($("#verkoop-bedrag").value);
     const datumIso = $("#verkoop-datum").value;
@@ -144,6 +178,7 @@
     $("#verkoop-land").value = "";
     $("#verkoop-bank-check").checked = false;
     $("#verkoop-valuta-wrap").classList.add("hidden");
+    updateValutaInfo();
     prefillBankRows = [];
   }
 
@@ -372,7 +407,12 @@
     $("#verkoop-klant").addEventListener("change", applyPartyDefaults);
     $("#btn-verkoop-valuta-toggle").addEventListener("click", () => {
       $("#verkoop-valuta-wrap").classList.toggle("hidden");
+      updateValutaInfo();
     });
+    $("#verkoop-bedrag-orig").addEventListener("input", () => valutaOmrekenen("orig"));
+    $("#verkoop-koers").addEventListener("input", () => valutaOmrekenen("koers"));
+    $("#verkoop-bedrag").addEventListener("input", () => valutaOmrekenen("eur"));
+    $("#verkoop-valuta").addEventListener("input", updateValutaInfo);
     $("#btn-verkoop-boek").addEventListener("click", () => boek(false));
     $("#btn-verkoop-boek-move").addEventListener("click", () => boek(true));
     $("#btn-verkoop-clear").addEventListener("click", () => {

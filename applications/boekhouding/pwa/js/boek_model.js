@@ -99,7 +99,8 @@
   }
 
   /** Gebruikersinvoer: komma of punt als decimaalteken. */
-  function parseUserAmount(s) {
+  /** Getal uit gebruikersinvoer, zonder afronden (koersen hebben meer decimalen). */
+  function parseUserNumber(s) {
     if (s == null) return null;
     // Ook het typografische minteken (−, uit PDF's) telt als min.
     const t = String(s).trim().replace(/[€\s]/g, "").replace(/[−–—]/g, "-");
@@ -114,7 +115,13 @@
       clean = t.replace(",", ".");
     }
     const f = parseFloat(clean);
-    return Number.isFinite(f) ? Math.round(f * 100) / 100 : null;
+    return Number.isFinite(f) ? f : null;
+  }
+
+  /** Bedrag uit gebruikersinvoer: op hele centen. */
+  function parseUserAmount(s) {
+    const f = parseUserNumber(s);
+    return f == null ? null : Math.round(f * 100) / 100;
   }
 
   function fmtEur(v) {
@@ -123,6 +130,12 @@
       "€ " +
       v.toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     );
+  }
+
+  /** Wisselkoers als tekst: komma, tot zes decimalen, geen overbodige nullen. */
+  function fmtKoers(v) {
+    if (v == null || !Number.isFinite(v)) return "";
+    return String(Math.round(v * 1e6) / 1e6).replace(".", ",");
   }
 
   /** Compacte weergave voor tegels: hele euro's, zodat het bedrag past. */
@@ -459,11 +472,66 @@
       for (const f of fields) {
         if (out[f] !== undefined) continue;
         const v = h[f];
+        // Een handmatig BTW-bedrag levert een krom percentage op; dat hoort bij
+        // die ene factuur en stellen we niet voor bij de volgende.
+        if (f === "btw" && isHandmatigBtw(v)) continue;
         if (v !== undefined && v !== null && v !== "") out[f] = v;
       }
       if (fields.every((f) => out[f] !== undefined)) break;
     }
     return out;
+  }
+
+  // === BTW-bedrag ↔ percentage ===
+  // Het werkboek rekent BTW-bedrag en netto zelf uit met het percentage in kolom K.
+  // Voor een factuur met een afwijkende BTW (invoerkosten + handling bij FedEx
+  // bijvoorbeeld) vul je het bedrag in en zetten we dat om naar het percentage
+  // dat er precies bij hoort — de formules in Excel blijven zo intact.
+
+  /** BTW-bedrag dat bij dit percentage hoort (zelfde rekenwijze als het werkboek). */
+  function btwBedragVanPercentage(totaal, btw) {
+    if (totaal == null || btw == null || !Number.isFinite(totaal) || !Number.isFinite(btw)) {
+      return null;
+    }
+    return Math.round((totaal - totaal / (1 + btw / 100)) * 100) / 100;
+  }
+
+  /** Percentage dat hoort bij een handmatig BTW-bedrag op een totaal incl. BTW. */
+  function btwPercentageVanBedrag(totaal, btwBedrag) {
+    if (totaal == null || btwBedrag == null) return null;
+    if (!Number.isFinite(totaal) || !Number.isFinite(btwBedrag)) return null;
+    const netto = totaal - btwBedrag;
+    if (Math.abs(netto) < 0.005) return null;
+    // Zes decimalen: genoeg om het bedrag tot op de cent terug te krijgen.
+    return Math.round((btwBedrag / netto) * 100 * 1e6) / 1e6;
+  }
+
+  /** Een percentage dat geen heel getal is, komt uit een handmatig BTW-bedrag. */
+  function isHandmatigBtw(btw) {
+    return btw != null && Number.isFinite(btw) && !Number.isInteger(btw);
+  }
+
+  // === Vreemde valuta ===
+  /**
+   * Vult het derde veld aan zodra er twee bekend zijn, met de koers als
+   * euro's per eenheid vreemde valuta: bedrag (€) = bedrag origineel × koers.
+   * `bron` is het veld dat net getypt is; dat blijft altijd staan.
+   */
+  function valutaAanvullen(bron, { orig, koers, eur }) {
+    const bruikbaar = (x) => x != null && Number.isFinite(x) && Math.abs(x) > 1e-9;
+    const rondEur = (x) => Math.round(x * 100) / 100;
+    const rondKoers = (x) => Math.round(x * 1e6) / 1e6;
+    if (bron === "orig" && bruikbaar(orig)) {
+      if (bruikbaar(koers)) return { eur: rondEur(orig * koers) };
+      if (bruikbaar(eur)) return { koers: rondKoers(eur / orig) };
+    } else if (bron === "koers" && bruikbaar(koers)) {
+      if (bruikbaar(orig)) return { eur: rondEur(orig * koers) };
+      if (bruikbaar(eur)) return { orig: rondEur(eur / koers) };
+    } else if (bron === "eur" && bruikbaar(eur)) {
+      if (bruikbaar(orig)) return { koers: rondKoers(eur / orig) };
+      if (bruikbaar(koers)) return { orig: rondEur(eur / koers) };
+    }
+    return {};
   }
 
   /** Duplicaatcontrole: zelfde partij + (factuurnr gelijk óf bedrag+datum gelijk). */
@@ -1389,11 +1457,12 @@
     TABLE_BANK, TABLE_VERKOOP, TABLE_INKOOP,
     BANK, INK, VRK, MATCH_DAYS, REKENINGEN,
     serialToDate, dateToIso, isoToDate, formatDateNl, todayIso, daysBetween, isoToYymmdd,
-    parseCellAmount, parseUserAmount, fmtEur, fmtEurKort, fmtAmountInput, cellText, cellBool,
+    parseCellAmount, parseUserAmount, parseUserNumber, fmtEur, fmtEurKort, fmtKoers, fmtAmountInput, cellText, cellBool,
     parseBankRows, parseInkoopRows, parseVerkoopRows,
     firstEmptyBankSlot, lastFilledBankRowBefore, saldoFormula, saldiPerRekening,
     priveOverzicht, firstEmptyBoekSlot,
     normalizeParty, partyNamesMatch, buildIntel, partyDefaults, findDuplicate,
+    btwBedragVanPercentage, btwPercentageVanBedrag, isHandmatigBtw, valutaAanvullen,
     bankMatchesForInvoice, invoiceMatchesForBankRow, factuurRichting,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,

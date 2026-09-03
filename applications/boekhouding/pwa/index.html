@@ -170,6 +170,12 @@
               <input id="inkoop-btw" inputmode="numeric" autocomplete="off" placeholder="21" />
             </div>
           </div>
+          <button type="button" id="btn-inkoop-btw-bedrag" class="btn-secondary btn-inline">BTW-bedrag invullen ▾</button>
+          <div id="inkoop-btw-bedrag-wrap" class="hidden">
+            <label for="inkoop-btw-bedrag">BTW-bedrag (€)</label>
+            <input id="inkoop-btw-bedrag" inputmode="decimal" autocomplete="off" placeholder="0,00" />
+            <p id="inkoop-btw-bedrag-info" class="sub">Voor facturen zonder vast percentage (invoerkosten, deels belast). Het percentage rekenen we er zelf bij.</p>
+          </div>
           <div class="row-2">
             <div>
               <label for="inkoop-land">Land</label>
@@ -212,8 +218,9 @@
                 <input id="inkoop-valuta" autocomplete="off" placeholder="USD" />
               </div>
             </div>
-            <label for="inkoop-koers">Wisselkoers</label>
-            <input id="inkoop-koers" autocomplete="off" placeholder="0,85 EUR / USD" />
+            <label for="inkoop-koers" id="inkoop-koers-label">Wisselkoers (€ per 1 eenheid)</label>
+            <input id="inkoop-koers" inputmode="decimal" autocomplete="off" placeholder="0,85" />
+            <p id="inkoop-valuta-info" class="sub">Vul er twee in, dan rekent de app de derde uit.</p>
           </div>
           <label for="inkoop-opmerking">Opmerking</label>
           <input id="inkoop-opmerking" autocomplete="off" />
@@ -316,8 +323,9 @@
                 <input id="verkoop-valuta" autocomplete="off" placeholder="USD" />
               </div>
             </div>
-            <label for="verkoop-koers">Wisselkoers</label>
-            <input id="verkoop-koers" autocomplete="off" />
+            <label for="verkoop-koers" id="verkoop-koers-label">Wisselkoers (€ per 1 eenheid)</label>
+            <input id="verkoop-koers" inputmode="decimal" autocomplete="off" placeholder="0,85" />
+            <p id="verkoop-valuta-info" class="sub">Vul er twee in, dan rekent de app de derde uit.</p>
           </div>
           <label for="verkoop-opmerking">Opmerking</label>
           <input id="verkoop-opmerking" autocomplete="off" />

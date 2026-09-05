@@ -336,16 +336,22 @@
     return rollback;
   }
 
-  async function queueOfflineMutation(descriptor, optimisticRollback) {
-    applyOptimistic(optimisticRollback);
+  async function queueOfflineMutation(descriptor) {
     await UrenOfflineQueue.add(descriptor);
+    meldSyncAan();
     await updateQueueBadge();
     showToast("Offline — wijziging in wachtrij");
   }
 
+  /**
+   * Opslaan zonder dat het scherm onder je handen verandert: de wijziging staat
+   * meteen in de lijst, daarna gaat hij naar OneDrive. Mislukt dat, dan draaien
+   * we hem terug. De verversing achteraf raakt het invulformulier niet aan.
+   */
   async function persistMutation(descriptor, optimisticRollback) {
+    const rollback = applyOptimistic(optimisticRollback);
     if (!UrenOfflineQueue.isOnline()) {
-      await queueOfflineMutation(descriptor, optimisticRollback);
+      await queueOfflineMutation(descriptor);
       return;
     }
 
@@ -358,8 +364,13 @@
         throw e;
       }
       if (isNetworkError(e)) {
-        await queueOfflineMutation(descriptor, optimisticRollback);
+        await queueOfflineMutation(descriptor);
         return;
+      }
+      // Niet opgeslagen → de regel weer uit het scherm halen.
+      if (rollback) {
+        rollback();
+        renderAll();
       }
       if (e.name === "GraphLockError") {
         showToast(e.message, true);
@@ -533,6 +544,32 @@
     return UrenAuth.getConfig().graph.drivePath;
   }
 
+  /** Laatste stand lokaal bewaren, zodat de app volgende keer meteen gevuld is. */
+  function bewaarSnapshot() {
+    UrenCache?.bewaar("data", {
+      entries: state.entries,
+      estimates: state.estimates,
+      etag: state.etag,
+      lastModified: state.meta?.lastModified || null,
+    });
+  }
+
+  /** Bij het starten: eerst de bewaarde stand tonen, daarna pas de cloud. */
+  async function toonSnapshot() {
+    const snap = await UrenCache?.lees("data");
+    if (!snap?.entries?.length || state.entries.length) return false;
+    state.entries = snap.entries;
+    state.estimates = snap.estimates || [];
+    state.intel = UrenExcel.buildIntel(state.entries);
+    state.etag = snap.etag || null;
+    const wanneer = snap.lastModified || snap.bewaardOp;
+    setStatus(
+      `Laatst bekend ${new Date(wanneer).toLocaleString("nl-NL")} — bijwerken…`
+    );
+    renderAll(true);
+    return true;
+  }
+
   async function refreshFromCloud() {
     state.loading = true;
     setStatus("Laden uit OneDrive…");
@@ -540,9 +577,18 @@
       await flushOfflineQueue();
       const token = await ensureLoggedIn();
       const path = drivePath();
-      // Drie losse Graph-calls die niets van elkaar nodig hebben → tegelijk.
-      const [meta, entries, estimates] = await Promise.all([
-        UrenGraph.getDriveItemMeta(path, token),
+      // Eerst de kleine bestand-info: is het werkboek niet gewijzigd en hebben we
+      // de gegevens al, dan hoeven de zware tabellen niet opnieuw opgehaald.
+      const meta = await UrenGraph.getDriveItemMeta(path, token);
+      if (meta.etag && meta.etag === state.etag && state.entries.length) {
+        state.meta = meta;
+        setStatus(`Bij (ongewijzigd) ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
+        renderAll(true);
+        renderAccount();
+        await updateQueueBadge();
+        return;
+      }
+      const [entries, estimates] = await Promise.all([
         UrenGraphExcel.readAllEntries(path, token),
         UrenGraphEstimates.readAllEstimates(path, token),
       ]);
@@ -551,6 +597,7 @@
       state.intel = UrenExcel.buildIntel(entries);
       state.etag = meta.etag;
       state.meta = meta;
+      bewaarSnapshot();
       setStatus(`Bijgewerkt ${new Date(meta.lastModified).toLocaleString("nl-NL")}`);
       renderAll(true);
       renderAccount();
@@ -630,32 +677,24 @@
       showToast("Datum is verplicht.", true);
       return;
     }
+    const bewerkRij = state.estimateEditRow;
+    closeProjectModal(); // meteen dicht; opslaan gebeurt daarna
     try {
-      if (state.estimateEditRow) {
-        await persistMutation({
-          kind: "estimate_update",
-          fields,
-          rowIndex: state.estimateEditRow,
-        });
-      } else {
-        await persistMutation({ kind: "estimate_add", fields, rowIndex: null });
-      }
-      closeProjectModal();
-      await refreshFromCloudQuiet();
+      await persistMutation(
+        bewerkRij
+          ? { kind: "estimate_update", fields, rowIndex: bewerkRij }
+          : { kind: "estimate_add", fields, rowIndex: null }
+      );
     } catch (_) {}
   }
 
   async function onEstimateDelete() {
     if (!state.estimateEditRow) return;
     if (!confirm("Projectrij verwijderen uit Excel?")) return;
+    const rij = state.estimateEditRow;
+    closeProjectModal();
     try {
-      await persistMutation({
-        kind: "estimate_delete",
-        fields: null,
-        rowIndex: state.estimateEditRow,
-      });
-      closeProjectModal();
-      await refreshFromCloudQuiet();
+      await persistMutation({ kind: "estimate_delete", fields: null, rowIndex: rij });
     } catch (_) {}
   }
 
@@ -1065,12 +1104,17 @@
           switchTab("invoer");
         } else if (btn.dataset.act === "del") {
           if (!confirm("Regel verwijderen uit Excel?")) return;
+          // Bewerkte je net die regel? Dan het formulier meteen vrijgeven.
+          if (state.editRow === row) {
+            state.editRow = null;
+            $("#btn-save").textContent = "Opslaan";
+            resetFormAfterSave();
+          }
           try {
             await persistMutation(
               { kind: "hours_delete", fields: null, rowIndex: row },
               () => optimisticDelete(row)
             );
-            resetFormAfterSave();
           } catch (_) {}
         }
       });
@@ -1561,22 +1605,25 @@
     const budgetMsg = UrenInvoer.budgetWarning(state.estimates, budgetFields, state.editRow);
     if (budgetMsg && !confirm(budgetMsg)) return;
 
+    // Alles wat je ziet gebeurt nú: regel in de lijst, formulier klaar voor de
+    // volgende. Het opslaan in OneDrive loopt daarna; als je ondertussen alweer
+    // typt, blijft dat staan.
+    const bewerkRij = state.editRow;
+    state.editRow = null;
+    $("#btn-save").textContent = "Opslaan";
+    resetFormAfterSave();
     try {
-      if (state.editRow) {
-        const row = state.editRow;
+      if (bewerkRij) {
         await persistMutation(
-          { kind: "hours_update", fields, rowIndex: row },
-          () => optimisticUpdate(row, fields)
+          { kind: "hours_update", fields, rowIndex: bewerkRij },
+          () => optimisticUpdate(bewerkRij, fields)
         );
-        state.editRow = null;
-        $("#btn-save").textContent = "Opslaan";
       } else {
         await persistMutation(
           { kind: "hours_add", fields, rowIndex: null },
           () => optimisticAdd(fields)
         );
       }
-      resetFormAfterSave();
     } catch (_) {}
   }
 
@@ -1840,6 +1887,10 @@
     window.addEventListener("online", () => {
       flushOfflineQueue().catch(() => {});
     });
+    // Terug in beeld (van andere app teruggeschakeld): meteen bijwerken.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") flushOfflineQueue().catch(() => {});
+    });
     bindPullToRefresh();
     setInterval(() => {
       if (UrenAuth.isLoggedIn() && UrenOfflineQueue.isOnline() && !state.loading) {
@@ -1866,6 +1917,7 @@
     });
     UrenInstall.init(switchTab);
     switchTab("invoer");
+    await toonSnapshot();
     try {
       await UrenAuth.getMsal();
       renderAccount();
@@ -1892,6 +1944,22 @@
       gemeld = true;
       showToast("Nieuwe versie klaar — tik om te vernieuwen", false, () => location.reload());
     });
+    // De service worker vraagt de wachtrij weg te werken zodra er weer
+    // verbinding is (Background Sync); het opslaan zelf gebeurt hier, want de
+    // service worker heeft geen inlog-token.
+    navigator.serviceWorker.addEventListener("message", (ev) => {
+      if (ev.data?.type === "flush-queue") flushOfflineQueue().catch(() => {});
+    });
+  }
+
+  /** Bij de browser aanmelden dat er nog iets te synchroniseren valt. */
+  async function meldSyncAan() {
+    try {
+      const reg = await navigator.serviceWorker?.ready;
+      await reg?.sync?.register("imtech-queue-sync");
+    } catch (_) {
+      /* geen Background Sync: de app werkt de wachtrij bij openen weg */
+    }
   }
 
   document.addEventListener("DOMContentLoaded", init);

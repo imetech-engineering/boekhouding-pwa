@@ -13,6 +13,7 @@
     quietRefresh: false,
     bankRows: [],
     bankEndRow: null,
+    workbookEtag: null,
     inkoopRows: [],
     verkoopRows: [],
     inkoopKeuzes: [],
@@ -195,31 +196,37 @@
     if (!quiet) setStatus("Laden uit OneDrive…");
     try {
       const token = await ensureLoggedIn();
+      // Kleine bestand-info eerst: is het werkboek onveranderd en hebben we de
+      // regels al, dan slaan we het inlezen van de drie tabellen over.
+      const meta = await global.BoekGraph.getDriveItemMeta(global.BoekIo.drivePath(), token);
+      const kenmerk = meta?.cTag || meta?.eTag || null;
+      const onveranderd = kenmerk && kenmerk === state.workbookEtag && state.loaded;
       const [data] = await Promise.all([
-        global.BoekIo.loadAll(token),
+        onveranderd ? Promise.resolve(null) : global.BoekIo.loadAll(token),
         loadFileLists(token),
         state.settingsLoaded ? Promise.resolve() : loadSettingsRemote(token),
       ]);
-      state.bankRows = data.bankRows;
-      state.bankEndRow = data.bankEndRow || null;
-      state.inkoopRows = data.inkoopRows;
-      state.verkoopRows = data.verkoopRows;
-      state.inkoopKeuzes = data.inkoopCategorieKeuzes;
-      state.verkoopKeuzes = data.verkoopCategorieKeuzes;
-      state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
-      state.loaded = true;
-      try {
-        const meta = await global.BoekGraph.getDriveItemMeta(global.BoekIo.drivePath(), token);
-        state.webUrl = meta?.webUrl || null;
-        const t = meta?.lastModifiedDateTime
-          ? new Date(meta.lastModifiedDateTime).toLocaleString("nl-NL", {
-              day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
-            })
-          : "";
-        setStatus(`Gesynchroniseerd${t ? " · werkboek gewijzigd " + t : ""}`);
-      } catch (_) {
-        setStatus("Gesynchroniseerd");
+      if (data) state.workbookEtag = kenmerk;
+      if (data) {
+        state.bankRows = data.bankRows;
+        state.bankEndRow = data.bankEndRow || null;
+        state.inkoopRows = data.inkoopRows;
+        state.verkoopRows = data.verkoopRows;
+        state.inkoopKeuzes = data.inkoopCategorieKeuzes;
+        state.verkoopKeuzes = data.verkoopCategorieKeuzes;
+        state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
+        state.loaded = true;
+        bewaarSnapshot();
       }
+      state.webUrl = meta?.webUrl || null;
+      const t = meta?.lastModifiedDateTime
+        ? new Date(meta.lastModifiedDateTime).toLocaleString("nl-NL", {
+            day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+          })
+        : "";
+      setStatus(
+        `Gesynchroniseerd${t ? " · werkboek gewijzigd " + t : ""}${onveranderd ? " (ongewijzigd)" : ""}`
+      );
       renderAll();
       await flushOfflineQueue();
     } catch (e) {
@@ -232,6 +239,38 @@
     } finally {
       state.loading = false;
     }
+  }
+
+  /** Laatste stand lokaal bewaren, zodat de app volgende keer meteen gevuld is. */
+  function bewaarSnapshot() {
+    global.BoekCache?.bewaar("data", {
+      bankRows: state.bankRows,
+      bankEndRow: state.bankEndRow,
+      inkoopRows: state.inkoopRows,
+      verkoopRows: state.verkoopRows,
+      inkoopKeuzes: state.inkoopKeuzes,
+      verkoopKeuzes: state.verkoopKeuzes,
+      etag: state.workbookEtag,
+    });
+  }
+
+  /** Bij het starten: eerst de bewaarde stand tonen, daarna pas de cloud. */
+  async function toonSnapshot() {
+    if (state.loaded) return false;
+    const snap = await global.BoekCache?.lees("data");
+    if (!snap?.bankRows) return false;
+    state.bankRows = snap.bankRows;
+    state.bankEndRow = snap.bankEndRow || null;
+    state.inkoopRows = snap.inkoopRows || [];
+    state.verkoopRows = snap.verkoopRows || [];
+    state.inkoopKeuzes = snap.inkoopKeuzes || [];
+    state.verkoopKeuzes = snap.verkoopKeuzes || [];
+    state.workbookEtag = snap.etag || null;
+    state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
+    state.loaded = true;
+    setStatus(`Laatst bekend ${new Date(snap.bewaardOp).toLocaleString("nl-NL")} — bijwerken…`);
+    renderAll();
+    return true;
   }
 
   async function refreshQuiet() {
@@ -364,6 +403,7 @@
     await global.BoekOfflineQueue.add(descriptor);
     await updateQueueBadge();
     showToast("Offline — wijziging wordt gesynchroniseerd zodra er verbinding is.");
+    meldSyncAan();
   }
 
   /** Voert een mutatie uit; retourneert true als (direct) gelukt. */
@@ -590,11 +630,16 @@
       }
     }
 
+    await toonSnapshot();
     global.BoekInstall.init(switchTab);
     bindPullToRefresh();
 
     window.addEventListener("online", () => {
       flushOfflineQueue().then(() => refreshQuiet());
+    });
+    // Terug in beeld (van een andere app teruggeschakeld): meteen bijwerken.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") flushOfflineQueue().catch(() => {});
     });
     setInterval(() => {
       if (global.BoekOfflineQueue.isOnline()) flushOfflineQueue();
@@ -631,6 +676,22 @@
       gemeld = true;
       showToast("Nieuwe versie klaar — tik om te vernieuwen", false, () => location.reload());
     });
+    // De service worker vraagt de wachtrij weg te werken zodra er weer
+    // verbinding is (Background Sync); het opslaan zelf gebeurt hier, want de
+    // service worker heeft geen inlog-token.
+    navigator.serviceWorker.addEventListener("message", (ev) => {
+      if (ev.data?.type === "flush-queue") flushOfflineQueue().catch(() => {});
+    });
+  }
+
+  /** Bij de browser aanmelden dat er nog iets te synchroniseren valt. */
+  async function meldSyncAan() {
+    try {
+      const reg = await navigator.serviceWorker?.ready;
+      await reg?.sync?.register("imtech-queue-sync");
+    } catch (_) {
+      /* geen Background Sync: de app werkt de wachtrij bij openen weg */
+    }
   }
 
   global.BoekApp = {

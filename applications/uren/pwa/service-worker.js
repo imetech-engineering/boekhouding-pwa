@@ -1,4 +1,4 @@
-const CACHE = "imtech-uren-pwa-v32";
+const CACHE = "imtech-uren-pwa-v33";
 const ASSETS = [
   "./",
   "./index.html",
@@ -19,6 +19,7 @@ const ASSETS = [
   "./js/uren_inzichten.js",
   "./js/uren_invoer.js",
   "./js/combobox.js",
+  "./js/data_cache.js",
   "./js/offline_queue.js",
   "./js/install.js",
   "./js/app.js",
@@ -84,6 +85,35 @@ async function cdnUitCache(request) {
     return fetch(request);
   }
 }
+
+// === Wachtrij wegwerken zodra er weer verbinding is (Background Sync) ===
+// De service worker heeft zelf geen inlog-token, dus hij port de app: staat die
+// ergens open, dan werkt die de wachtrij af. Is er niets open, dan een seintje
+// (alleen als je meldingen al hebt toegestaan).
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "imtech-queue-sync") return;
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      if (clients.length) {
+        for (const c of clients) c.postMessage({ type: "flush-queue" });
+        return;
+      }
+      if (self.registration.showNotification && Notification?.permission === "granted") {
+        await self.registration.showNotification("Wijzigingen klaarzetten", {
+          body: "Er staan wijzigingen in de wachtrij. Open de app om ze op te slaan.",
+          icon: "./icons/icon-192.png",
+          tag: "imtech-queue-sync",
+        });
+      }
+    })()
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(self.clients.openWindow("./"));
+});
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;

@@ -57,7 +57,12 @@
   }
 
   async function getDriveItemMeta(path, token) {
-    return graphFetch(`${itemUrl(path)}?$select=id,name,lastModifiedDateTime,webUrl,size`, token);
+    // cTag verandert alleen als de inhoud wijzigt — daarmee slaan we het
+    // opnieuw inlezen over als er niets veranderd is.
+    return graphFetch(
+      `${itemUrl(path)}?$select=id,name,lastModifiedDateTime,webUrl,size,eTag,cTag`,
+      token
+    );
   }
 
   /** Lijst bestanden + directe submappen in een OneDrive-map. */

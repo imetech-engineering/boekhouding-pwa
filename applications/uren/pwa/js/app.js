@@ -18,7 +18,7 @@
     lastProj: "",
     lastLoc: "",
     analyseFilters: {
-      periodMode: "month",
+      periodMode: "custom_month", // volgt de maandbalkjes in de periodekaart
       keyword: "",
       selectedOgs: [],
       selectedProjs: [],
@@ -30,11 +30,7 @@
       customWeekYear: new Date().getFullYear(),
       customWeek: 1,
     },
-    inzichten: {
-      rangVeld: "opdrachtgever",
-      jaar: new Date().getFullYear(),
-      maand: null, // aangetikte maand in het jaarbeeld
-    },
+    inzichten: { rangVeld: "opdrachtgever" },
     chartFilters: {
       year: new Date().getFullYear(),
       chartMode: "week_year",
@@ -379,12 +375,6 @@
       showToast("Opgeslagen in OneDrive — ververs handmatig als de lijst niet klopt.", true);
       throw e;
     }
-  }
-
-  function updatePeriodCustomVisibility() {
-    const mode = state.analyseFilters.periodMode;
-    $("#filter-custom-week")?.classList.toggle("hidden", mode !== "custom_week");
-    $("#filter-custom-month")?.classList.toggle("hidden", mode !== "custom_month");
   }
 
   function updateGrafiekControlsVisibility() {
@@ -1216,9 +1206,11 @@
   }
 
   function renderAnalyse() {
-    renderUrencriterium();
+    const gefilterd = UrenAnalyse.filterRows(state.entries, state.analyseFilters);
+    renderPeriode(gefilterd);
+    renderJaarcijfers();
     if (!state.entries.length) {
-      $("#analyse-summary").textContent = "Geen data — ververs uit OneDrive.";
+      $("#analyse-summary").textContent = "geen data — ververs uit OneDrive";
       $("#analyse-list").innerHTML = "";
       $("#analyse-loc-list").innerHTML = "";
       return;
@@ -1289,11 +1281,12 @@
         );
       }
     }
-    const filtered = UrenAnalyse.filterRows(state.entries, f);
+    const filtered = gefilterd;
     const sum = UrenAnalyse.summarize(filtered);
     const uniqueDays = UrenAnalyse.countUniqueDays(filtered);
     $("#analyse-summary").textContent =
-      `Totaal uren: ${sum.totU.toFixed(2)} | Totaal € (excl. BTW): ${sum.totE.toFixed(2)} | Dagen: ${uniqueDays} | Regels: ${sum.count}`;
+      `${sum.count} regel${sum.count === 1 ? "" : "s"} · ${fmtU(sum.totU)} · ${fmtE0(sum.totE)} · ` +
+      `${uniqueDays} dag${uniqueDays === 1 ? "" : "en"}`;
     const grouped = UrenAnalyse.groupRows(filtered, f.groupMode);
     const list = $("#analyse-list");
     list.innerHTML = "";
@@ -1322,20 +1315,10 @@
       }
     }
     renderInzichten(filtered);
-    updatePeriodCustomVisibility();
     renderGrafieken();
   }
 
   // === Inzichten: declarabiliteit, tarieven, ranglijst en jaarbeeld ===
-  const PERIODE_LABELS = {
-    alles: "alles",
-    week: "deze week",
-    month: "deze maand",
-    year: "dit jaar",
-    custom_week: "gekozen week",
-    custom_month: "gekozen maand",
-  };
-
   const fmtU = (u) => `${(u ?? 0).toFixed(1).replace(".", ",")} u`;
   const fmtE0 = (v) => `€ ${Math.round(v ?? 0).toLocaleString("nl-NL")}`;
 
@@ -1343,7 +1326,7 @@
     const I = window.UrenInzichten;
     if (!I || !$("#inz-declarabel")) return;
     const k = I.kerncijfers(filtered);
-    $("#inz-periode").textContent = PERIODE_LABELS[state.analyseFilters.periodMode] || "";
+    $("#inz-periode").textContent = periodeLabel();
     const decl = $("#inz-declarabel");
     decl.textContent = k.declarabel == null ? "—" : `${String(k.declarabel).replace(".", ",")}%`;
     decl.classList.toggle("laag", k.declarabel != null && k.declarabel < 60);
@@ -1395,87 +1378,143 @@
           )
           .join("")
       : '<p class="sub">Geen uren in deze selectie.</p>';
-
-    renderJaarbeeld();
   }
 
-  /** Jaarbeeld: maandverloop (tik = cijfers van die maand) en de jaarprognose. */
-  function renderJaarbeeld() {
-    const I = window.UrenInzichten;
-    if (!I || !$("#inz-maanden")) return;
-    const jaar = state.inzichten.jaar;
-    const jaarInput = $("#inz-jaar");
-    if (jaarInput && document.activeElement !== jaarInput) jaarInput.value = String(jaar);
-    $("#inz-jaar-label").textContent = String(jaar);
-    const maanden = I.maandCijfers(state.entries, jaar);
+  // === Periodekaart: één plek waar je kiest waar je naar kijkt ===
+  const MAAND_NAMEN = [
+    "Januari", "Februari", "Maart", "April", "Mei", "Juni",
+    "Juli", "Augustus", "September", "Oktober", "November", "December",
+  ];
+
+  /** Waar kijk je nu naar? In gewone taal, voor de koppen en de uitleg. */
+  function periodeLabel() {
+    const f = state.analyseFilters;
+    if (f.periodMode === "week") return "deze week";
+    if (f.periodMode === "custom_week") return `week ${f.customWeek} van ${f.customWeekYear}`;
+    if (f.periodMode === "custom_month") return `${MAAND_NAMEN[(f.customMonth || 1) - 1]} ${f.customYear}`;
+    if (f.periodMode === "custom_year") return `heel ${f.customYear}`;
+    return "alle uren";
+  }
+
+  /** Jaar waar de jaarcijfers over gaan (bij "deze week" en "alles": dit jaar). */
+  function gekozenJaar() {
+    const f = state.analyseFilters;
+    if (f.periodMode === "custom_week") return f.customWeekYear;
+    if (f.periodMode === "custom_month" || f.periodMode === "custom_year") {
+      return f.customYear || new Date().getFullYear();
+    }
+    return new Date().getFullYear();
+  }
+
+  /** Week vooruit/terug in de losse-week-kiezer (met jaaroverloop). */
+  function stapWeek(delta) {
+    const f = state.analyseFilters;
+    let week = (f.customWeek || 1) + delta;
+    let jaar = f.customWeekYear || new Date().getFullYear();
+    if (week < 1) {
+      jaar -= 1;
+      week = 52;
+    } else if (week > 53) {
+      jaar += 1;
+      week = 1;
+    }
+    f.customWeek = week;
+    f.customWeekYear = jaar;
+    const wn = $("#filter-week-num");
+    const wy = $("#filter-week-year");
+    if (wn) wn.value = String(week);
+    if (wy) wy.value = String(jaar);
+    if (f.periodMode === "custom_week") renderAnalyse();
+  }
+
+  function renderPeriode(gefilterd) {
+    const f = state.analyseFilters;
+    const jaar = gekozenJaar();
+    const jaarInput = $("#periode-jaar");
+    if (jaarInput) jaarInput.value = String(jaar);
+
+    // "Deze maand" licht alleen op als het écht de huidige maand is; blader je
+    // naar een andere maand, dan wijst het balkje de selectie aan.
+    const nu = new Date();
+    const isDezeMaand =
+      f.periodMode === "custom_month" &&
+      f.customYear === nu.getFullYear() &&
+      f.customMonth === nu.getMonth() + 1;
+    const preset =
+      f.periodMode === "week" ? "week"
+      : isDezeMaand ? "maand"
+      : f.periodMode === "custom_year" ? "jaar"
+      : f.periodMode === "alles" ? "alles"
+      : "";
+    document.querySelectorAll("#periode-presets .chip").forEach((c) => {
+      c.classList.toggle("active", c.dataset.preset === preset);
+    });
+
+    // Maandbalkjes van het gekozen jaar; tikken kiest die maand.
+    const maanden = window.UrenInzichten
+      ? window.UrenInzichten.maandCijfers(state.entries, jaar)
+      : [];
     const max = Math.max(1, ...maanden.map((m) => m.uren));
-    const gekozen = state.inzichten.maand;
-    $("#inz-maanden").innerHTML = maanden
-      .map(
-        (m, i) => `<div class="inz-month${gekozen === i ? " selected" : ""}" data-maand="${i}"
-            title="${MONTH_LABELS[i]}: ${fmtU(m.uren)} · ${fmtE0(m.omzet)}">
-          <span class="inz-month-bar"><i class="${m.uren ? "" : "leeg"}" style="height:${
-            m.uren ? Math.max(3, (m.uren / max) * 100) : 3
-          }%"></i></span>
-          <span class="inz-month-label">${MONTH_LABELS[i][0]}</span>
-        </div>`
-      )
-      .join("");
-    const totUren = maanden.reduce((s, m) => s + m.uren, 0);
-    const detail = $("#inz-maand-detail");
-    if (gekozen == null) {
-      const beste = maanden.reduce((b, m, i) => (m.uren > maanden[b].uren ? i : b), 0);
-      detail.innerHTML = totUren
-        ? `Gemiddeld ${fmtU(totUren / 12)} per maand · beste maand ${MONTH_LABELS[beste]} ` +
-          `(${fmtU(maanden[beste].uren)}). <em>Tik op een maand voor die cijfers.</em>`
-        : `Nog geen uren in ${jaar}.`;
-    } else {
-      const m = maanden[gekozen];
-      detail.innerHTML =
-        `<strong>${MONTH_LABELS[gekozen]} ${jaar}</strong> — ${fmtU(m.uren)} · ${fmtE0(m.omzet)} ` +
-        `over ${m.dagen} dag${m.dagen === 1 ? "" : "en"} ` +
-        `<em>(nog eens tikken = terug naar het jaar)</em>`;
+    const actief = f.periodMode === "custom_month" ? (f.customMonth || 0) - 1 : -1;
+    const wrap = $("#periode-maanden");
+    if (wrap) {
+      wrap.innerHTML = maanden
+        .map(
+          (m, i) => `<div class="inz-month${actief === i ? " selected" : ""}" data-maand="${i + 1}"
+              title="${MAAND_NAMEN[i]}: ${fmtU(m.uren)} · ${fmtE0(m.omzet)}">
+            <span class="inz-month-bar"><i class="${m.uren ? "" : "leeg"}" style="height:${
+              m.uren ? Math.max(3, (m.uren / max) * 100) : 3
+            }%"></i></span>
+            <span class="inz-month-label">${MONTH_LABELS[i][0]}</span>
+          </div>`
+        )
+        .join("");
     }
 
+    const sum = UrenAnalyse.summarize(
+      gefilterd || UrenAnalyse.filterRows(state.entries, f)
+    );
+    const uitleg = $("#periode-uitleg");
+    if (uitleg) {
+      uitleg.innerHTML =
+        `Je kijkt naar <strong>${periodeLabel()}</strong>: ${fmtU(sum.totU)} · ${fmtE0(sum.totE)}. ` +
+        (f.periodMode === "custom_month"
+          ? "<em>Tik dezelfde maand nog eens aan voor het hele jaar.</em>"
+          : "<em>Tik een maand aan voor die maand.</em>");
+    }
+  }
+
+  /** Jaarcijfers: urencriterium én prognose, op één plek. */
+  function renderJaarcijfers() {
+    const I = window.UrenInzichten;
+    const jaar = gekozenJaar();
+    const label = $("#uc-jaar");
+    if (label) label.textContent = String(jaar);
+    if (!I || !$("#uc-tekst")) return;
+
     const p = I.jaarPrognose(state.entries, jaar);
+    const DOEL = p.doelUren;
+    const fill = $("#uc-fill");
+    if (fill) {
+      fill.style.width = `${Math.min(100, (p.urenTotNu / DOEL) * 100).toFixed(1)}%`;
+      fill.classList.toggle("uc-achter", p.isPrognose && !p.haaltCriterium);
+    }
+    $("#uc-tekst").textContent =
+      p.urenTotNu >= DOEL
+        ? `Urencriterium: ${Math.floor(p.urenTotNu)} van ${DOEL} uur — gehaald ✓`
+        : p.isPrognose
+          ? `Urencriterium: ${Math.floor(p.urenTotNu)} van ${DOEL} uur · ` +
+            (p.haaltCriterium
+              ? "in dit tempo haal je het ✓"
+              : `komt ${fmtU(p.urenTekort)} tekort in dit tempo`)
+          : `Urencriterium: ${Math.floor(p.urenTotNu)} van ${DOEL} uur in ${jaar}`;
+
     $("#inz-prog-uren").textContent = fmtU(p.uren);
     $("#inz-prog-omzet").textContent = fmtE0(p.omzet);
     $("#inz-prog-uitleg").textContent = p.isPrognose
-      ? `Doorgetrokken uit ${Math.round(p.deel * 100)}% van het jaar (tot nu toe ${fmtU(p.urenTotNu)} ` +
-        `en ${fmtE0(p.omzetTotNu)}). Urencriterium: ` +
-        (p.haaltCriterium
-          ? `${p.doelUren} uur wordt in dit tempo gehaald ✓`
-          : `komt ${fmtU(p.urenTekort)} tekort op ${p.doelUren} uur`)
-      : `Werkelijke cijfers van ${jaar}: ${fmtU(p.urenTotNu)} en ${fmtE0(p.omzetTotNu)}.`;
-  }
-
-  /** Urencriterium (1225 u/jaar voor zelfstandigenaftrek): voortgang vs. jaarschema. */
-  function renderUrencriterium() {
-    const tekst = $("#uc-tekst");
-    if (!tekst) return;
-    const DOEL = 1225;
-    const jaar = new Date().getFullYear();
-    let tot = 0;
-    for (const r of state.entries) {
-      const d = r.datum instanceof Date ? r.datum : new Date(r.datum);
-      if (d.getFullYear() === jaar) tot += r.uren || 0;
-    }
-    const jaarDagen = new Date(jaar, 1, 29).getMonth() === 1 ? 366 : 365;
-    const dagVanJaar = Math.floor((Date.now() - new Date(jaar, 0, 1)) / 86400000) + 1;
-    const verwacht = (DOEL * dagVanJaar) / jaarDagen;
-    const verschil = tot - verwacht;
-    $("#uc-jaar").textContent = String(jaar);
-    const fill = $("#uc-fill");
-    fill.style.width = `${Math.min(100, (tot / DOEL) * 100).toFixed(1)}%`;
-    fill.classList.toggle("uc-achter", tot < DOEL && verschil < 0);
-    tekst.textContent =
-      tot >= DOEL
-        ? `${Math.floor(tot)} / ${DOEL} uur — gehaald ✓`
-        : `${Math.floor(tot)} / ${DOEL} uur · ${
-            verschil >= 0
-              ? `${Math.floor(verschil)} uur vóór op schema ✓`
-              : `${Math.ceil(-verschil)} uur achter op schema`
-          }`;
+      ? `Tot nu toe ${fmtU(p.urenTotNu)} en ${fmtE0(p.omzetTotNu)}, doorgetrokken naar heel ${jaar} ` +
+        `(${Math.round(p.deel * 100)}% van het jaar is om).`
+      : `Werkelijke cijfers van ${jaar}.`;
   }
 
   function renderAccount() {
@@ -1617,13 +1656,12 @@
         } else if (inputId === "filter-week-year") {
           state.analyseFilters.customWeekYear = y;
           renderAnalyse();
-        } else if (inputId === "filter-month-year") {
-          state.analyseFilters.customYear = y;
+        } else if (inputId === "periode-jaar") {
+          const f = state.analyseFilters;
+          f.customYear = y;
+          // Bladeren door jaren: blijf in dezelfde maand, of toon het hele jaar.
+          if (f.periodMode !== "custom_month") f.periodMode = "custom_year";
           renderAnalyse();
-        } else if (inputId === "inz-jaar") {
-          state.inzichten.jaar = y;
-          state.inzichten.maand = null;
-          renderJaarbeeld();
         }
       });
     });
@@ -1633,21 +1671,59 @@
     document.querySelectorAll(".bottom-nav button").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     });
-    // Inzichten: ranglijst omschakelen en een maand aantikken
+    // Periodekaart: presets, maandbalkjes en de extra filters
+    $("#periode-presets")?.addEventListener("click", (ev) => {
+      const chip = ev.target.closest(".chip");
+      if (!chip) return;
+      const f = state.analyseFilters;
+      const nu = new Date();
+      if (chip.dataset.preset === "week") {
+        f.periodMode = "week";
+      } else if (chip.dataset.preset === "maand") {
+        f.periodMode = "custom_month";
+        f.customYear = nu.getFullYear();
+        f.customMonth = nu.getMonth() + 1;
+      } else if (chip.dataset.preset === "jaar") {
+        f.periodMode = "custom_year";
+        f.customYear = gekozenJaar();
+      } else {
+        f.periodMode = "alles";
+      }
+      haptic(10);
+      renderAnalyse();
+    });
+    $("#periode-maanden")?.addEventListener("click", (ev) => {
+      const cel = ev.target.closest(".inz-month");
+      if (!cel) return;
+      const f = state.analyseFilters;
+      const maand = Number(cel.dataset.maand);
+      const zelfde = f.periodMode === "custom_month" && f.customMonth === maand;
+      f.customYear = gekozenJaar();
+      // Nog eens op dezelfde maand tikken = terug naar het hele jaar.
+      f.periodMode = zelfde ? "custom_year" : "custom_month";
+      f.customMonth = maand;
+      haptic(10);
+      renderAnalyse();
+    });
+    $("#btn-meer-filters")?.addEventListener("click", () => {
+      const wrap = $("#meer-filters");
+      const dicht = wrap.classList.toggle("hidden");
+      $("#btn-meer-filters").textContent = dicht ? "Meer filters ▾" : "Meer filters ▴";
+    });
+    $("#btn-week-prev")?.addEventListener("click", () => stapWeek(-1));
+    $("#btn-week-next")?.addEventListener("click", () => stapWeek(1));
+    $("#btn-week-toon")?.addEventListener("click", () => {
+      state.analyseFilters.periodMode = "custom_week";
+      haptic(10);
+      renderAnalyse();
+    });
+    // Inzichten: ranglijst omschakelen
     $("#inz-rang-toggle")?.addEventListener("click", (ev) => {
       const chip = ev.target.closest(".chip");
       if (!chip) return;
       state.inzichten.rangVeld = chip.dataset.veld;
       haptic(10);
       renderAnalyse();
-    });
-    $("#inz-maanden")?.addEventListener("click", (ev) => {
-      const cel = ev.target.closest(".inz-month");
-      if (!cel) return;
-      const i = Number(cel.dataset.maand);
-      state.inzichten.maand = state.inzichten.maand === i ? null : i;
-      haptic(10);
-      renderJaarbeeld();
     });
     $("#btn-save")?.addEventListener("click", onSave);
     $("#btn-clear")?.addEventListener("click", () => {
@@ -1709,12 +1785,8 @@
     const iso = isoWeekInfo(now);
     const wy = $("#filter-week-year");
     const wn = $("#filter-week-num");
-    const my = $("#filter-month-year");
-    const mn = $("#filter-month-num");
     if (wy) wy.value = iso.year;
     if (wn) wn.value = iso.week;
-    if (my) my.value = now.getFullYear();
-    if (mn) mn.value = now.getMonth() + 1;
     state.analyseFilters.customWeekYear = iso.year;
     state.analyseFilters.customWeek = iso.week;
     state.analyseFilters.customYear = now.getFullYear();
@@ -1722,25 +1794,14 @@
     state.chartFilters.year = now.getFullYear();
     const gy = $("#grafiek-year");
     if (gy) gy.value = now.getFullYear();
-    state.inzichten.jaar = now.getFullYear();
-    const iy = $("#inz-jaar");
-    if (iy) iy.value = now.getFullYear();
+    const py = $("#periode-jaar");
+    if (py) py.value = now.getFullYear();
 
-    $("#filter-period")?.addEventListener("change", (e) => {
-      state.analyseFilters.periodMode = e.target.value;
-      updatePeriodCustomVisibility();
-      renderAnalyse();
+    $("#filter-week-year")?.addEventListener("change", () => {
+      state.analyseFilters.customWeekYear =
+        Number($("#filter-week-year")?.value) || new Date().getFullYear();
+      if (state.analyseFilters.periodMode === "custom_week") renderAnalyse();
     });
-    const syncCustom = () => {
-      state.analyseFilters.customWeekYear = Number($("#filter-week-year")?.value) || iso.year;
-      state.analyseFilters.customWeek = Number($("#filter-week-num")?.value) || 1;
-      state.analyseFilters.customYear = Number($("#filter-month-year")?.value) || now.getFullYear();
-      state.analyseFilters.customMonth = Number($("#filter-month-num")?.value) || 1;
-      renderAnalyse();
-    };
-    ["#filter-week-year", "#filter-week-num", "#filter-month-year", "#filter-month-num"].forEach(
-      (sel) => $(sel)?.addEventListener("change", syncCustom)
-    );
     $("#filter-tarief-nonzero")?.addEventListener("change", (e) => {
       state.analyseFilters.tariefNonZero = e.target.checked;
       if (e.target.checked) state.analyseFilters.selectedTarieven = [];
@@ -1836,5 +1897,5 @@
   document.addEventListener("DOMContentLoaded", init);
 
   // Kleine ingang voor debuggen en tests in de browser (geen app-logica).
-  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, renderJaarbeeld };
+  window.UrenApp = { state, switchTab, renderAll, renderAnalyse };
 })();

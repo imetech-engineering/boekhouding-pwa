@@ -5,9 +5,10 @@ Standalone Progressive Web App: leest en schrijft hetzelfde Excel-bestand als de
 ## Functies
 
 - **Invoer** — uren boeken met slimme suggesties per opdrachtgever/project/locatie, weekdoel en historie (vegen: links verwijderen, rechts overnemen).
-- **Analyse** — filters op periode, opdrachtgever, project en tarief, met groeperen en een locatie-overzicht.
-- **Inzichten** — declarabiliteit (uren met tarief > 0), omzet, gemiddeld tarief en het *effectieve* uurtarief (omzet ÷ álle gewerkte uren), waar de onbetaalde uren heen gaan, en een ranglijst per opdrachtgever/project/locatie met uren, aandeel, declarabiliteit en effectief tarief.
-- **Jaarbeeld** — uren per maand (tik een maand aan voor uren, omzet en dagen) plus een jaarprognose voor uren en omzet, met de verwachte eindstand van het urencriterium.
+- **Analyse** — één periodekeuze bovenaan waar de hele tab op volgt: knoppen voor deze week / deze maand / heel jaar / alles, een jaarstepper en twaalf maandbalkjes. Tik een maand aan en alle cijfers eronder gaan over die maand; nog eens tikken geeft het hele jaar.
+  - **Cijfers** — declarabiliteit (uren met tarief > 0), uren, omzet, gemiddeld tarief en het *effectieve* uurtarief (omzet ÷ álle gewerkte uren), waar de onbetaalde uren heen gaan, en een ranglijst per opdrachtgever/project/locatie met uren, aandeel, declarabiliteit en effectief tarief.
+  - **Heel jaar** — urencriterium (één plek) plus de jaarprognose voor uren en omzet.
+  - **Regels** — alle regels van de periode; extra filters (zoekwoord, groeperen, opdrachtgever/project/tarief, losse week) zitten achter "Meer filters".
 - **Projecten** — ureninschatting per project met status en verschil t.o.v. de gemaakte uren.
 - **Grafieken** — uren/omzet per week, maand, opdrachtgever of locatie, en cumulatief per jaar.
 - Offline queue, donkere modus, installeerbaar op het startscherm.

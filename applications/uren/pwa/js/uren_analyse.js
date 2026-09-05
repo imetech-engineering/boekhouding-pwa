@@ -32,6 +32,10 @@
         end: new Date(t.getFullYear(), 11, 31),
       };
     }
+    if (mode === "custom_year") {
+      const y = filters.customYear || t.getFullYear();
+      return { start: new Date(y, 0, 1), end: new Date(y, 11, 31) };
+    }
     if (mode === "custom_month") {
       const y = filters.customYear || t.getFullYear();
       const m = (filters.customMonth || t.getMonth() + 1) - 1;

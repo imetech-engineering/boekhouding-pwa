@@ -66,8 +66,9 @@
 
   function bouwKopIndex() {
     const st = App().state;
-    kopIndex = M().koppelingIndex(st.bankRows, st.inkoopRows, st.verkoopRows);
-    dekkingMap = M().factuurDekking(st.bankRows, st.inkoopRows, st.verkoopRows);
+    // Gedeeld met de andere tabs: één keer per teken-ronde opgebouwd.
+    kopIndex = App().koppelIndex();
+    dekkingMap = App().dekkingIndex();
     return kopIndex;
   }
 

@@ -546,7 +546,7 @@
 
   function renderHistory() {
     const st = App().state;
-    kopIndex = M().koppelingIndex(st.bankRows, st.inkoopRows, st.verkoopRows);
+    kopIndex = App().koppelIndex();
     const list = $("#inkoop-hist-list");
     const q = $("#inkoop-hist-search").value.trim().toLowerCase();
     list.innerHTML = "";

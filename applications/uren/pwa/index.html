@@ -181,6 +181,48 @@
           </label>
           <p id="analyse-summary" class="sub"></p>
         </div>
+        <div class="card">
+          <h2>Inzichten <span id="inz-periode" class="inz-periode"></span></h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Declarabel</span><span id="inz-declarabel" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Uren</span><span id="inz-uren" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Omzet</span><span id="inz-omzet" class="kpi-value">—</span></div>
+          </div>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Effectief €/uur</span><span id="inz-effectief" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Gem. tarief</span><span id="inz-tarief" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Uren per dag</span><span id="inz-perdag" class="kpi-value">—</span></div>
+          </div>
+          <p id="inz-uitleg" class="sub">—</p>
+          <div id="inz-onbetaald-wrap" class="hidden">
+            <h3 class="inz-kop">Onbetaalde uren</h3>
+            <div id="inz-onbetaald" class="rank-list"></div>
+          </div>
+          <h3 class="inz-kop">Uren en tarief per</h3>
+          <div class="chips" id="inz-rang-toggle">
+            <button type="button" class="chip active" data-veld="opdrachtgever">Opdrachtgever</button>
+            <button type="button" class="chip" data-veld="project">Project</button>
+            <button type="button" class="chip" data-veld="locatie">Locatie</button>
+          </div>
+          <div id="inz-rang" class="rank-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>Jaarbeeld <span id="inz-jaar-label" class="inz-periode"></span></h2>
+          <div class="year-row">
+            <button type="button" class="btn-secondary btn-compact btn-year-prev" data-year-input="inz-jaar" aria-label="Vorig jaar">◀</button>
+            <input id="inz-jaar" type="number" min="2018" max="2035" readonly inputmode="none" />
+            <button type="button" class="btn-secondary btn-compact btn-year-next" data-year-input="inz-jaar" aria-label="Volgend jaar">▶</button>
+          </div>
+          <div id="inz-maanden" class="inz-months"></div>
+          <p id="inz-maand-detail" class="sub">Tik op een maand voor de cijfers.</p>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Prognose uren</span><span id="inz-prog-uren" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Prognose omzet</span><span id="inz-prog-omzet" class="kpi-value">—</span></div>
+          </div>
+          <p id="inz-prog-uitleg" class="sub">—</p>
+        </div>
+
         <ul id="analyse-list"></ul>
         <div class="card card-locatie">
           <h2>Locatie overzicht (unieke dagen)</h2>
@@ -373,6 +415,7 @@
     <script src="js/uren_graph_excel.js"></script>
     <script src="js/uren_graph_estimates.js"></script>
     <script src="js/uren_analyse.js"></script>
+    <script src="js/uren_inzichten.js"></script>
     <script src="js/uren_invoer.js"></script>
     <script src="js/combobox.js"></script>
     <script src="js/offline_queue.js"></script>

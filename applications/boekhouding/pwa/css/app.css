@@ -1690,3 +1690,9 @@ a.link {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
+
+/* Toast die je kunt aantikken (nieuwe versie ophalen). */
+.toast-klikbaar {
+  cursor: pointer;
+  text-decoration: underline;
+}

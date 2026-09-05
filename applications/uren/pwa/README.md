@@ -2,6 +2,16 @@
 
 Standalone Progressive Web App: leest en schrijft hetzelfde Excel-bestand als de desktop `uren_app`, direct via **Microsoft Graph** (geen PC-backend).
 
+## Functies
+
+- **Invoer** — uren boeken met slimme suggesties per opdrachtgever/project/locatie, weekdoel en historie (vegen: links verwijderen, rechts overnemen).
+- **Analyse** — filters op periode, opdrachtgever, project en tarief, met groeperen en een locatie-overzicht.
+- **Inzichten** — declarabiliteit (uren met tarief > 0), omzet, gemiddeld tarief en het *effectieve* uurtarief (omzet ÷ álle gewerkte uren), waar de onbetaalde uren heen gaan, en een ranglijst per opdrachtgever/project/locatie met uren, aandeel, declarabiliteit en effectief tarief.
+- **Jaarbeeld** — uren per maand (tik een maand aan voor uren, omzet en dagen) plus een jaarprognose voor uren en omzet, met de verwachte eindstand van het urencriterium.
+- **Projecten** — ureninschatting per project met status en verschil t.o.v. de gemaakte uren.
+- **Grafieken** — uren/omzet per week, maand, opdrachtgever of locatie, en cumulatief per jaar.
+- Offline queue, donkere modus, installeerbaar op het startscherm.
+
 ## Bestandsstructuur
 
 ```
@@ -16,6 +26,7 @@ pwa/
 │   ├── graph.js        Download/upload + etag
 │   ├── uren_excel.js   SheetJS (zelfde regels als uren_excel_service.py)
 │   ├── uren_analyse.js
+│   ├── uren_inzichten.js  declarabiliteit, tarieven, ranglijst, jaarbeeld
 │   ├── uren_invoer.js
 │   └── app.js
 └── README.md

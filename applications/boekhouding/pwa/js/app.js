@@ -12,6 +12,7 @@
     loading: false,
     quietRefresh: false,
     bankRows: [],
+    bankEndRow: null,
     inkoopRows: [],
     verkoopRows: [],
     inkoopKeuzes: [],
@@ -46,14 +47,22 @@
 
   // === UI helpers ===
   let toastTimer = null;
-  function showToast(msg, isError = false) {
+  function showToast(msg, isError = false, onClick = null) {
     const el = $("#toast");
     if (!el) return;
     el.textContent = msg;
     el.classList.toggle("error", !!isError);
+    el.classList.toggle("toast-klikbaar", !!onClick);
     el.classList.remove("hidden");
+    el.onclick = onClick
+      ? () => {
+          el.classList.add("hidden");
+          el.onclick = null;
+          onClick();
+        }
+      : null;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.add("hidden"), isError ? 6000 : 4000);
+    toastTimer = setTimeout(() => el.classList.add("hidden"), onClick ? 10000 : isError ? 6000 : 4000);
     haptic(isError ? [40, 60, 40] : 15);
   }
 
@@ -96,6 +105,7 @@
       b.classList.toggle("active", b.dataset.tab === tab);
     });
     document.getElementById(`panel-${tab}`)?.classList.remove("hidden");
+    if (vuileTabs.has(tab)) tekenTab(tab);
     tabs[tab]?.onShow?.();
     global.BoekCombo?.closeActivePopup();
   }
@@ -191,6 +201,7 @@
         state.settingsLoaded ? Promise.resolve() : loadSettingsRemote(token),
       ]);
       state.bankRows = data.bankRows;
+      state.bankEndRow = data.bankEndRow || null;
       state.inkoopRows = data.inkoopRows;
       state.verkoopRows = data.verkoopRows;
       state.inkoopKeuzes = data.inkoopCategorieKeuzes;
@@ -235,14 +246,47 @@
     }
   }
 
-  function renderAll() {
-    for (const name of Object.keys(tabs)) {
-      try {
-        tabs[name].render?.();
-      } catch (e) {
-        console.error(`render ${name}:`, e);
-      }
+  // === Gedeelde indexen (koppelingen en dekking per factuur) ===
+  // Deze twee lopen over álle bank- en factuurregels. Ze werden op acht plekken
+  // per teken-ronde opnieuw opgebouwd; nu één keer per ronde en daarna gedeeld.
+  let indexRonde = 0;
+  let indexCache = { ronde: -1, kop: new Map(), dek: new Map() };
+
+  function nieuweIndexRonde() {
+    indexRonde++;
+  }
+
+  function indexen() {
+    if (indexCache.ronde !== indexRonde) {
+      indexCache = {
+        ronde: indexRonde,
+        kop: M().koppelingIndex(state.bankRows, state.inkoopRows, state.verkoopRows),
+        dek: M().factuurDekking(state.bankRows, state.inkoopRows, state.verkoopRows),
+      };
     }
+    return indexCache;
+  }
+
+  const koppelIndex = () => indexen().kop;
+  const dekkingIndex = () => indexen().dek;
+
+  // Alleen de zichtbare tab tekenen; de rest krijgt een vlaggetje en wordt
+  // getekend zodra je hem opent.
+  const vuileTabs = new Set();
+
+  function tekenTab(name) {
+    try {
+      tabs[name]?.render?.();
+      vuileTabs.delete(name);
+    } catch (e) {
+      console.error(`render ${name}:`, e);
+    }
+  }
+
+  function renderAll() {
+    nieuweIndexRonde();
+    for (const name of Object.keys(tabs)) vuileTabs.add(name);
+    tekenTab(state.tab);
   }
 
   /** Na inboeken de afgevinkte bankregels aan de nieuwe factuurregel koppelen. */
@@ -266,7 +310,12 @@
     const token = await ensureLoggedIn();
     switch (d.kind) {
       case "bank_add":
-        return global.BoekIo.addBankRow(token, d.fields);
+        // Hint: de rijen die de app al heeft, zodat de tabel niet opnieuw
+        // gelezen hoeft te worden (alleen de gekozen rij wordt gecontroleerd).
+        return global.BoekIo.addBankRow(token, d.fields, {
+          rows: state.bankRows,
+          endRow: state.bankEndRow,
+        });
       case "bank_update":
         return global.BoekIo.updateBankRow(token, d.excelRow, d.fields);
       case "bank_delete":
@@ -278,13 +327,13 @@
       case "bank_ontkoppel":
         return global.BoekIo.ontkoppelBank(token, d.excelRow, d.waarde || "");
       case "inkoop_add": {
-        const res = await global.BoekIo.addInkoopRow(token, d.fields);
+        const res = await global.BoekIo.addInkoopRow(token, d.fields, state.inkoopRows);
         await koppelNaInboeken(token, d, res, "I");
         // Afschrijving aangevinkt → jaarregels automatisch mee-inboeken.
         if (d.fields.afschrijving && d.fields.afschrijvingJaren) {
           const regels = global.BoekModel.afschrijvingsRegels(d.fields, d.fields.afschrijvingJaren);
           for (const regel of regels) {
-            await global.BoekIo.addInkoopRow(token, regel);
+            await global.BoekIo.addInkoopRow(token, regel, state.inkoopRows);
           }
         }
         return res;
@@ -294,7 +343,7 @@
       case "inkoop_delete":
         return global.BoekIo.deleteInkoopRow(token, d.excelRow);
       case "verkoop_add": {
-        const res = await global.BoekIo.addVerkoopRow(token, d.fields);
+        const res = await global.BoekIo.addVerkoopRow(token, d.fields, state.verkoopRows);
         await koppelNaInboeken(token, d, res, "V");
         return res;
       }
@@ -564,13 +613,31 @@
       switchTab("overzicht");
     }
 
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-    }
+    bindServiceWorker();
+  }
+
+  /**
+   * De service worker start de app uit de cache en haalt updates op de
+   * achtergrond op. Zodra een nieuwe versie het overneemt, kun je hem met één
+   * tik gebruiken (in plaats van bij elke start op het netwerk te wachten).
+   */
+  function bindServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    const eersteInstallatie = !navigator.serviceWorker.controller;
+    let gemeld = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (eersteInstallatie || gemeld) return; // eerste keer is gewoon installeren
+      gemeld = true;
+      showToast("Nieuwe versie klaar — tik om te vernieuwen", false, () => location.reload());
+    });
   }
 
   global.BoekApp = {
     state,
+    koppelIndex,
+    dekkingIndex,
+    nieuweIndexRonde,
     $,
     registerTab,
     showToast,

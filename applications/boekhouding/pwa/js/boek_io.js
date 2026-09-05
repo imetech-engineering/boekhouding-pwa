@@ -42,20 +42,69 @@
     return out;
   }
 
+  /**
+   * Eerste vrije rij uit de regels die de app al in het geheugen heeft, met een
+   * controle van alleen díe ene rij. Scheelt bij elke boeking het opnieuw lezen
+   * van de hele tabel; klopt het niet, dan geeft dit null terug en leest de
+   * aanroeper alsnog de tabel opnieuw in.
+   */
+  async function vrijeRijUitGeheugen(path, token, sid, sheet, hintRows, kiesSlot, laatsteKolom) {
+    if (!hintRows?.length) return null;
+    let rij = null;
+    try {
+      rij = kiesSlot(hintRows);
+    } catch (_) {
+      return null;
+    }
+    if (rij == null) return null;
+    try {
+      const vals = await W().readValues(path, token, sid, sheet, `A${rij}:${laatsteKolom}${rij}`);
+      const cellen = vals[0] || [];
+      const leeg = cellen.every((v) => v == null || String(v).trim() === "");
+      return leeg ? rij : null;
+    } catch (_) {
+      return null; // bij twijfel de veilige route
+    }
+  }
+
+  /** Rij in het geheugen als bezet markeren, zodat een volgende boeking doorschuift. */
+  function markeerBezet(hintRows, excelRow) {
+    const rij = hintRows?.find((r) => r.excelRow === excelRow);
+    if (rij) {
+      rij.isEmpty = false;
+      rij.isEmptySlot = false;
+    }
+  }
+
   // === Bankboek ===
 
   /**
    * Nieuwe bankregel: eerste lege slot binnen Tabel1, saldo als formule per rekening.
    * fields: {datumIso, omschrijving, in, uit, opmerking, rekening, ingeboekt}
    */
-  async function addBankRow(token, fields) {
+  async function addBankRow(token, fields, hint) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
+      const sheet = M().SHEET_BANK;
+      // Eerst de rijen die de app al heeft: alleen de gekozen rij controleren.
+      // Zit hij binnen de tabel en is hij leeg, dan hoeft de tabel niet opnieuw.
+      let targetRow = await vrijeRijUitGeheugen(
+        path, token, sid, sheet, hint?.rows,
+        (rows) => {
+          const r = M().firstEmptyBankSlot(rows);
+          return hint?.endRow && r > hint.endRow ? null : r;
+        },
+        "D"
+      );
+      if (targetRow != null) {
+        await schrijfBankRegel(path, token, sid, sheet, targetRow, fields);
+        markeerBezet(hint?.rows, targetRow);
+        return { excelRow: targetRow };
+      }
       // Verse leesronde binnen de sessie (bescherming tegen verouderde snapshot)
       const bank = await W().readTableRange(path, token, M().TABLE_BANK, sid);
       const rows = M().parseBankRows(bank.values, bank.headerRow);
-      const targetRow = M().firstEmptyBankSlot(rows);
-      const sheet = M().SHEET_BANK;
+      targetRow = M().firstEmptyBankSlot(rows);
       if (bank.endRow && targetRow > bank.endRow) {
         // Tabel vol → rij toevoegen via tabel-API (formule als '='-string gaat mee)
         await W().addTableRow(path, token, sid, M().TABLE_BANK, [
@@ -71,24 +120,29 @@
         ]);
         return { excelRow: (bank.endRow || 5) + 1 };
       }
-      await W().patchValues(path, token, sid, sheet, `A${targetRow}:I${targetRow}`, [
-        [
-          fields.datumIso,
-          fields.omschrijving || "",
-          fields.in != null ? fields.in : "",
-          fields.uit != null ? fields.uit : "",
-          null, // saldo → formule hieronder
-          !!fields.ingeboekt,
-          fields.opmerking || "",
-          fields.rekening || "",
-          fields.koppeling || "",
-        ],
-      ]);
-      await W().patchFormulas(path, token, sid, sheet, `E${targetRow}`, [
-        [M().saldoFormula(targetRow)],
-      ]);
+      await schrijfBankRegel(path, token, sid, sheet, targetRow, fields);
       return { excelRow: targetRow };
     });
+  }
+
+  /** Waardekolommen A..I van één bankregel; het saldo blijft een formule. */
+  async function schrijfBankRegel(path, token, sid, sheet, excelRow, fields) {
+    await W().patchValues(path, token, sid, sheet, `A${excelRow}:I${excelRow}`, [
+      [
+        fields.datumIso,
+        fields.omschrijving || "",
+        fields.in != null ? fields.in : "",
+        fields.uit != null ? fields.uit : "",
+        null, // saldo → formule hieronder
+        !!fields.ingeboekt,
+        fields.opmerking || "",
+        fields.rekening || "",
+        fields.koppeling || "",
+      ],
+    ]);
+    await W().patchFormulas(path, token, sid, sheet, `E${excelRow}`, [
+      [M().saldoFormula(excelRow)],
+    ]);
   }
 
   /**
@@ -236,12 +290,17 @@
    * fields: {datumIso, leverancier, omschrijving, factuurnummer, bedrag, btw, verlegd,
    *          categorie, afschrijving, opmerking, land, project, bedragOrig, valuta, wisselkoers}
    */
-  async function addInkoopRow(token, fields) {
+  async function addInkoopRow(token, fields, hintRows) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
-      const boek = await W().readTableRange(path, token, M().TABLE_INKOOP, sid);
-      const rows = M().parseInkoopRows(boek.values, boek.headerRow);
-      const targetRow = M().firstEmptyBoekSlot(rows);
+      let targetRow = await vrijeRijUitGeheugen(
+        path, token, sid, M().SHEET_INKOOP, hintRows, M().firstEmptyBoekSlot, "G"
+      );
+      if (targetRow == null) {
+        const boek = await W().readTableRange(path, token, M().TABLE_INKOOP, sid);
+        const rows = M().parseInkoopRows(boek.values, boek.headerRow);
+        targetRow = M().firstEmptyBoekSlot(rows);
+      }
       const land = M().normalizeLand(fields.land);
       if (targetRow == null) {
         // Tabel vol → rij toevoegen; nulls laten formulekolommen door de tabel invullen
@@ -260,6 +319,7 @@
         return { excelRow: null };
       }
       await writeInkoopRow(path, token, sid, targetRow, fields);
+      markeerBezet(hintRows, targetRow);
       return { excelRow: targetRow };
     });
   }
@@ -317,12 +377,17 @@
    * fields: {datumIso, klant, omschrijving, factuurnummer, bedrag, land, btw,
    *          categorie, opmerking, bedragOrig, valuta, wisselkoers}
    */
-  async function addVerkoopRow(token, fields) {
+  async function addVerkoopRow(token, fields, hintRows) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
-      const boek = await W().readTableRange(path, token, M().TABLE_VERKOOP, sid);
-      const rows = M().parseVerkoopRows(boek.values, boek.headerRow);
-      const targetRow = M().firstEmptyBoekSlot(rows);
+      let targetRow = await vrijeRijUitGeheugen(
+        path, token, sid, M().SHEET_VERKOOP, hintRows, M().firstEmptyBoekSlot, "G"
+      );
+      if (targetRow == null) {
+        const boek = await W().readTableRange(path, token, M().TABLE_VERKOOP, sid);
+        const rows = M().parseVerkoopRows(boek.values, boek.headerRow);
+        targetRow = M().firstEmptyBoekSlot(rows);
+      }
       const land = M().normalizeLand(fields.land);
       if (targetRow == null) {
         await W().addTableRow(path, token, sid, M().TABLE_VERKOOP, [
@@ -340,6 +405,7 @@
         return { excelRow: null };
       }
       await writeVerkoopRow(path, token, sid, targetRow, fields);
+      markeerBezet(hintRows, targetRow);
       return { excelRow: targetRow };
     });
   }

@@ -100,6 +100,55 @@
     }
   }
 
+  // De tabelrijen zijn bij het verversen toch al opgehaald; die bewaren we, zodat
+  // opslaan niet nóg een keer de hele tabel hoeft te lezen. Voor het schrijven
+  // controleren we altijd of de gekozen rij werkelijk leeg is.
+  let rijenCache = null; // { rows, dataStartRow, at }
+  const CACHE_MS = 10 * 60 * 1000;
+
+  function zetRijenCache(rows, dataStartRow) {
+    rijenCache = rows?.length ? { rows, dataStartRow, at: Date.now() } : null;
+  }
+
+  function vergeetRijenCache() {
+    rijenCache = null;
+  }
+
+  function versRijenCache(dataStartRow) {
+    if (!rijenCache || rijenCache.dataStartRow !== dataStartRow) return null;
+    return Date.now() - rijenCache.at < CACHE_MS ? rijenCache : null;
+  }
+
+  /** Eén rij lezen om te controleren of hij nog vrij is (goedkoop). */
+  async function rijIsLeeg(drivePath, token, sessionId, excelRow) {
+    try {
+      const data = await excelFetch(
+        drivePath,
+        token,
+        wsPath(`/range(address='A${excelRow}:I${excelRow}')`),
+        {},
+        sessionId
+      );
+      const vals = data.values?.[0] || [];
+      return rowIsEmptySlot(vals[COL.DATUM], vals);
+    } catch (_) {
+      return false; // niet zeker → veilige route (hele tabel lezen)
+    }
+  }
+
+  /** Rij is nu bezet: in de cache markeren zodat de volgende opslag doorschuift. */
+  function markeerRijGevuld(excelRow, dataStartRow) {
+    if (!rijenCache) return;
+    const rij = rijenCache.rows.find((r) => r.index === excelRow - dataStartRow);
+    if (!rij) {
+      vergeetRijenCache();
+      return;
+    }
+    const vals = [...(rij.values || [])];
+    vals[COL.DATUM] = "bezet";
+    rij.values = vals;
+  }
+
   async function fetchAllTableRows(drivePath, token, sessionId) {
     const rows = [];
     let path = `/tables('${encodeSheet(TABLE)}')/rows`;
@@ -205,6 +254,7 @@
 
     const entries = [];
     if (tableRows.length) {
+      zetRijenCache(tableRows, dataStartRow);
       for (const tr of tableRows) {
         const excelRow = tableIndexToExcelRow(tr.index, dataStartRow);
         const entry = rowToEntry(tr.values, excelRow);
@@ -305,12 +355,25 @@
 
   async function addEntry(drivePath, token, sessionId, fields) {
     const layout = await getTableLayout(drivePath, token, sessionId);
-    const tableRows = await fetchAllTableRows(drivePath, token, sessionId);
-    const { excelRow, needInsert, insertAtIndex } = findAddRow(
-      tableRows,
-      null,
-      layout.dataStartRow
-    );
+    // Snelle route: de rijen van de laatste verversing wijzen het eerste vrije
+    // slot aan. Alleen als die rij echt nog leeg is schrijven we daar; anders
+    // lezen we alsnog de hele tabel.
+    let plek = null;
+    const cache = versRijenCache(layout.dataStartRow);
+    if (cache) {
+      const kandidaat = findAddRow(cache.rows, null, cache.dataStartRow);
+      if (!kandidaat.needInsert && (await rijIsLeeg(drivePath, token, sessionId, kandidaat.excelRow))) {
+        plek = kandidaat;
+      } else {
+        vergeetRijenCache();
+      }
+    }
+    if (!plek) {
+      const tableRows = await fetchAllTableRows(drivePath, token, sessionId);
+      zetRijenCache(tableRows, layout.dataStartRow);
+      plek = findAddRow(tableRows, null, layout.dataStartRow);
+    }
+    const { excelRow, needInsert, insertAtIndex } = plek;
 
     if (needInsert) {
       const payload = {
@@ -336,6 +399,7 @@
         { method: "POST", body: JSON.stringify(payload) },
         sessionId
       );
+      vergeetRijenCache(); // rij-indexen zijn verschoven
     } else {
       await patchRange(drivePath, token, sessionId, `A${excelRow}`, [[fields.datumStr]]);
       await patchRange(
@@ -345,6 +409,7 @@
         `D${excelRow}:I${excelRow}`,
         [fieldsToDataRow(fields)]
       );
+      markeerRijGevuld(excelRow, layout.dataStartRow);
     }
   }
 
@@ -364,6 +429,7 @@
   }
 
   async function deleteEntry(drivePath, token, sessionId, rowIndex) {
+    vergeetRijenCache(); // die rij komt vrij; opnieuw lezen bij de volgende opslag
     const layout = await getTableLayout(drivePath, token, sessionId);
     if (rowIndex < layout.dataStartRow) {
       throw new Error("Regel niet meer gevonden in Excel (ververs lijsten).");

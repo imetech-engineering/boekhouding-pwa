@@ -415,7 +415,7 @@
   function renderKoppelcontrole() {
     const st = App().state;
     if (!st.loaded) return;
-    const index = M().koppelingIndex(st.bankRows, st.inkoopRows, st.verkoopRows);
+    const index = App().koppelIndex();
     const losFact = M().facturenZonderBank(st.inkoopRows, st.verkoopRows, index);
     const losBank = M().bankZonderKoppeling(st.bankRows);
     $("#kpi-fact-los").textContent = String(losFact.length);
@@ -540,7 +540,7 @@
    */
   function renderOnbetaald(losFact) {
     const st = App().state;
-    const dekking = M().factuurDekking(st.bankRows, st.inkoopRows, st.verkoopRows);
+    const dekking = App().dekkingIndex();
     const onbetaald = losFact
       .filter((f) => f.boek === "verkoop" && f.bedrag > 0)
       .map((f) => ({ ...f, rest: f.bedrag, deels: false }));
@@ -682,7 +682,7 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     koppelFactuur = f;
     bankKeuze.clear();
     // Nog te dekken: factuurbedrag minus wat al aan bankregels hangt
-    const dekking = M().factuurDekking(st.bankRows, st.inkoopRows, st.verkoopRows);
+    const dekking = App().dekkingIndex();
     const gedekt = dekking.get(`${f.boek}|${f.excelRow}`) || 0;
     // Rekenen in de richting van de factuur: bij een creditnota (negatief bedrag)
     // is "nog te koppelen" het bedrag dat je nog terugkrijgt of terugbetaalt.
@@ -720,7 +720,7 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     const st = App().state;
     const el = $("#koppel-gekoppeld");
     el.innerHTML = "";
-    const index = M().koppelingIndex(st.bankRows, st.inkoopRows, st.verkoopRows);
+    const index = App().koppelIndex();
     const regels = index.get(`${f.boek}|${f.excelRow}`) || [];
     if (!regels.length) return;
     const h = document.createElement("p");

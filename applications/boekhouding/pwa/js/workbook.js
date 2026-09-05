@@ -97,6 +97,18 @@
     };
   }
 
+  /** Waarden van één range lezen (bijv. één rij om te zien of hij nog vrij is). */
+  async function readValues(drivePath, token, sessionId, sheet, address) {
+    const data = await excelFetch(
+      drivePath,
+      token,
+      wsPath(sheet, `/range(address='${address}')?$select=values`),
+      {},
+      sessionId
+    );
+    return data.values || [];
+  }
+
   /** PATCH values op een range; null-cellen blijven onaangeroerd. */
   async function patchValues(drivePath, token, sessionId, sheet, address, values) {
     return excelFetch(
@@ -135,6 +147,7 @@
     withSession,
     wsPath,
     readTableRange,
+    readValues,
     patchValues,
     patchFormulas,
     addTableRow,

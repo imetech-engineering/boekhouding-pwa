@@ -2,7 +2,7 @@
  * Service worker — network-first voor same-origin (updates komen direct door),
  * cache als offline-fallback. Verbetering t.o.v. uren-PWA (cache-first + handmatige bump).
  */
-const CACHE = "imtech-boekhouding-pwa-v35";
+const CACHE = "imtech-boekhouding-pwa-v36";
 const ASSETS = [
   "./",
   "./index.html",
@@ -51,15 +51,59 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE && !BEWAAR_CACHES.includes(k))
+            .map((k) => caches.delete(k))
+        )
       )
       .then(() => self.clients.claim())
   );
 });
 
+
+// Cache voor bibliotheken van de CDN (MSAL, pdf.js, tesseract). Die staan op een
+// vaste versie in de URL, dus cache-first is veilig: een nieuwe versie is een
+// andere URL. Deze cache overleeft een versiebump van de app.
+const CDN_CACHE = "imtech-boekhouding-cdn-v1";
+const CDN_HOSTS = ["cdn.jsdelivr.net", "cdnjs.cloudflare.com"];
+const BEWAAR_CACHES = [CDN_CACHE, "share-inbox"];
+
+/**
+ * Same-origin: direct uit de cache (de app start meteen) en op de achtergrond
+ * bijwerken, zodat de volgende start de nieuwe versie heeft.
+ */
+async function uitCacheEnBijwerken(request) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(request, { ignoreSearch: true });
+  const netwerk = fetch(request)
+    .then((res) => {
+      if (res && res.ok) cache.put(request, res.clone());
+      return res;
+    })
+    .catch(() => null);
+  if (cached) return cached;
+  const res = await netwerk;
+  return res || new Response("Offline en niet in de cache", { status: 503 });
+}
+
+/** CDN-bibliotheek: uit de cache, anders ophalen en bewaren. */
+async function cdnUitCache(request) {
+  const cache = await caches.open(CDN_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  try {
+    // Met cors krijgen we een bruikbare (niet-ondoorzichtige) response terug.
+    const res = await fetch(new Request(request.url, { mode: "cors", credentials: "omit" }));
+    if (res && res.ok) cache.put(request, res.clone());
+    return res;
+  } catch (_) {
+    return fetch(request);
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return; // Graph/CDN altijd netwerk
 
   // Share target: gedeelde bestanden parkeren en doorsturen naar de app
   if (event.request.method === "POST" && url.pathname.endsWith("/share-target")) {
@@ -92,15 +136,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (event.request.method !== "GET") return;
-  event.respondWith(
-    fetch(event.request)
-      .then((res) => {
-        if (res && res.ok) {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-        }
-        return res;
-      })
-      .catch(() => caches.match(event.request, { ignoreSearch: true }))
-  );
+  if (url.origin === self.location.origin) {
+    event.respondWith(uitCacheEnBijwerken(event.request));
+    return;
+  }
+  if (CDN_HOSTS.includes(url.hostname)) {
+    event.respondWith(cdnUitCache(event.request));
+  }
 });

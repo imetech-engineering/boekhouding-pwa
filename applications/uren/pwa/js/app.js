@@ -30,6 +30,11 @@
       customWeekYear: new Date().getFullYear(),
       customWeek: 1,
     },
+    inzichten: {
+      rangVeld: "opdrachtgever",
+      jaar: new Date().getFullYear(),
+      maand: null, // aangetikte maand in het jaarbeeld
+    },
     chartFilters: {
       year: new Date().getFullYear(),
       chartMode: "week_year",
@@ -61,15 +66,23 @@
     }
   }
 
-  function showToast(msg, isError) {
+  function showToast(msg, isError, onClick = null) {
     const t = $("#toast");
     if (!t) return;
     t.textContent = msg;
     t.classList.toggle("hidden", false);
     t.classList.toggle("error", !!isError);
+    t.classList.toggle("toast-klikbaar", !!onClick);
+    t.onclick = onClick
+      ? () => {
+          t.classList.add("hidden");
+          t.onclick = null;
+          onClick();
+        }
+      : null;
     haptic(isError ? [40, 60, 40] : 30);
     clearTimeout(showToast._tid);
-    showToast._tid = setTimeout(() => t.classList.add("hidden"), 5000);
+    showToast._tid = setTimeout(() => t.classList.add("hidden"), onClick ? 10000 : 5000);
   }
 
   function applyDarkMode(on) {
@@ -128,11 +141,26 @@
     };
   }
 
+  // Alleen de zichtbare tab tekenen; de rest krijgt een vlaggetje en wordt
+  // getekend zodra je hem opent. Scheelt werk bij elke wijziging.
+  const vuil = { invoer: true, projecten: true, analyse: true, grafieken: true };
+  let invoerNogVullen = false; // eerste keer laden: formulier voorvullen
+
+  function tekenTab(tab, initialForm = false) {
+    if (tab === "invoer") {
+      renderInvoer(initialForm || invoerNogVullen);
+      invoerNogVullen = false;
+    } else if (tab === "projecten") renderProjecten();
+    else if (tab === "analyse") renderAnalyse();
+    else if (tab === "grafieken") renderGrafieken();
+    vuil[tab] = false;
+  }
+
   function renderAll(initialForm = false) {
-    renderInvoer(initialForm);
-    renderProjecten();
-    renderAnalyse();
-    renderGrafieken();
+    for (const k of Object.keys(vuil)) vuil[k] = true;
+    // Sta je niet op invoer, dan wordt het formulier gevuld zodra je er komt.
+    if (initialForm && state.tab !== "invoer") invoerNogVullen = true;
+    tekenTab(state.tab, initialForm);
   }
 
   function optimisticAdd(fields) {
@@ -522,9 +550,12 @@
       await flushOfflineQueue();
       const token = await ensureLoggedIn();
       const path = drivePath();
-      const meta = await UrenGraph.getDriveItemMeta(path, token);
-      const entries = await UrenGraphExcel.readAllEntries(path, token);
-      const estimates = await UrenGraphEstimates.readAllEstimates(path, token);
+      // Drie losse Graph-calls die niets van elkaar nodig hebben → tegelijk.
+      const [meta, entries, estimates] = await Promise.all([
+        UrenGraph.getDriveItemMeta(path, token),
+        UrenGraphExcel.readAllEntries(path, token),
+        UrenGraphEstimates.readAllEstimates(path, token),
+      ]);
       state.entries = entries;
       state.estimates = estimates;
       state.intel = UrenExcel.buildIntel(entries);
@@ -1290,8 +1321,132 @@
         locBody.appendChild(tr);
       }
     }
+    renderInzichten(filtered);
     updatePeriodCustomVisibility();
     renderGrafieken();
+  }
+
+  // === Inzichten: declarabiliteit, tarieven, ranglijst en jaarbeeld ===
+  const PERIODE_LABELS = {
+    alles: "alles",
+    week: "deze week",
+    month: "deze maand",
+    year: "dit jaar",
+    custom_week: "gekozen week",
+    custom_month: "gekozen maand",
+  };
+
+  const fmtU = (u) => `${(u ?? 0).toFixed(1).replace(".", ",")} u`;
+  const fmtE0 = (v) => `€ ${Math.round(v ?? 0).toLocaleString("nl-NL")}`;
+
+  function renderInzichten(filtered) {
+    const I = window.UrenInzichten;
+    if (!I || !$("#inz-declarabel")) return;
+    const k = I.kerncijfers(filtered);
+    $("#inz-periode").textContent = PERIODE_LABELS[state.analyseFilters.periodMode] || "";
+    const decl = $("#inz-declarabel");
+    decl.textContent = k.declarabel == null ? "—" : `${String(k.declarabel).replace(".", ",")}%`;
+    decl.classList.toggle("laag", k.declarabel != null && k.declarabel < 60);
+    $("#inz-uren").textContent = fmtU(k.uren);
+    $("#inz-omzet").textContent = fmtE0(k.omzet);
+    $("#inz-effectief").textContent = k.effectiefTarief == null ? "—" : fmtE0(k.effectiefTarief);
+    $("#inz-tarief").textContent = k.gemTarief == null ? "—" : fmtE0(k.gemTarief);
+    $("#inz-perdag").textContent = k.urenPerDag == null ? "—" : fmtU(k.urenPerDag);
+    $("#inz-uitleg").textContent = k.uren
+      ? `${fmtU(k.urenBetaald)} betaald en ${fmtU(k.urenOnbetaald)} onbetaald over ${k.dagen} ` +
+        `dag${k.dagen === 1 ? "" : "en"}. Effectief tarief = omzet ÷ álle gewerkte uren.`
+      : "Geen uren in deze selectie.";
+
+    // Waar gaan de onbetaalde uren heen?
+    const onbetaald = I.onbetaaldPer(filtered, "werkzaamheden");
+    $("#inz-onbetaald-wrap").classList.toggle("hidden", onbetaald.totaal <= 0);
+    const maxOnb = Math.max(1, ...onbetaald.top.map((r) => r.uren));
+    $("#inz-onbetaald").innerHTML = onbetaald.top
+      .map(
+        (r) => `<div class="rank-row">
+          <span class="rank-naam">${esc(r.naam)}</span>
+          <span class="rank-cijfer">${fmtU(r.uren)}</span>
+          <span class="rank-bar"><i class="onbetaald" style="width:${(r.uren / maxOnb) * 100}%"></i></span>
+        </div>`
+      )
+      .join("") +
+      (onbetaald.aantal > onbetaald.top.length
+        ? `<div class="rank-sub">+ ${onbetaald.aantal - onbetaald.top.length} andere, samen ${fmtU(onbetaald.totaal)}</div>`
+        : "");
+
+    // Ranglijst per opdrachtgever / project / locatie
+    const veld = state.inzichten.rangVeld;
+    document.querySelectorAll("#inz-rang-toggle .chip").forEach((c) => {
+      c.classList.toggle("active", c.dataset.veld === veld);
+    });
+    const rang = I.ranglijst(filtered, veld);
+    const maxUren = Math.max(1, ...rang.map((r) => r.uren));
+    $("#inz-rang").innerHTML = rang.length
+      ? rang
+          .map(
+            (r) => `<div class="rank-row">
+              <span class="rank-naam">${esc(r.naam)}</span>
+              <span class="rank-cijfer">${fmtU(r.uren)} · ${fmtE0(r.omzet)}</span>
+              <span class="rank-bar"><i style="width:${(r.uren / maxUren) * 100}%"></i></span>
+              <span class="rank-sub">${r.aandeel.toString().replace(".", ",")}% van de uren · ` +
+              `${r.declarabel == null ? "—" : r.declarabel + "% declarabel"} · ` +
+              `effectief ${r.effectiefTarief == null ? "—" : fmtE0(r.effectiefTarief)}/u</span>
+            </div>`
+          )
+          .join("")
+      : '<p class="sub">Geen uren in deze selectie.</p>';
+
+    renderJaarbeeld();
+  }
+
+  /** Jaarbeeld: maandverloop (tik = cijfers van die maand) en de jaarprognose. */
+  function renderJaarbeeld() {
+    const I = window.UrenInzichten;
+    if (!I || !$("#inz-maanden")) return;
+    const jaar = state.inzichten.jaar;
+    const jaarInput = $("#inz-jaar");
+    if (jaarInput && document.activeElement !== jaarInput) jaarInput.value = String(jaar);
+    $("#inz-jaar-label").textContent = String(jaar);
+    const maanden = I.maandCijfers(state.entries, jaar);
+    const max = Math.max(1, ...maanden.map((m) => m.uren));
+    const gekozen = state.inzichten.maand;
+    $("#inz-maanden").innerHTML = maanden
+      .map(
+        (m, i) => `<div class="inz-month${gekozen === i ? " selected" : ""}" data-maand="${i}"
+            title="${MONTH_LABELS[i]}: ${fmtU(m.uren)} · ${fmtE0(m.omzet)}">
+          <span class="inz-month-bar"><i class="${m.uren ? "" : "leeg"}" style="height:${
+            m.uren ? Math.max(3, (m.uren / max) * 100) : 3
+          }%"></i></span>
+          <span class="inz-month-label">${MONTH_LABELS[i][0]}</span>
+        </div>`
+      )
+      .join("");
+    const totUren = maanden.reduce((s, m) => s + m.uren, 0);
+    const detail = $("#inz-maand-detail");
+    if (gekozen == null) {
+      const beste = maanden.reduce((b, m, i) => (m.uren > maanden[b].uren ? i : b), 0);
+      detail.innerHTML = totUren
+        ? `Gemiddeld ${fmtU(totUren / 12)} per maand · beste maand ${MONTH_LABELS[beste]} ` +
+          `(${fmtU(maanden[beste].uren)}). <em>Tik op een maand voor die cijfers.</em>`
+        : `Nog geen uren in ${jaar}.`;
+    } else {
+      const m = maanden[gekozen];
+      detail.innerHTML =
+        `<strong>${MONTH_LABELS[gekozen]} ${jaar}</strong> — ${fmtU(m.uren)} · ${fmtE0(m.omzet)} ` +
+        `over ${m.dagen} dag${m.dagen === 1 ? "" : "en"} ` +
+        `<em>(nog eens tikken = terug naar het jaar)</em>`;
+    }
+
+    const p = I.jaarPrognose(state.entries, jaar);
+    $("#inz-prog-uren").textContent = fmtU(p.uren);
+    $("#inz-prog-omzet").textContent = fmtE0(p.omzet);
+    $("#inz-prog-uitleg").textContent = p.isPrognose
+      ? `Doorgetrokken uit ${Math.round(p.deel * 100)}% van het jaar (tot nu toe ${fmtU(p.urenTotNu)} ` +
+        `en ${fmtE0(p.omzetTotNu)}). Urencriterium: ` +
+        (p.haaltCriterium
+          ? `${p.doelUren} uur wordt in dit tempo gehaald ✓`
+          : `komt ${fmtU(p.urenTekort)} tekort op ${p.doelUren} uur`)
+      : `Werkelijke cijfers van ${jaar}: ${fmtU(p.urenTotNu)} en ${fmtE0(p.omzetTotNu)}.`;
   }
 
   /** Urencriterium (1225 u/jaar voor zelfstandigenaftrek): voortgang vs. jaarschema. */
@@ -1345,9 +1500,8 @@
     const mainEl = document.querySelector("main");
     if (sticky) sticky.classList.toggle("hidden", tab !== "invoer");
     if (mainEl) mainEl.classList.toggle("has-sticky-save", tab === "invoer");
-    if (tab === "projecten") renderProjecten();
-    if (tab === "analyse") renderAnalyse();
-    if (tab === "grafieken") renderGrafieken();
+    if (vuil[tab]) tekenTab(tab);
+    else if (tab === "grafieken") renderGrafieken(); // canvas hertekenen na tonen
   }
 
   async function onSave() {
@@ -1466,6 +1620,10 @@
         } else if (inputId === "filter-month-year") {
           state.analyseFilters.customYear = y;
           renderAnalyse();
+        } else if (inputId === "inz-jaar") {
+          state.inzichten.jaar = y;
+          state.inzichten.maand = null;
+          renderJaarbeeld();
         }
       });
     });
@@ -1474,6 +1632,22 @@
   function bindEvents() {
     document.querySelectorAll(".bottom-nav button").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+    });
+    // Inzichten: ranglijst omschakelen en een maand aantikken
+    $("#inz-rang-toggle")?.addEventListener("click", (ev) => {
+      const chip = ev.target.closest(".chip");
+      if (!chip) return;
+      state.inzichten.rangVeld = chip.dataset.veld;
+      haptic(10);
+      renderAnalyse();
+    });
+    $("#inz-maanden")?.addEventListener("click", (ev) => {
+      const cel = ev.target.closest(".inz-month");
+      if (!cel) return;
+      const i = Number(cel.dataset.maand);
+      state.inzichten.maand = state.inzichten.maand === i ? null : i;
+      haptic(10);
+      renderJaarbeeld();
     });
     $("#btn-save")?.addEventListener("click", onSave);
     $("#btn-clear")?.addEventListener("click", () => {
@@ -1548,6 +1722,9 @@
     state.chartFilters.year = now.getFullYear();
     const gy = $("#grafiek-year");
     if (gy) gy.value = now.getFullYear();
+    state.inzichten.jaar = now.getFullYear();
+    const iy = $("#inz-jaar");
+    if (iy) iy.value = now.getFullYear();
 
     $("#filter-period")?.addEventListener("change", (e) => {
       state.analyseFilters.periodMode = e.target.value;
@@ -1636,10 +1813,28 @@
     } catch (e) {
       setStatus(e.message, true);
     }
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-    }
+    bindServiceWorker();
+  }
+
+  /**
+   * De service worker start de app uit de cache en haalt updates op de
+   * achtergrond op. Neemt een nieuwe versie het over, dan haal je hem met één
+   * tik binnen (in plaats van bij elke start op het netwerk te wachten).
+   */
+  function bindServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    const eersteInstallatie = !navigator.serviceWorker.controller;
+    let gemeld = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (eersteInstallatie || gemeld) return; // eerste keer is gewoon installeren
+      gemeld = true;
+      showToast("Nieuwe versie klaar — tik om te vernieuwen", false, () => location.reload());
+    });
   }
 
   document.addEventListener("DOMContentLoaded", init);
+
+  // Kleine ingang voor debuggen en tests in de browser (geen app-logica).
+  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, renderJaarbeeld };
 })();

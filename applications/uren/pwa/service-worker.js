@@ -1,4 +1,4 @@
-const CACHE = "imtech-uren-pwa-v30";
+const CACHE = "imtech-uren-pwa-v31";
 const ASSETS = [
   "./",
   "./index.html",
@@ -16,6 +16,7 @@ const ASSETS = [
   "./js/uren_graph_excel.js",
   "./js/uren_graph_estimates.js",
   "./js/uren_analyse.js",
+  "./js/uren_inzichten.js",
   "./js/uren_invoer.js",
   "./js/combobox.js",
   "./js/offline_queue.js",
@@ -34,25 +35,64 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+        Promise.all(
+          keys
+            .filter((k) => k !== CACHE && k !== CDN_CACHE)
+            .map((k) => caches.delete(k))
+        )
       )
       .then(() => self.clients.claim())
   );
 });
 
-self.addEventListener("fetch", (event) => {
-  const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((res) => {
-        if (res.ok && event.request.method === "GET") {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(event.request, copy));
-        }
-        return res;
-      });
+
+// Cache voor bibliotheken van de CDN (MSAL, Chart.js). Die staan op een vaste
+// versie in de URL, dus cache-first is veilig: een nieuwe versie is een andere
+// URL. Deze cache overleeft een versiebump van de app.
+const CDN_CACHE = "imtech-uren-cdn-v1";
+const CDN_HOSTS = ["cdn.jsdelivr.net", "cdnjs.cloudflare.com"];
+
+/**
+ * Same-origin: direct uit de cache (app start meteen) en op de achtergrond
+ * bijwerken, zodat de volgende start de nieuwe versie heeft.
+ */
+async function uitCacheEnBijwerken(request) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(request, { ignoreSearch: true });
+  const netwerk = fetch(request)
+    .then((res) => {
+      if (res && res.ok) cache.put(request, res.clone());
+      return res;
     })
-  );
+    .catch(() => null);
+  if (cached) return cached;
+  const res = await netwerk;
+  return res || new Response("Offline en niet in de cache", { status: 503 });
+}
+
+/** CDN-bibliotheek: uit de cache, anders ophalen en bewaren. */
+async function cdnUitCache(request) {
+  const cache = await caches.open(CDN_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  try {
+    // Met cors krijgen we een bruikbare (niet-ondoorzichtige) response terug.
+    const res = await fetch(new Request(request.url, { mode: "cors", credentials: "omit" }));
+    if (res && res.ok) cache.put(request, res.clone());
+    return res;
+  } catch (_) {
+    return fetch(request);
+  }
+}
+
+self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.origin === self.location.origin) {
+    event.respondWith(uitCacheEnBijwerken(event.request));
+    return;
+  }
+  if (CDN_HOSTS.includes(url.hostname)) {
+    event.respondWith(cdnUitCache(event.request));
+  }
 });

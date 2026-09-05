@@ -995,3 +995,166 @@ html[data-theme="dark"] .status-geannuleerd { background: #450a0a; color: #fca5a
 #uc-fill.uc-achter {
   background: #f0a500;
 }
+
+/* ===== Inzichten (Analyse) ===== */
+.kpi-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.kpi {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  text-align: center;
+}
+
+.kpi-label {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.kpi-value {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-value.laag {
+  color: var(--danger);
+}
+
+.inz-periode {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.inz-kop {
+  margin: 14px 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.rank-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+
+.rank-row:last-child {
+  border-bottom: 0;
+}
+
+.rank-naam {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank-cijfer {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rank-bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.rank-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.rank-bar i.onbetaald {
+  background: var(--danger);
+}
+
+.rank-sub {
+  grid-column: 1 / -1;
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+/* Maandverloop: tikken geeft de cijfers van die maand eronder. */
+.inz-months {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 110px;
+  margin: 10px 0 4px;
+}
+
+.inz-month {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+.inz-month.selected {
+  background: var(--accent-light);
+}
+
+.inz-month-bar {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  padding: 0 2px;
+}
+
+.inz-month-bar i {
+  display: block;
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  min-height: 2px;
+}
+
+.inz-month-bar i.leeg {
+  background: var(--bg-tertiary);
+}
+
+.inz-month-label {
+  margin-top: 4px;
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+}
+
+.inz-month.selected .inz-month-label {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Toast die je kunt aantikken (nieuwe versie ophalen). */
+.toast-klikbaar {
+  cursor: pointer;
+  text-decoration: underline;
+}

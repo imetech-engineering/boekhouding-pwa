@@ -352,18 +352,9 @@
     updateRenameButton();
   }
 
-  /** Bankregels bij de factuur die nu bewerkt wordt (leeg bij een nieuwe regel). */
-  function renderKoppelBlok() {
-    const el = $("#inkoop-koppel-blok");
-    const rows = App().state.inkoopRows;
-    const h = editRow ? rows.find((r) => r.excelRow === editRow) : null;
-    global.BoekKoppel?.renderBankBlok(el, h ? { ...h, boek: "inkoop" } : null);
-  }
-
   /** Bewerkmodus aan/uit: knoptekst en titel volgen de stand. */
   function setEditRow(row) {
     editRow = row;
-    renderKoppelBlok();
     updateAfschrijfPreview();
     $("#inkoop-form-title").textContent = row ? `Regel bewerken (rij ${row})` : "Factuur inboeken";
     $("#btn-inkoop-boek").textContent = row ? "Bijwerken" : "Inboeken";
@@ -553,6 +544,16 @@
   // === Historie ===
   let kopIndex = new Map();
   let dekkingMap = new Map();
+  let statusFilter = "alles"; // alles | open | controle
+
+  /** Hoort deze regel bij het gekozen filter? */
+  function pastBijStatus(h) {
+    if (statusFilter === "alles") return true;
+    if (h.categorie === "Reiskosten" || h.categorie === "Afschrijving") return false;
+    const s = M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap);
+    if (statusFilter === "controle") return s.kind === "teveel";
+    return s.kind === "geen" || s.kind === "deels"; // nog niet rond
+  }
 
   /** Betaalstatus onder een historie-regel; leeg voor regels zonder bankregel. */
   function statusRegel(h) {
@@ -576,8 +577,20 @@
     const list = $("#inkoop-hist-list");
     const q = $("#inkoop-hist-search").value.trim().toLowerCase();
     list.innerHTML = "";
+    // Tellers op de knoppen: in één blik zien of er nog iets openstaat.
+    const alle = intel().history;
+    const isOpen = (h) =>
+      h.categorie !== "Reiskosten" &&
+      h.categorie !== "Afschrijving" &&
+      ["geen", "deels"].includes(M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap).kind);
+    const isFout = (h) =>
+      M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap).kind === "teveel";
+    zetTeller("alles", alle.length);
+    zetTeller("open", alle.filter(isOpen).length);
+    zetTeller("controle", alle.filter(isFout).length);
     let shown = 0;
-    for (const h of intel().history) {
+    for (const h of alle) {
+      if (!pastBijStatus(h)) continue;
       if (q && !`${h.partij} ${h.omschrijving} ${h.categorie} ${h.project} ${h.factuurnummer || ""}`.toLowerCase().includes(q)) continue;
       const li = document.createElement("li");
       li.className = "boek-item" + (editRow === h.excelRow ? " selected" : "");
@@ -625,10 +638,14 @@
     updateBankCheck();
   }
 
+  function zetTeller(naam, n) {
+    const el = document.querySelector(`#inkoop-status-filter .chip[data-s="${naam}"] .chip-n`);
+    if (el) el.textContent = n ? String(n) : "";
+  }
+
   function render() {
     renderFiles();
     renderHistory();
-    renderKoppelBlok();
     updateBankCheck();
   }
 
@@ -699,8 +716,24 @@
       document.getElementById(id).addEventListener("change", updateRenameButton);
     }
     $("#inkoop-hist-search").addEventListener("input", renderHistory);
+    document.querySelectorAll("#inkoop-status-filter .chip").forEach((c) => {
+      c.addEventListener("click", () => {
+        statusFilter = c.dataset.s;
+        document.querySelectorAll("#inkoop-status-filter .chip").forEach((x) =>
+          x.classList.toggle("active", x === c)
+        );
+        App().haptic(10);
+        renderHistory();
+      });
+    });
+  }
+
+  /** Een regel in bewerkmodus zetten vanuit een ander scherm. */
+  function bewerkRij(excelRow) {
+    const h = App().state.inkoopRows.find((r) => r.excelRow === excelRow);
+    if (h) startEdit(h);
   }
 
   App().registerTab("inkoop", { init, render });
-  global.BoekUiInkoop = { prefill, render };
+  global.BoekUiInkoop = { prefill, render, bewerkRij };
 })(window);

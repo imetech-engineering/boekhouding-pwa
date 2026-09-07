@@ -10,16 +10,18 @@ Standalone Progressive Web App: leest en schrijft **Boekhouding_IMeTech.xlsx** d
   factuur*, *€ x van deze bankregel niet gekoppeld* of *koppeling verwijst naar een onbekende
   factuur*. Verder: regels toevoegen/bewerken, saldo als zelf-herstellende formule, ingeboekt
   markeren, automatische matching met facturen (zelfde bedrag, datum ±14 dagen).
-- **Inkoop & verkoop** — facturen uit de OneDrive-mappen "nog te verwerken", PDF-preview + automatische extractie (bedrijf/bedrag/datum/BTW/land), suggesties uit de Excel-historie per leverancier/klant, duplicaatcontrole, bankregels afvinken, na inboeken bestand verplaatsen naar "verwerkt". Regels zijn te bewerken en te verwijderen (potlood/prullenbak of swipe). Onder elke regel staat de betaalstatus (*volledig betaald* / *nog € x open* / *geen bankregel*), en bij het bewerken van een regel staan de gekoppelde bankregels in het formulier zelf — daar koppel je er ook een bij of haal je er een los.
+- **Inkoop & verkoop** — facturen uit de OneDrive-mappen "nog te verwerken", PDF-preview + automatische extractie (bedrijf/bedrag/datum/BTW/land), suggesties uit de Excel-historie per leverancier/klant, duplicaatcontrole, bankregels afvinken, na inboeken bestand verplaatsen naar "verwerkt". Regels zijn te bewerken en te verwijderen (potlood/prullenbak of swipe). Onder elke regel staat de betaalstatus (*volledig betaald* / *nog € x open* / *geen bankregel*), met filterknoppen **Alles · Niet betaald · ⚠ Controle** erboven en een ketting-knop per regel naar het koppelscherm.
 - **Afwijkende BTW en vreemde valuta** — bij inkoop klap je "BTW-bedrag invullen" uit als een factuur geen vast percentage heeft (invoerkosten van een koerier, deels belast): je vult het BTW-bedrag in en de app zet dat om naar het percentage dat er precies bij hoort, zodat de formules in het werkboek intact blijven. Bij vreemde valuta vult de app het derde veld aan zodra er twee bekend zijn (bedrag origineel × koers = bedrag in €), in beide richtingen.
 - **Bestand toevoegen** — plus-knop → Bestand: PDF's en foto's krijgen meteen een voorbeeld (eerste pagina als miniatuur, tik erop voor groot). Datum, leverancier en factuurnummer worden automatisch herkend — eerst uit de bestandsnaam (`yymmdd bedrijf factuurnummer`), dan uit de PDF-tekst, en bij een foto via OCR. In het grote voorbeeld kun je bladeren, zoomen, tekst **selecteren en kopiëren** (uit de PDF zelf, of uit een foto via OCR). Dezelfde knop "Groot + tekst" zit ook bij het voorbeeld in inkoop en verkoop, waar de PDF-tekst nu ook direct in het voorbeeld te selecteren is.
 - **Bon fotograferen** — plus-knop bij inkoop opent de camera van de telefoon. De app zoekt zelf de rand van de bon, je kunt de vier hoeken bijslepen (met loep), trekt het beeld recht en zet het als JPEG in "nog te verwerken". Meerdere pagina's worden een map met dezelfde naam. Daarna boek je hem via de gewone weg in.
 - **Reiskosten** — vaste bestemmingen, adres zoeken (Photon), automatische km via route (OSRM), boekt als inkoopregel (€/km instelbaar, standaard € 0,23).
-- **Koppelen** — één koppelcentrum voor beide richtingen: vanuit een bankregel meerdere
-  facturen aanvinken, vanuit een factuur meerdere bankregels (termijnen, verzamelbetaling).
-  Bereikbaar vanaf de bankregel, vanaf elke regel in de inkoop-/verkoophistorie (ketting-knop)
-  en vanuit het overzicht. Het scherm blijft na koppelen/ontkoppelen open en werkt zichzelf bij —
-  elke mutatie is direct in beeld, de sync met OneDrive loopt op de achtergrond mee.
+- **Koppelen** — overal hetzelfde scherm, overal hetzelfde ketting-icoon 🔗: op een
+  bankregel kies je de facturen die erbij horen, op een factuur de bankregels waarmee die
+  betaald is. Meerdere tegelijk kan beide kanten op (termijnen, verzamelbetaling). Een
+  termijnbetaling is geen fout: de sombalk zegt wat er daarna nog openstaat, en er wordt
+  alleen gewaarschuwd als er geld overblijft dat nergens bij hoort. Het scherm blijft na
+  koppelen en ontkoppelen open en werkt zichzelf bij — elke mutatie is direct in beeld,
+  de sync met OneDrive loopt op de achtergrond mee.
 - **Overzicht** — kwartaaldashboard (omzet/kosten/resultaat/BTW-saldo) in inklapbare secties die
   onthouden of ze open stonden; "Nog te doen" bundelt koppelingen die niet kloppen, facturen
   zonder bankregel en bankregels zonder factuur. Verder instellingen en account.

@@ -490,7 +490,7 @@
         tekst: `• ${x.row.datumStr} · ${x.row.omschrijving.slice(0, 30)} · ${M().fmtEur(
           x.row.in != null ? x.row.in : x.row.uit
         )} — ${M().koppelStatusTekst(x.status)}`,
-        open: () => global.BoekUiBank?.openByExcelRow(x.row.excelRow),
+        open: () => global.BoekKoppel?.openBankregel(x.row),
       })),
       ...teveel.map((f) => ({
         soort: "factuur",
@@ -526,7 +526,7 @@
           toggleBankSelectie(b);
           return;
         }
-        global.BoekUiBank?.openByExcelRow(b.excelRow);
+        global.BoekKoppel?.openBankregel(b);
       },
       toonAllesSet.has("#ovz-bank-los"),
       {

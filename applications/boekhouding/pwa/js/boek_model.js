@@ -765,13 +765,19 @@
    *   open     — deelbetaling, factuur nog niet volledig gedekt
    *   teveel   — een stuk van de bankregel hangt aan geen enkele factuur
    *   onbekend — koppeltekst verwijst naar een factuur die niet (meer) bestaat
+   *
+   * Met `index` (koppelingIndex) erbij telt een verschil op déze regel niet als
+   * fout zodra de factuur ook aan andere bankregels hangt: hoeveel er in totaal
+   * op die factuur staat is dan een eigenschap van de hele groep, en dat wordt
+   * één keer bij de factuur gemeld (facturenTeveelGedekt) in plaats van bij
+   * elke betaling apart.
    */
-  function bankKoppelStatus(bankRow, inkoopRows, verkoopRows, dekking) {
+  function bankKoppelStatus(bankRow, inkoopRows, verkoopRows, dekking, index) {
     const bedrag = bankRow.in != null ? bankRow.in : bankRow.uit;
     const raw = String(bankRow.koppelingRaw || "").trim();
     const basis = {
       bedrag, som: 0, verschil: bedrag || 0, aantal: 0, koppelingen: [], open: 0,
-      onbekend: 0, onbekendTokens: [], ambigu: 0,
+      onbekend: 0, onbekendTokens: [], ambigu: 0, gedeeld: false,
     };
     if (!raw) return { ...basis, kind: "geen" };
     const alle = parseKoppelingen(raw, inkoopRows, verkoopRows);
@@ -810,14 +816,25 @@
       }
       open = Math.round(open * 100) / 100;
     }
+    // Hangt een van de gekoppelde facturen ook aan andere bankregels?
+    let gedeeld = false;
+    if (index) {
+      for (const k of ks) {
+        if (!k.row) continue;
+        for (const g of k.groep || [{ boek: k.boek, row: k.row }]) {
+          if ((index.get(`${g.boek}|${g.row.excelRow}`) || []).length > 1) gedeeld = true;
+        }
+      }
+    }
     const s = {
       ...basis, som, verschil, aantal: ks.length, koppelingen: alle, open,
-      onbekend, onbekendTokens, ambigu,
+      onbekend, onbekendTokens, ambigu, gedeeld,
     };
     if (onbekend || bedrag == null) return { ...s, kind: "onbekend" };
     if (Math.abs(verschil) < 0.005) return { ...s, kind: "ok" };
     if (verschil < 0) return { ...s, kind: open > 0.005 ? "open" : "deel" };
-    return { ...s, kind: "teveel" };
+    // Meer dan de factuur: alleen een fout als déze regel de enige betaler is.
+    return { ...s, kind: gedeeld ? (open > 0.005 ? "open" : "deel") : "teveel" };
   }
 
   /**
@@ -899,10 +916,11 @@
   /** Alle bankregels waarvan de koppeling niet klopt — de controlelijst. */
   function bankKoppelProblemen(bankRows, inkoopRows, verkoopRows) {
     const dekking = factuurDekking(bankRows, inkoopRows, verkoopRows);
+    const index = koppelingIndex(bankRows, inkoopRows, verkoopRows);
     const uit = [];
     for (const r of bankRows) {
       if (r.isEmpty || !r.koppelingRaw) continue;
-      const status = bankKoppelStatus(r, inkoopRows, verkoopRows, dekking);
+      const status = bankKoppelStatus(r, inkoopRows, verkoopRows, dekking, index);
       if (KOPPEL_PROBLEEM.has(status.kind)) uit.push({ row: r, status });
     }
     return uit.reverse();
@@ -963,7 +981,11 @@
         if (boekKey === "inkoop" && isPriveBetaald(f)) continue;
         const gedekt = dekking ? dekking.get(`${boekKey}|${f.excelRow}`) || 0 : 0;
         const rest = Math.round((f.bedrag - gedekt) * 100) / 100;
-        if (Math.abs(rest) < 0.01) continue; // volledig gedekt
+        // Niets meer te dekken. Het teken van het factuurbedrag bepaalt wat
+        // "nog open" is, zodat een creditnota meetelt maar een factuur waar al
+        // te veel aan hangt niet als verrekening opduikt.
+        const fTeken = (f.bedrag || 0) < 0 ? -1 : 1;
+        if (rest * fTeken < 0.01) continue;
         if (q) {
           const hay = `${f.partij} ${f.factuurnummer} ${f.omschrijving}`.toLowerCase();
           if (!hay.includes(q)) continue;
@@ -1084,6 +1106,11 @@
     }
     uit.sort((a, b) => {
       if (a.exact !== b.exact) return a.exact ? -1 : 1;
+      // Bankregels waar nog niets aan hangt zijn waarschijnlijker dan regels
+      // die al bij een andere factuur horen (dat kan, maar is de uitzondering).
+      const av = a.koppelingRaw ? 1 : 0;
+      const bv = b.koppelingRaw ? 1 : 0;
+      if (av !== bv) return av - bv;
       const da = factuur.datum && a.datum ? Math.abs(a.datum - factuur.datum) : Infinity;
       const db = factuur.datum && b.datum ? Math.abs(b.datum - factuur.datum) : Infinity;
       return da - db;

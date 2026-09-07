@@ -21,7 +21,10 @@ Standalone Progressive Web App: leest en schrijft **Boekhouding_IMeTech.xlsx** d
   termijnbetaling is geen fout: de sombalk zegt wat er daarna nog openstaat, en er wordt
   alleen gewaarschuwd als er geld overblijft dat nergens bij hoort. Het scherm blijft na
   koppelen en ontkoppelen open en werkt zichzelf bij — elke mutatie is direct in beeld,
-  de sync met OneDrive loopt op de achtergrond mee.
+  de sync met OneDrive loopt op de achtergrond mee. Is maar een deel van een betaling
+  zakelijk (de rest privé), koppel dan de factuur en zet met **Rest hoeft geen factuur**
+  het verschil bewust apart; dat schrijft een "-" naast de factuur in kolom I, dezelfde
+  markering als "geen factuur nodig".
 - **Overzicht** — kwartaaldashboard (omzet/kosten/resultaat/BTW-saldo) in inklapbare secties die
   onthouden of ze open stonden; "Nog te doen" bundelt koppelingen die niet kloppen, facturen
   zonder bankregel en bankregels zonder factuur. Verder instellingen en account.

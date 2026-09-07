@@ -631,6 +631,21 @@
     return index;
   }
 
+  /**
+   * Hoort er bij deze factuur überhaupt een bankregel? Reiskosten en
+   * afschrijvingen zijn boekingen zonder betaling, en een inkoopfactuur die
+   * van privé betaald is komt nooit op de zakelijke rekening voor. Deze regel
+   * geldt overal: in de controlelijst, bij de koppelkandidaten en bij de
+   * betaalstatus in de facturenlijst.
+   */
+  function factuurVerwachtBank(factuur) {
+    if (!factuur || factuur.isEmpty || factuur.bedrag == null || !factuur.datum) return false;
+    if (factuur.categorie === "Reiskosten" || factuur.categorie === "Afschrijving") return false;
+    const boek = String(factuur.boek || "").toLowerCase() === "verkoop" ? "verkoop" : "inkoop";
+    if (boek === "inkoop" && isPriveBetaald(factuur)) return false;
+    return true;
+  }
+
   /** Facturen waar nog geen bankregel aan hangt (jouw controle-/jaaropgaaflijst). */
   function facturenZonderBank(inkoopRows, verkoopRows, index) {
     const nu = new Date();
@@ -638,10 +653,8 @@
     for (const boek of ["inkoop", "verkoop"]) {
       const rows = boek === "inkoop" ? inkoopRows : verkoopRows;
       for (const r of rows) {
-        if (r.isEmpty || !r.datum || r.bedrag == null) continue;
+        if (!factuurVerwachtBank({ ...r, boek })) continue;
         if (r.datum > nu) continue; // afschrijvingsregels in de toekomst
-        if (r.categorie === "Reiskosten" || r.categorie === "Afschrijving") continue;
-        if (boek === "inkoop" && isPriveBetaald(r)) continue; // privé betaald: nooit een bankregel
         if (index.has(`${boek}|${r.excelRow}`)) continue;
         uit.push({ ...r, boek });
       }
@@ -731,8 +744,14 @@
         // Richting telt: voor een inkoopfactuur dekt bank-uit positief en telt een
         // terugboeking (bank-in) negatief — betaald 289,98 − retour 9,99 = 279,99.
         const k = ks[0];
-        const bijdrage =
+        let bijdrage =
           k.boek === "inkoop" ? (b.uit || 0) - (b.in || 0) : (b.in || 0) - (b.uit || 0);
+        // Staat er een "-" naast (rest bewust zonder factuur, bijv. een privé-
+        // deel), dan telt hooguit het factuurbedrag mee.
+        if (String(b.koppelingRaw).split(",").some((t) => t.trim() === "-")) {
+          const plafond = k.groepBedrag != null ? k.groepBedrag : k.row.bedrag || 0;
+          bijdrage = plafond < 0 ? Math.max(bijdrage, plafond) : Math.min(bijdrage, plafond);
+        }
         if (k.groep && k.groepBedrag) {
           // Eén factuurnummer over meerdere regels (gesplitste factuur): de
           // betaling hoort naar rato bij alle regels, niet alleen bij de eerste.
@@ -783,6 +802,9 @@
     const alle = parseKoppelingen(raw, inkoopRows, verkoopRows);
     const ks = alle.filter((k) => k.token !== "-");
     if (!ks.length) return { ...basis, kind: "geenNodig", koppelingen: alle };
+    // "-" naast een factuur: wat er overblijft hoeft geen factuur — het
+    // klassieke geval is een betaling die maar deels zakelijk is.
+    const restBewust = alle.length > ks.length;
     const onbekendTokens = ks.filter((k) => !k.row).map((k) => k.token);
     const onbekend = onbekendTokens.length;
     const ambigu = ks.filter((k) => k.ambigu).length;
@@ -833,7 +855,9 @@
     if (onbekend || bedrag == null) return { ...s, kind: "onbekend" };
     if (Math.abs(verschil) < 0.005) return { ...s, kind: "ok" };
     if (verschil < 0) return { ...s, kind: open > 0.005 ? "open" : "deel" };
-    // Meer dan de factuur: alleen een fout als déze regel de enige betaler is.
+    // Meer dan de factuur. Is de rest bewust zonder factuur gezet, dan klopt het.
+    if (restBewust) return { ...s, kind: "restBewust" };
+    // Anders alleen een fout als déze regel de enige betaler is.
     return { ...s, kind: gedeeld ? (open > 0.005 ? "open" : "deel") : "teveel" };
   }
 
@@ -859,6 +883,8 @@
         return s.onbekendTokens && s.onbekendTokens.length
           ? `"${s.onbekendTokens.join('", "')}" hoort bij geen enkele factuur`
           : "koppeling verwijst naar een onbekende factuur";
+      case "restBewust":
+        return `factuur gekoppeld · ${fmtEur(Math.abs(s.verschil))} bewust zonder factuur`;
       case "geenNodig":
         return "geen factuur nodig";
       default:
@@ -868,7 +894,7 @@
 
   /** Icoon per status — één blik is genoeg in de lijst. */
   function koppelStatusIcoon(kind) {
-    if (kind === "ok" || kind === "deel") return "✓";
+    if (kind === "ok" || kind === "deel" || kind === "restBewust") return "✓";
     if (kind === "open") return "◐"; // termijn: klopt, factuur nog niet rond
     if (kind === "geenNodig") return "–";
     if (kind === "geen") return "○";
@@ -975,10 +1001,7 @@
     const verzamel = (rows, boekNaam) => {
       const boekKey = boekNaam.toLowerCase();
       for (const f of rows) {
-        if (f.isEmpty || f.bedrag == null || !f.datum) continue;
-        // Reiskosten, afschrijvingen en privé-betaalde facturen: geen bankregel
-        if (f.categorie === "Reiskosten" || f.categorie === "Afschrijving") continue;
-        if (boekKey === "inkoop" && isPriveBetaald(f)) continue;
+        if (!factuurVerwachtBank({ ...f, boek: boekKey })) continue;
         const gedekt = dekking ? dekking.get(`${boekKey}|${f.excelRow}`) || 0 : 0;
         const rest = Math.round((f.bedrag - gedekt) * 100) / 100;
         // Niets meer te dekken. Het teken van het factuurbedrag bepaalt wat
@@ -1701,6 +1724,7 @@
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
     bankKoppelStatus, koppelStatusTekst, koppelStatusIcoon, factuurStatus, bankKoppelProblemen,
+    factuurVerwachtBank,
     facturenTeveelGedekt,
     selectieOordeel,
     KOPPEL_PROBLEEM,

@@ -1733,7 +1733,8 @@ html[data-theme="dark"] {
 }
 
 .status-ok,
-.status-deel {
+.status-deel,
+.status-restBewust {
   color: var(--status-ok);
 }
 
@@ -1784,7 +1785,8 @@ html[data-theme="dark"] {
 }
 
 .bank-m-status.status-ok,
-.bank-m-status.status-deel {
+.bank-m-status.status-deel,
+.bank-m-status.status-restBewust {
   background: var(--accent-light);
   color: var(--status-ok);
 }

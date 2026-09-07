@@ -249,13 +249,18 @@
 
   // === Lijst ===
 
-  /** Voldoet een regel aan het gekozen statusfilter? */
+  /**
+   * Voldoet een regel aan het gekozen statusfilter? De drie knoppen sluiten
+   * elkaar uit: "Open" is nog te doen, "Zonder factuur" is al ingeboekt maar
+   * bewust of noodgedwongen zonder factuur (de jaaropgaaf-gevallen), en
+   * "Controle" zijn de koppelingen die niet kloppen.
+   */
   function pastBijStatus(r) {
     if (statusFilter === "alles") return true;
     if (statusFilter === "open") return !r.ingeboekt;
     const s = statusVan(r);
     if (statusFilter === "controle") return M().KOPPEL_PROBLEEM.has(s.kind);
-    if (statusFilter === "los") return s.kind === "geen"; // ingeboekt of niet, geen factuur eraan
+    if (statusFilter === "los") return r.ingeboekt && (s.kind === "geen" || s.kind === "geenNodig");
     return true;
   }
 
@@ -291,7 +296,9 @@
     // Tellers op de filterknoppen: meteen zien of er iets te controleren valt.
     const nOpen = filled.filter((r) => !r.ingeboekt).length;
     const nControle = filled.filter((r) => M().KOPPEL_PROBLEEM.has(statusVan(r).kind)).length;
-    const nLos = filled.filter((r) => !r.koppelingRaw).length;
+    const nLos = filled.filter(
+      (r) => r.ingeboekt && ["geen", "geenNodig"].includes(statusVan(r).kind)
+    ).length;
     zetTeller("open", nOpen);
     zetTeller("controle", nControle);
     zetTeller("los", nLos);

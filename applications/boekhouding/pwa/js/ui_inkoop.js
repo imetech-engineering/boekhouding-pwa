@@ -550,7 +550,9 @@
   /** Hoort deze regel bij het gekozen filter? */
   function pastBijStatus(h) {
     if (statusFilter === "alles") return true;
-    if (h.categorie === "Reiskosten" || h.categorie === "Afschrijving") return false;
+    // Reiskosten, afschrijvingen en van privé betaalde facturen horen niet in
+    // "niet betaald": daar komt nooit een bankregel bij.
+    if (!M().factuurVerwachtBank({ ...h, boek: "inkoop" })) return false;
     const s = M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap);
     if (statusFilter === "controle") return s.kind === "teveel";
     return s.kind === "geen" || s.kind === "deels"; // nog niet rond
@@ -559,7 +561,11 @@
   /** Betaalstatus onder een historie-regel; leeg voor regels zonder bankregel. */
   function statusRegel(h) {
     if (h.categorie === "Reiskosten" || h.categorie === "Afschrijving") return "";
-    if (M().isPriveBetaald(h)) return '<div class="bi-status status-geenNodig">– privé betaald</div>';
+    if (!M().factuurVerwachtBank({ ...h, boek: "inkoop" })) {
+      return M().isPriveBetaald(h)
+        ? '<div class="bi-status status-geenNodig">– privé betaald</div>'
+        : '<div class="bi-status status-geenNodig">– geen bankregel verwacht</div>';
+    }
     const s = M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap);
     if (s.kind === "ok") return '<div class="bi-status status-ok">✓ volledig betaald</div>';
     if (s.kind === "deels") {
@@ -581,8 +587,7 @@
     // Tellers op de knoppen: in één blik zien of er nog iets openstaat.
     const alle = intel().history;
     const isOpen = (h) =>
-      h.categorie !== "Reiskosten" &&
-      h.categorie !== "Afschrijving" &&
+      M().factuurVerwachtBank({ ...h, boek: "inkoop" }) &&
       ["geen", "deels"].includes(M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap).kind);
     const isFout = (h) =>
       M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap).kind === "teveel";

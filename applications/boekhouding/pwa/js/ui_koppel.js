@@ -33,6 +33,13 @@
     return doel && doel.soort === "bank";
   }
 
+  /** Staat er al een "-" bij deze bankregel (rest bewust zonder factuur)? */
+  function restBewust(item) {
+    return String(item.koppelingRaw || "")
+      .split(",")
+      .some((t) => t.trim() === "-");
+  }
+
   function bedragTekst(b) {
     return b.in != null ? `+ ${M().fmtEur(b.in)}` : `− ${M().fmtEur(b.uit)}`;
   }
@@ -200,8 +207,16 @@
     zoekEl.classList.toggle("hidden", dicht);
     $("#koppel-lijst").classList.toggle("hidden", dicht);
     $("#btn-koppel-doe").classList.toggle("hidden", dicht);
-    // "Geen factuur nodig" hoort alleen bij een bankregel zonder koppeling.
-    $("#btn-koppel-geen").classList.toggle("hidden", !bank || !!item.koppelingRaw);
+    // "Geen factuur nodig" hoort bij een bankregel. Hangt er al een factuur aan
+    // en blijft er geld over (typisch een privé-deel), dan zet dezelfde knop
+    // alleen die rest bewust zonder factuur.
+    const geenKnop = $("#btn-koppel-geen");
+    const alGeen = restBewust(item);
+    const heeftFactuur = bank && (item.koppelingRaw || "").split(",").some((t) => t.trim() && t.trim() !== "-");
+    geenKnop.classList.toggle("hidden", !bank || alGeen);
+    geenKnop.textContent = heeftFactuur
+      ? `Rest (${M().fmtEur(Math.abs(rest))}) hoeft geen factuur`
+      : "Geen factuur nodig";
     zoekEl.placeholder = bank
       ? "🔍 Zoek op naam of factuurnummer…"
       : "🔍 Zoek in bankregels…";
@@ -375,6 +390,7 @@
       // Bij een bankregel is een grotere factuur een termijn; bij een factuur
       // zijn juist kleinere bankregels dat.
       const oordeel = M().selectieOordeel(som, doelBedrag, isBank() ? "meer" : "minder");
+      if (isBank() && oordeel.kind === "af" && restBewust(item)) oordeel.kind = "deel";
       const staart =
         oordeel.kind === "ok"
           ? "✓ dekt precies"
@@ -433,9 +449,10 @@
     const rest = openstaand(item);
     const doelBedrag = rest >= 0.01 ? rest : Math.abs(isBank() ? bankBedrag(item) : item.bedrag) || 0;
     const oordeel = M().selectieOordeel(som, doelBedrag, isBank() ? "meer" : "minder");
+    if (oordeel.kind === "af" && isBank() && restBewust(item)) oordeel.kind = "deel";
     if (oordeel.kind === "af") {
       const vraag = isBank()
-        ? `Er blijft ${M().fmtEur(oordeel.verschil)} van deze bankregel over: de selectie dekt ${M().fmtEur(som)} van ${M().fmtEur(doelBedrag)}. Toch koppelen?`
+        ? `Er blijft ${M().fmtEur(oordeel.verschil)} van deze bankregel over: de selectie dekt ${M().fmtEur(som)} van ${M().fmtEur(doelBedrag)}.\nIs die rest privé of een kleine bon, zet hem daarna met "Rest hoeft geen factuur" apart. Toch koppelen?`
         : `De bankregels zijn samen ${M().fmtEur(oordeel.verschil)} meer dan er nog openstaat (${M().fmtEur(som)} tegen ${M().fmtEur(doelBedrag)}). Toch koppelen?`;
       const ok = await App().showConfirm(vraag, "Toch koppelen", "Annuleren");
       if (!ok) return;
@@ -464,12 +481,24 @@
   }
 
   /** Bewust geen factuur bij deze bankregel (bankkosten, privé, overboeking). */
+  /**
+   * Bewust geen factuur. Zonder gekoppelde factuur geldt dat voor de hele
+   * bankregel (bankkosten, privé-opname); hangt er al een factuur aan, dan
+   * alleen voor wat er overblijft — het privé-deel van een gedeelde aankoop.
+   */
   async function geenFactuur() {
     const item = huidig();
     if (!item || !isBank()) return;
+    const heeftFactuur = (item.koppelingRaw || "")
+      .split(",")
+      .some((t) => t.trim() && t.trim() !== "-");
     await App().persistMutation(
       { kind: "bank_koppel", items: [{ excelRow: item.excelRow, waarde: "-", ingeboekt: true }] },
-      { successMsg: "Gemarkeerd: geen factuur nodig" }
+      {
+        successMsg: heeftFactuur
+          ? "Rest gemarkeerd: hoeft geen factuur"
+          : "Gemarkeerd: geen factuur nodig",
+      }
     );
   }
 

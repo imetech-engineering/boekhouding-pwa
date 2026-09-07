@@ -190,10 +190,19 @@
 
     const som = [...keuze.values()].reduce((s, b) => s + bankKant(f, b), 0);
     if (keuze.size) {
-      const klopt = Math.abs(som - doelBedrag) < 0.005;
-      somEl.textContent = `${keuze.size} geselecteerd · ${M().fmtEur(som)} van ${M().fmtEur(doelBedrag)} ${klopt ? "✓ dekt precies" : "⚠ wijkt af"}`;
-      somEl.classList.toggle("som-ok", klopt);
-      somEl.classList.toggle("som-af", !klopt);
+      // Minder dan het openstaande bedrag: termijn, prima. Meer: er komt geld
+      // bij dat niet bij deze factuur hoort.
+      const oordeel = M().selectieOordeel(som, doelBedrag, "minder");
+      const staart =
+        oordeel.kind === "ok"
+          ? "✓ dekt precies"
+          : oordeel.kind === "deel"
+            ? `· termijn, daarna nog ${M().fmtEur(oordeel.verschil)} open`
+            : `⚠ ${M().fmtEur(oordeel.verschil)} meer dan er nog openstaat`;
+      somEl.textContent = `${keuze.size} geselecteerd · ${M().fmtEur(som)} van ${M().fmtEur(doelBedrag)} ${staart}`;
+      somEl.classList.toggle("som-ok", oordeel.kind === "ok");
+      somEl.classList.toggle("som-deel", oordeel.kind === "deel");
+      somEl.classList.toggle("som-af", oordeel.kind === "af");
     }
     knop.disabled = !keuze.size;
     knop.textContent = keuze.size > 1 ? `Koppel ${keuze.size} bankregels` : "Koppel";
@@ -281,10 +290,13 @@
     const st = App().state;
     const sel = [...keuze.values()];
     const som = sel.reduce((s, b) => s + bankKant(f, b), 0);
-    const doelBedrag = restBedrag(f) || f.bedrag;
-    if (Math.abs(som - doelBedrag) >= 0.005) {
+    const doelBedrag = restBedrag(f) || Math.abs(f.bedrag || 0);
+    // Termijnen (samen minder dan het openstaande bedrag) zijn normaal en
+    // hoeven geen bevestiging; alleen te véél vraagt om een check.
+    const oordeel = M().selectieOordeel(som, doelBedrag, "minder");
+    if (oordeel.kind === "af") {
       const ok = await App().showConfirm(
-        `Som van de bankregels (${M().fmtEur(som)}) wijkt af van het nog te koppelen bedrag (${M().fmtEur(doelBedrag)}). Toch koppelen?`,
+        `De bankregels zijn samen ${M().fmtEur(oordeel.verschil)} meer dan er nog openstaat (${M().fmtEur(som)} tegen ${M().fmtEur(doelBedrag)}). Toch koppelen?`,
         "Toch koppelen",
         "Annuleren"
       );

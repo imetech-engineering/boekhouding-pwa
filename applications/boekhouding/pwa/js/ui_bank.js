@@ -601,12 +601,14 @@
       li.className = "boek-item koppel-kandidaat" + (sel ? " selected" : "");
       const nr = f.factuurnummer ? ` · ${escapeHtml(f.factuurnummer)}` : "";
       const deels = f.deels ? ` · deels betaald, nog ${M().fmtEur(f.rest)} van ${M().fmtEur(f.bedrag)}` : "";
+      // Factuur groter dan deze bankregel: dit wordt een termijnbetaling.
+      const termijn = !tegen && f.past === false ? " · termijn" : "";
       li.innerHTML = `
         <div class="bi-head">
           <span class="bi-title"><span class="koppel-check">${sel ? "☑" : "☐"}</span> ${escapeHtml(f.partij)}${nr}</span>
           <span class="bi-amount${tegen ? " uit" : ""}">${tegen ? "− " : ""}${M().fmtEur(f.rest != null ? f.rest : f.bedrag)}</span>
         </div>
-        <div class="bi-sub"><span>${escapeHtml(f.boek)}${tegen ? " (verrekend)" : ""}${deels} · ${escapeHtml((f.omschrijving || "").slice(0, 40))}</span><span>${f.datumStr}</span></div>`;
+        <div class="bi-sub"><span>${escapeHtml(f.boek)}${tegen ? " (verrekend)" : ""}${termijn}${deels} · ${escapeHtml((f.omschrijving || "").slice(0, 40))}</span><span>${f.datumStr}</span></div>`;
       li.addEventListener("click", () => {
         if (koppelSelectie.has(key)) koppelSelectie.delete(key);
         else koppelSelectie.set(key, f);
@@ -630,10 +632,19 @@
     const knop = $("#btn-bank-m-koppel");
     somEl.classList.toggle("hidden", !koppelSelectie.size);
     if (koppelSelectie.size) {
-      const klopt = Math.abs(som - rest) < 0.005;
-      somEl.textContent = `${koppelSelectie.size} geselecteerd · ${M().fmtEur(som)} van ${M().fmtEur(rest)} ${klopt ? "✓ dekt precies" : "⚠ wijkt af"}`;
-      somEl.classList.toggle("som-ok", klopt);
-      somEl.classList.toggle("som-af", !klopt);
+      // Facturen die samen méér zijn dan deze bankregel: termijnbetaling, prima.
+      // Minder: er blijft geld op deze bankregel over dat nergens bij hoort.
+      const oordeel = M().selectieOordeel(som, rest, "meer");
+      const staart =
+        oordeel.kind === "ok"
+          ? "✓ dekt precies"
+          : oordeel.kind === "deel"
+            ? `· deelbetaling, ${M().fmtEur(oordeel.verschil)} blijft op de factuur open`
+            : `⚠ er blijft ${M().fmtEur(oordeel.verschil)} van deze bankregel over`;
+      somEl.textContent = `${koppelSelectie.size} geselecteerd · ${M().fmtEur(som)} van ${M().fmtEur(rest)} ${staart}`;
+      somEl.classList.toggle("som-ok", oordeel.kind === "ok");
+      somEl.classList.toggle("som-deel", oordeel.kind === "deel");
+      somEl.classList.toggle("som-af", oordeel.kind === "af");
     }
     knop.disabled = !koppelSelectie.size;
     knop.textContent =
@@ -647,9 +658,12 @@
     const sel = [...koppelSelectie.values()];
     const som = sel.reduce((s, f) => s + (f.teken || 1) * (f.rest != null ? f.rest : f.bedrag), 0);
     const rest = Math.round(((bankBedrag(r) || 0) - gekoppeldBedrag(r)) * 100) / 100;
-    if (Math.abs(som - rest) >= 0.005) {
+    // Alleen vragen als er geld van deze bankregel overblijft; een factuur die
+    // groter is dan de bankregel is gewoon een termijn en hoeft geen vraag.
+    const oordeel = M().selectieOordeel(som, rest, "meer");
+    if (oordeel.kind === "af") {
       const ok = await App().showConfirm(
-        `Som van de selectie (${M().fmtEur(som)}) wijkt af van het bankbedrag (${M().fmtEur(rest)}). Toch koppelen?`,
+        `Er blijft ${M().fmtEur(oordeel.verschil)} van deze bankregel over: de selectie dekt ${M().fmtEur(som)} van ${M().fmtEur(rest)}. Toch koppelen?`,
         "Toch koppelen",
         "Annuleren"
       );

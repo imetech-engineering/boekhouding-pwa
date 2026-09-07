@@ -672,6 +672,12 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   color: #b07a00;
 }
 
+/* Selectie die een termijn dekt: klopt, maar de factuur is nog niet rond. */
+.koppel-som.som-deel {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
 .ovz-koppel-item {
   cursor: pointer;
   border-radius: 6px;
@@ -1696,6 +1702,8 @@ a.link {
 .toast-klikbaar {
   cursor: pointer;
   text-decoration: underline;
+}
+
 /* ===== Koppelstatus: klopt het bedrag van de gekoppelde facturen? ===== */
 /* Kleur en icoon vertellen in één blik of een regel nog aandacht vraagt. */
 :root {
@@ -1730,9 +1738,13 @@ html[data-theme="dark"] {
 }
 
 .status-deels,
-.status-open,
 .status-teveel {
   color: var(--status-warn);
+}
+
+/* Een termijnbetaling is een stand van zaken, geen fout: neutraal. */
+.status-open {
+  color: var(--text-secondary);
 }
 
 .status-onbekend {
@@ -1745,9 +1757,13 @@ html[data-theme="dark"] {
 }
 
 /* Randje links op regels die niet kloppen — zichtbaar tijdens scrollen. */
-.boek-item.koppel-open,
 .boek-item.koppel-teveel {
   border-left: 3px solid var(--status-warn);
+  padding-left: 7px;
+}
+
+.boek-item.koppel-open {
+  border-left: 3px solid var(--border-strong);
   padding-left: 7px;
 }
 
@@ -1773,10 +1789,15 @@ html[data-theme="dark"] {
   color: var(--status-ok);
 }
 
-.bank-m-status.status-open,
 .bank-m-status.status-teveel {
   background: var(--status-warn-bg);
   color: var(--status-warn);
+}
+
+/* Termijn: de bankregel klopt, alleen de factuur is nog niet rond. */
+.bank-m-status.status-open {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 
 .bank-m-status.status-onbekend {
@@ -1793,6 +1814,7 @@ html[data-theme="dark"] {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  white-space: nowrap; /* liever de rij laten omslaan dan het label */
 }
 
 .status-filter .chip-n:empty {

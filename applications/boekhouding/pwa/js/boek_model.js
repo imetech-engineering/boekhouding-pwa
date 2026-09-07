@@ -780,15 +780,20 @@
     return { ...s, kind: "teveel" };
   }
 
-  /** Statussen die aandacht vragen (filter "controle" in het bankboek). */
-  const KOPPEL_PROBLEEM = new Set(["open", "teveel", "onbekend"]);
+  /**
+   * Statussen die aandacht vragen (filter "controle" in het bankboek).
+   * Een deelbetaling ("open") hoort daar niet bij: de bankregel zelf klopt,
+   * de factuur is alleen nog niet helemaal afbetaald. Dat staat al bij de
+   * factuur zelf en bij de onbetaalde verkoopfacturen.
+   */
+  const KOPPEL_PROBLEEM = new Set(["teveel", "onbekend"]);
 
   function koppelStatusTekst(s) {
     switch (s.kind) {
       case "ok":
         return `bedrag klopt${s.aantal > 1 ? ` (${s.aantal} facturen)` : ""}`;
       case "deel":
-        return "deelbetaling · factuur verder gedekt";
+        return "deelbetaling · rest op andere bankregels";
       case "open":
         return `deelbetaling · nog ${fmtEur(s.open)} open op de factuur`;
       case "teveel":
@@ -805,9 +810,26 @@
   /** Icoon per status — één blik is genoeg in de lijst. */
   function koppelStatusIcoon(kind) {
     if (kind === "ok" || kind === "deel") return "✓";
+    if (kind === "open") return "◐"; // termijn: klopt, factuur nog niet rond
     if (kind === "geenNodig") return "–";
     if (kind === "geen") return "○";
     return "⚠";
+  }
+
+  /**
+   * Beoordeelt een koppelselectie: `som` tegenover het `doel` dat nog te dekken is.
+   * Een selectie die groter is dan het doel betekent bij het koppelen van
+   * facturen aan een bankregel (richting "meer") een termijnbetaling — geen fout.
+   * kind: ok | deel | af
+   *   ok   — dekt precies
+   *   deel — deelbetaling, de rest hoort bij andere regels
+   *   af   — er blijft geld over dat nergens bij hoort
+   */
+  function selectieOordeel(som, doel, deelKant = "meer") {
+    const verschil = Math.round((som - doel) * 100) / 100;
+    if (Math.abs(verschil) < 0.005) return { kind: "ok", verschil: 0 };
+    const isDeel = deelKant === "meer" ? verschil > 0 : verschil < 0;
+    return { kind: isDeel ? "deel" : "af", verschil: Math.abs(verschil) };
   }
 
   /**
@@ -858,8 +880,10 @@
    * Kandidaat-facturen om handmatig aan een bankregel te koppelen.
    * Richting: bank-in → wat geld binnenbrengt (verkoop, of een inkoop-creditnota),
    * bank-uit → wat geld kost. Al gekoppelde facturen doen niet mee.
-   * Zonder zoekterm: datum binnen ±dagen en bedrag ≤ bankbedrag (deelbetalingen kunnen samen
-   * één afschrijving dekken). Met zoekterm: alle facturen op partij/factuurnummer/omschrijving.
+   * Zonder zoekterm: datum binnen ±dagen. Een factuur die groter is dan de bankregel
+   * blijft kandidaat — dat is precies een termijnbetaling — maar staat onderaan (past:false);
+   * bovenaan komt wat exact past, dan wat binnen de bankregel valt, dan op datum.
+   * Met zoekterm: alle facturen op partij/factuurnummer/omschrijving.
    */
   function koppelKandidaten(bankRow, inkoopRows, verkoopRows, dekking, dagen = MATCH_DAYS, zoek = "") {
     const isIn = bankRow.in != null;
@@ -898,21 +922,24 @@
     verzamel(inkoopRows, "Inkoop");
     verzamel(verkoopRows, "Verkoop");
 
-    // Hoofdrichting mag groter zijn dan het bankbedrag zolang verrekeningen
-    // het verschil kunnen dekken (uitbetaling = omzet − fees).
+    // De ruimte van deze bankregel: het bedrag plus wat verrekeningen erbij halen
+    // (uitbetaling = omzet − fees). Een factuur die daar niet in past is geen fout
+    // maar een termijn, dus die blijft kandidaat en zakt alleen naar onderen.
     const tegenSom = gevonden.filter((f) => f.teken < 0).reduce((s, f) => s + f.rest, 0);
-    const uit = q
-      ? gevonden
-      : gevonden.filter(
-          (f) => f.teken < 0 || bedrag == null || f.rest <= bedrag + tegenSom + 0.005
-        );
-    uit.sort((a, b) => {
+    const ruimte = bedrag == null ? null : Math.round((bedrag + tegenSom) * 100) / 100;
+    for (const f of gevonden) {
+      f.past = f.teken < 0 || ruimte == null || f.rest <= ruimte + 0.005;
+      f.exact = f.teken > 0 && ruimte != null && Math.abs(f.rest - ruimte) < 0.005;
+    }
+    gevonden.sort((a, b) => {
       if (a.teken !== b.teken) return b.teken - a.teken; // hoofdrichting eerst
+      if (a.exact !== b.exact) return a.exact ? -1 : 1; // dekt het precies
+      if (a.past !== b.past) return a.past ? -1 : 1; // past binnen de bankregel
       const da = bankRow.datum ? Math.abs(a.datum - bankRow.datum) : 0;
       const db = bankRow.datum ? Math.abs(b.datum - bankRow.datum) : 0;
       return da - db;
     });
-    return uit;
+    return gevonden;
   }
 
   /**
@@ -1587,6 +1614,7 @@
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
     bankKoppelStatus, koppelStatusTekst, koppelStatusIcoon, factuurStatus, bankKoppelProblemen,
+    selectieOordeel,
     KOPPEL_PROBLEEM,
     priveInkoop, isPriveBetaald,
     normalizeLand, countryToType,

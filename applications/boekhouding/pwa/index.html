@@ -55,8 +55,8 @@
           <p id="bank-zonder-rek" class="sub hidden"></p>
         </div>
 
-        <div class="card">
-          <h2>Nieuwe bankregel</h2>
+        <details class="card card-fold" id="bank-nieuw-card">
+          <summary class="fold-head">Nieuwe bankregel</summary>
           <label>Rekening</label>
           <div id="bank-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
             <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
@@ -91,27 +91,29 @@
             <button type="button" id="btn-bank-save" class="btn-primary">Bankregel opslaan</button>
             <button type="button" id="btn-bank-clear" class="btn-secondary">Wis</button>
           </div>
-        </div>
+        </details>
 
         <div class="card">
-          <h2>Openstaande bankregels</h2>
+          <h2>Bankregels</h2>
+          <div id="bank-status-filter" class="rek-filter status-filter">
+            <button type="button" data-s="open" class="chip">Open <span class="chip-n"></span></button>
+            <button type="button" data-s="controle" class="chip chip-controle">⚠ Controle <span class="chip-n"></span></button>
+            <button type="button" data-s="los" class="chip">Zonder factuur <span class="chip-n"></span></button>
+            <button type="button" data-s="alles" class="chip">Alles <span class="chip-n"></span></button>
+          </div>
           <div id="bank-filter" class="rek-filter">
-            <button type="button" data-f="Alles" class="chip active">Alles</button>
+            <button type="button" data-f="Alles" class="chip active">Beide</button>
             <button type="button" data-f="Rabo" class="chip">Rabo</button>
             <button type="button" data-f="Knab" class="chip">Knab</button>
             <span class="filter-spacer"></span>
             <button type="button" data-dagen="14" class="chip chip-dagen" title="Matchvenster">±2w</button>
             <button type="button" data-dagen="28" class="chip chip-dagen" title="Matchvenster">±4w</button>
           </div>
-          <button type="button" id="btn-bank-match-all" class="btn-match-all hidden"></button>
-          <p class="sub">Tik voor bewerken, matchen en ingeboekt markeren. Vegen kan ook: rechts bewerken, links verwijderen.</p>
-          <ul id="bank-open-list" class="boek-list"></ul>
-        </div>
-
-        <div class="card">
-          <h2>Laatste transacties</h2>
           <input id="bank-zoek" placeholder="🔍 Zoek in alle bankregels…" autocomplete="off" />
-          <ul id="bank-recent-list" class="boek-list"></ul>
+          <button type="button" id="btn-bank-match-all" class="btn-match-all hidden"></button>
+          <p class="sub">Tik een regel voor koppelen, bewerken en afvinken. Vegen kan ook: rechts bewerken, links verwijderen.</p>
+          <ul id="bank-lijst" class="boek-list"></ul>
+          <button type="button" id="btn-bank-meer" class="btn-secondary btn-inline hidden"></button>
         </div>
       </section>
 
@@ -224,6 +226,7 @@
           </div>
           <label for="inkoop-opmerking">Opmerking</label>
           <input id="inkoop-opmerking" autocomplete="off" />
+          <div id="inkoop-koppel-blok" class="koppel-blok hidden"></div>
           <label class="check-row hidden" id="inkoop-bank-check-row">
             <input type="checkbox" id="inkoop-bank-check" />
             <span id="inkoop-bank-check-label">Bankregel(s) afvinken</span>
@@ -329,6 +332,7 @@
           </div>
           <label for="verkoop-opmerking">Opmerking</label>
           <input id="verkoop-opmerking" autocomplete="off" />
+          <div id="verkoop-koppel-blok" class="koppel-blok hidden"></div>
           <label class="check-row hidden" id="verkoop-bank-check-row">
             <input type="checkbox" id="verkoop-bank-check" />
             <span id="verkoop-bank-check-label">Bankregel(s) afvinken</span>
@@ -433,13 +437,13 @@
             <div class="kpi"><span class="kpi-label">Kosten</span><span id="kpi-kosten" class="kpi-value">—</span></div>
             <div class="kpi"><span class="kpi-label">Resultaat</span><span id="kpi-resultaat" class="kpi-value">—</span></div>
           </div>
-          <p class="sub">Netto bedragen, exclusief BTW.</p>
           <p id="ovz-kia" class="sub hidden"></p>
           <button type="button" id="btn-jaarrapport" class="btn-secondary btn-inline">📄 Jaarrapport (PDF)</button>
         </div>
 
-        <div class="card">
-          <h2>Saldo alle rekeningen</h2>
+        <!-- ---- Saldo en prognose ---- -->
+        <details class="card card-fold" data-fold="saldo" open>
+          <summary class="fold-head">Saldo alle rekeningen</summary>
           <div class="kpi-row">
             <div class="kpi kpi-rabo"><span class="kpi-label">Rabo lopend</span><span id="kpi-saldo-rabo" class="kpi-value">—</span></div>
             <div class="kpi kpi-knab"><span class="kpi-label">Knab lopend</span><span id="kpi-saldo-knab" class="kpi-value">—</span></div>
@@ -451,10 +455,10 @@
           <p id="ovz-spaar-uitleg" class="sub">—</p>
           <button type="button" id="btn-ovz-spaar" class="btn-secondary btn-inline hidden">Spaarregels tonen</button>
           <div id="ovz-spaar-regels" class="hidden"></div>
-        </div>
+        </details>
 
-        <div class="card">
-          <h2>Prognose <span id="prog-jaar" class="preview-name"></span></h2>
+        <details class="card card-fold" data-fold="prognose">
+          <summary class="fold-head">Prognose <span id="prog-jaar" class="preview-name"></span></summary>
           <p id="prog-basis" class="sub">—</p>
           <div class="kpi-row">
             <div class="kpi"><span class="kpi-label">Omzet</span><span id="kpi-prog-omzet" class="kpi-value">—</span></div>
@@ -472,154 +476,118 @@
           <div class="btn-row">
             <button type="button" id="btn-prog-aannames" class="btn-secondary">⚙︎ Aannames en tarieven</button>
           </div>
-        </div>
+        </details>
 
-        <div class="card">
-          <h2>Onbetaalde verkoopfacturen</h2>
+        <!-- ---- Werkvoorraad: alles wat nog aandacht vraagt ---- -->
+        <details class="card card-fold" data-fold="todo" open>
+          <summary class="fold-head">Nog te doen <span id="fold-todo-badge" class="fold-badge"></span></summary>
+
+          <div class="invoer-stats">
+            <div>
+              <span class="stat-label">Bankregels open</span>
+              <span id="ovz-bank-open" class="stat-value">—</span>
+            </div>
+            <div>
+              <span class="stat-label">Facturen in map</span>
+              <span id="ovz-files-open" class="stat-value">—</span>
+            </div>
+          </div>
+
+          <h3 class="fold-sub">Koppelingen die niet kloppen <span id="kpi-koppel-fout" class="count-badge"></span></h3>
+          <div id="ovz-koppel-fout"></div>
+
+          <h3 class="fold-sub">Facturen zonder bankregel <span id="kpi-fact-los" class="count-badge"></span></h3>
+          <div id="ovz-fact-los"></div>
+
+          <h3 class="fold-sub">Ingeboekte bankregels zonder factuur <span id="kpi-bank-los" class="count-badge"></span></h3>
+          <div id="ovz-bank-los"></div>
+          <p class="sub">Bankregels zonder factuur zijn de bijzondere gevallen voor de jaaropgaaf (bankkosten, privé, overboekingen). Reiskosten en afschrijvingen worden niet als "los" geteld.</p>
+        </details>
+
+        <!-- ---- Openstaande verkoopfacturen ---- -->
+        <details class="card card-fold" data-fold="onbetaald">
+          <summary class="fold-head">Onbetaalde verkoopfacturen <span id="fold-onbetaald-badge" class="fold-badge"></span></summary>
           <div class="kpi-row">
             <div class="kpi"><span class="kpi-label">Openstaand</span><span id="kpi-onbetaald" class="kpi-value">—</span></div>
             <div class="kpi"><span class="kpi-label">Facturen</span><span id="kpi-onbetaald-n" class="kpi-value">—</span></div>
           </div>
           <div id="ovz-onbetaald"></div>
-        </div>
+        </details>
 
-        <div class="card">
-          <h2>Verloop per maand</h2>
+        <!-- ---- Cijfers ---- -->
+        <details class="card card-fold" data-fold="cijfers">
+          <summary class="fold-head">Cijfers per maand, kwartaal en BTW</summary>
+          <h3 class="fold-sub">Verloop per maand</h3>
           <div id="ovz-maanden" class="ovz-months"></div>
           <p id="ovz-maand-detail" class="sub">Tik op een maand voor de bedragen.</p>
           <p class="sub"><span class="legend-dot legend-omzet"></span> omzet &nbsp; <span class="legend-dot legend-kosten"></span> kosten</p>
-        </div>
 
-        <div class="card">
-          <h2>Per kwartaal</h2>
+          <h3 class="fold-sub">Per kwartaal</h3>
           <div class="loc-table-wrap">
-            <table class="loc-table" aria-label="Kwartaaloverzicht">
+            <table class="loc-table">
               <thead>
-                <tr><th>Q</th><th>Omzet</th><th>Kosten</th><th>Resultaat</th></tr>
+                <tr><th>Kw</th><th class="num">Omzet</th><th class="num">Kosten</th><th class="num">Resultaat</th></tr>
               </thead>
               <tbody id="ovz-kwartaal-body"></tbody>
             </table>
           </div>
-        </div>
 
-        <div class="card">
-          <h2>BTW per kwartaal</h2>
+          <h3 class="fold-sub">BTW per kwartaal</h3>
           <div class="loc-table-wrap">
-            <table class="loc-table" aria-label="BTW per kwartaal">
+            <table class="loc-table">
               <thead>
-                <tr><th>Q</th><th>Verschuldigd</th><th>Voorbelasting</th><th>Te betalen</th></tr>
+                <tr><th>Kw</th><th class="num">Te betalen</th><th class="num">Terug</th><th class="num">Saldo</th></tr>
               </thead>
               <tbody id="ovz-btw-body"></tbody>
             </table>
           </div>
           <p class="sub" id="ovz-btw-detail">—</p>
-        </div>
+        </details>
 
-        <div class="card">
-          <h2>Omzet per klant</h2>
+        <!-- ---- Ranglijsten ---- -->
+        <details class="card card-fold" data-fold="rang">
+          <summary class="fold-head">Klanten, categorieën, projecten</summary>
+          <h3 class="fold-sub">Omzet per klant</h3>
           <div id="ovz-klanten" class="ovz-rank"></div>
-        </div>
-
-        <div class="card">
-          <h2>Kosten per categorie</h2>
+          <h3 class="fold-sub">Kosten per categorie</h3>
           <div id="ovz-categorieen" class="ovz-rank"></div>
-        </div>
-
-        <div class="card">
-          <h2>Kosten per project</h2>
+          <h3 class="fold-sub">Kosten per project</h3>
           <div id="ovz-projecten" class="ovz-rank"></div>
-        </div>
-
-        <div class="card">
-          <h2>Grootste leveranciers</h2>
+          <h3 class="fold-sub">Grootste leveranciers</h3>
           <div id="ovz-leveranciers" class="ovz-rank"></div>
-        </div>
+        </details>
 
-        <div class="card">
-          <h2>Privé-opnames</h2>
+        <!-- ---- Privé en reiskosten ---- -->
+        <details class="card card-fold" data-fold="prive">
+          <summary class="fold-head">Privé-opnames en reiskosten</summary>
+          <h3 class="fold-sub">Privé-opnames</h3>
           <div class="kpi-row">
             <div class="kpi"><span class="kpi-label">Opgenomen</span><span id="kpi-prive-op" class="kpi-value">—</span></div>
             <div class="kpi"><span class="kpi-label">Gestort</span><span id="kpi-prive-in" class="kpi-value">—</span></div>
             <div class="kpi"><span class="kpi-label">Netto opgenomen</span><span id="kpi-prive-netto" class="kpi-value">—</span></div>
           </div>
           <div id="prive-overig"></div>
-          <p class="sub">Telt alleen échte overboekingen van/naar privé ("Privé opname", opstartbudget, "vanuit privé"). Aankopen met een privé-deel staan er los onder.</p>
-        </div>
 
-        <div class="card">
-          <h2>Reiskosten</h2>
+          <h3 class="fold-sub">Reiskosten</h3>
           <div class="kpi-row">
             <div class="kpi"><span class="kpi-label">Ritten</span><span id="kpi-ritten" class="kpi-value">—</span></div>
             <div class="kpi"><span class="kpi-label">Kilometers</span><span id="kpi-km" class="kpi-value">—</span></div>
             <div class="kpi"><span class="kpi-label">Kosten</span><span id="kpi-reis" class="kpi-value">—</span></div>
           </div>
-        </div>
+        </details>
 
-        <div class="card">
-          <h2>Nog te doen</h2>
-          <div class="invoer-stats row-2">
-            <div>
-              <span class="stat-label">Open bankregels</span>
-              <span id="ovz-bank-open" class="stat-value">—</span>
-            </div>
-            <div>
-              <span class="stat-label">Facturen te verwerken</span>
-              <span id="ovz-files-open" class="stat-value">—</span>
-            </div>
-          </div>
-        </div>
+        <!-- ---- Instellingen ---- -->
+        <details class="card card-fold" data-fold="instellingen">
+          <summary class="fold-head">Instellingen en account</summary>
 
-        <div class="card">
-          <h2>Koppelingscontrole</h2>
-          <div class="kpi-row">
-            <div class="kpi"><span class="kpi-label">Facturen zonder bankregel</span><span id="kpi-fact-los" class="kpi-value">—</span></div>
-            <div class="kpi"><span class="kpi-label">Bankregels zonder factuur</span><span id="kpi-bank-los" class="kpi-value">—</span></div>
-          </div>
-          <div id="ovz-fact-los"></div>
-          <div id="ovz-bank-los"></div>
-          <p class="sub">Bankregels zonder factuur zijn de bijzondere gevallen voor de jaaropgaaf (bankkosten, privé, overboekingen). Reiskosten en afschrijvingen worden niet als "los" geteld.</p>
-        </div>
-
-        <div class="card">
-          <h2>Microsoft-account</h2>
+          <h3 class="fold-sub">Microsoft-account</h3>
           <p id="account-label">—</p>
           <div class="btn-row">
             <button type="button" id="btn-login" class="btn-primary">Inloggen</button>
             <button type="button" id="btn-logout" class="btn-secondary">Uitloggen</button>
           </div>
-        </div>
 
-        <div class="card">
-          <h2>App installeren</h2>
-          <p id="install-manual" class="sub hidden">
-            Geen installatie-knop zichtbaar? In Chrome: menu (⋮) →
-            <strong>Toevoegen aan startscherm</strong> of <strong>App installeren</strong>.
-          </p>
-          <div class="btn-row">
-            <button type="button" id="btn-install-settings" class="btn-primary">Installeren op startscherm</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <h2>Reiskosten-instellingen</h2>
-          <label for="set-km-tarief">Km-tarief (€/km)</label>
-          <input id="set-km-tarief" inputmode="decimal" autocomplete="off" />
-          <label for="set-thuis-adres">Thuisadres (vertrekpunt)</label>
-          <input id="set-thuis-adres" autocomplete="off" placeholder="Typ adres…" />
-          <ul id="set-thuis-results" class="adres-results hidden"></ul>
-          <p id="set-thuis-label" class="sub">—</p>
-        </div>
-
-        <div class="card">
-          <h2>Weergave</h2>
-          <label class="check-row toggle-dark">
-            <input type="checkbox" id="toggle-dark-mode" />
-            Donkere modus
-          </label>
-        </div>
-
-        <div class="card">
-          <h2>OneDrive-sync</h2>
+          <h3 class="fold-sub">OneDrive-sync</h3>
           <p class="sub">
             Schrijven gaat per cel via de Excel API — formules en opmaak blijven intact.
             Niet tegelijk schrijven in Excel op de PC en hier.
@@ -630,7 +598,30 @@
           <a id="onedrive-link" class="link hidden" href="#" target="_blank" rel="noopener"
             >Open werkboek in OneDrive</a
           >
-        </div>
+
+          <h3 class="fold-sub">Reiskosten</h3>
+          <label for="set-km-tarief">Km-tarief (€/km)</label>
+          <input id="set-km-tarief" inputmode="decimal" autocomplete="off" />
+          <label for="set-thuis-adres">Thuisadres (vertrekpunt)</label>
+          <input id="set-thuis-adres" autocomplete="off" placeholder="Typ adres…" />
+          <ul id="set-thuis-results" class="adres-results hidden"></ul>
+          <p id="set-thuis-label" class="sub">—</p>
+
+          <h3 class="fold-sub">Weergave</h3>
+          <label class="check-row toggle-dark">
+            <input type="checkbox" id="toggle-dark-mode" />
+            Donkere modus
+          </label>
+
+          <h3 class="fold-sub">App installeren</h3>
+          <p id="install-manual" class="sub hidden">
+            Geen installatie-knop zichtbaar? In Chrome: menu (⋮) →
+            <strong>Toevoegen aan startscherm</strong> of <strong>App installeren</strong>.
+          </p>
+          <div class="btn-row">
+            <button type="button" id="btn-install-settings" class="btn-primary">Installeren op startscherm</button>
+          </div>
+        </details>
       </section>
     </main>
 
@@ -640,6 +631,7 @@
       <div class="modal-sheet">
         <h2 id="bank-modal-title">Bankregel</h2>
         <p id="bank-modal-info" class="sub">—</p>
+        <div id="bank-m-status" class="bank-m-status">—</div>
         <label>Rekening</label>
         <div id="bank-m-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
           <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
@@ -680,6 +672,7 @@
         <div class="btn-row">
           <button type="button" id="btn-bank-m-ingeboekt" class="btn-primary">Markeer ingeboekt</button>
           <button type="button" id="btn-bank-m-save" class="btn-secondary">Opslaan</button>
+          <button type="button" id="btn-bank-m-sluit" class="btn-secondary">Sluiten</button>
           <button type="button" id="btn-bank-m-delete" class="btn-secondary btn-danger">Verwijderen</button>
         </div>
         <p class="sub">
@@ -700,6 +693,9 @@
         <h2 id="koppel-modal-title">Koppel aan bankregel</h2>
         <p id="koppel-modal-info" class="sub">—</p>
         <div id="koppel-gekoppeld"></div>
+        <div id="koppel-meer-wrap" class="hidden">
+          <button type="button" id="btn-koppel-meer" class="btn-secondary btn-inline">＋ Toch nog een bankregel koppelen</button>
+        </div>
         <input id="koppel-zoek" placeholder="🔍 Zoek in bankregels…" autocomplete="off" />
         <ul id="koppel-lijst" class="boek-list"></ul>
         <div id="koppel-som" class="koppel-som hidden"></div>
@@ -894,6 +890,7 @@
     <script src="js/offline_queue.js"></script>
     <script src="js/install.js"></script>
     <script src="js/app.js"></script>
+    <script src="js/ui_koppel.js"></script>
     <script src="js/ui_bank.js"></script>
     <script src="js/ui_inkoop.js"></script>
     <script src="js/ui_scan.js"></script>

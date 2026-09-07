@@ -322,10 +322,129 @@
     }
   }
 
+  // Open modals/panelen die met dezelfde data meelopen; zie registerLiveView.
+  // Ze staan buiten de tabs, dus lui tekenen geldt niet voor hen.
+  const liveViews = new Set();
+
+  function registerLiveView(fn) {
+    liveViews.add(fn);
+  }
+
   function renderAll() {
     nieuweIndexRonde();
     for (const name of Object.keys(tabs)) vuileTabs.add(name);
     tekenTab(state.tab);
+    for (const fn of liveViews) {
+      try {
+        fn();
+      } catch (e) {
+        console.error("live view:", e);
+      }
+    }
+  }
+
+  // === Direct zichtbaar: mutatie eerst lokaal toepassen ===
+  // Het werkboek is traag (Graph + Excel-sessie). Elke mutatie wordt daarom
+  // meteen op de rijen in het geheugen toegepast en getekend; de sync erna
+  // (refreshQuiet) haalt de echte waarheid op en overschrijft dit weer.
+
+  function findBank(excelRow) {
+    return state.bankRows.find((r) => r.excelRow === excelRow) || null;
+  }
+
+  function voegKoppelToe(huidig, waarde) {
+    const nieuw = String(waarde || "").trim();
+    if (!nieuw) return huidig || "";
+    const al = String(huidig || "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .includes(nieuw.toLowerCase());
+    if (al) return huidig;
+    return huidig ? `${huidig}, ${nieuw}` : nieuw;
+  }
+
+  function applyLocal(d) {
+    try {
+      switch (d.kind) {
+        case "bank_koppel":
+          for (const it of d.items || []) {
+            const r = findBank(it.excelRow);
+            if (!r) continue;
+            r.koppelingRaw = voegKoppelToe(r.koppelingRaw, it.waarde);
+            if (it.ingeboekt) r.ingeboekt = true;
+          }
+          break;
+        case "bank_ontkoppel": {
+          const r = findBank(d.excelRow);
+          if (r) r.koppelingRaw = d.waarde || "";
+          break;
+        }
+        case "bank_ingeboekt":
+          for (const row of d.rows || []) {
+            const r = findBank(row);
+            if (r) r.ingeboekt = d.value !== false;
+          }
+          break;
+        case "bank_update": {
+          const r = findBank(d.excelRow);
+          if (!r) break;
+          const f = d.fields || {};
+          if (f.omschrijving != null) r.omschrijving = f.omschrijving;
+          if (f.opmerking != null) r.opmerking = f.opmerking;
+          if (f.rekening != null) r.rekening = f.rekening;
+          if (f.updateAmounts) {
+            r.in = f.in;
+            r.uit = f.uit;
+          }
+          break;
+        }
+        case "bank_delete": {
+          const r = findBank(d.excelRow);
+          if (!r) break;
+          Object.assign(r, {
+            datum: null, datumStr: "", omschrijving: "", in: null, uit: null, saldo: null,
+            ingeboekt: false, opmerking: "", koppelingRaw: "", isEmpty: true, isEmptySlot: true,
+          });
+          break;
+        }
+        case "inkoop_update":
+        case "verkoop_update": {
+          const boek = d.kind === "inkoop_update" ? state.inkoopRows : state.verkoopRows;
+          const r = boek.find((x) => x.excelRow === d.excelRow);
+          const f = d.fields || {};
+          if (!r) break;
+          const datum = M().isoToDate(f.datumIso);
+          Object.assign(r, {
+            datum: datum || r.datum,
+            datumStr: M().formatDateNl(datum || r.datum),
+            partij: (d.kind === "inkoop_update" ? f.leverancier : f.klant) ?? r.partij,
+            omschrijving: f.omschrijving ?? r.omschrijving,
+            factuurnummer: f.factuurnummer ?? r.factuurnummer,
+            bedrag: f.bedrag != null ? f.bedrag : r.bedrag,
+            btw: f.btw != null ? f.btw : r.btw,
+            categorie: f.categorie ?? r.categorie,
+            project: f.project ?? r.project,
+            opmerking: f.opmerking ?? r.opmerking,
+            land: f.land ?? r.land,
+          });
+          break;
+        }
+        case "inkoop_delete":
+        case "verkoop_delete": {
+          const boek = d.kind === "inkoop_delete" ? state.inkoopRows : state.verkoopRows;
+          const r = boek.find((x) => x.excelRow === d.excelRow);
+          if (r) Object.assign(r, { isEmpty: true, partij: "", bedrag: null, datum: null, datumStr: "" });
+          break;
+        }
+        default:
+          return false;
+      }
+    } catch (e) {
+      console.error("applyLocal", e);
+      return false;
+    }
+    state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
+    return true;
   }
 
   /** Na inboeken de afgevinkte bankregels aan de nieuwe factuurregel koppelen. */
@@ -406,8 +525,14 @@
     meldSyncAan();
   }
 
-  /** Voert een mutatie uit; retourneert true als (direct) gelukt. */
+  /**
+   * Voert een mutatie uit; retourneert true als (direct) gelukt.
+   * De wijziging staat meteen in beeld (applyLocal); mislukt het schrijven,
+   * dan haalt een verse leesronde de echte stand terug.
+   */
   async function persistMutation(descriptor, { successMsg } = {}) {
+    const lokaal = applyLocal(descriptor);
+    if (lokaal) renderAll();
     if (!global.BoekOfflineQueue.isOnline()) {
       await queueOffline(descriptor);
       return true;
@@ -419,6 +544,7 @@
       if (e?.name === "GraphLockError") {
         showToast(e.message, true);
         setStatus("Werkboek vergrendeld", true);
+        if (lokaal) refreshQuiet();
         return false;
       }
       if (isNetworkError(e)) {
@@ -427,6 +553,7 @@
       }
       showToast(e.message || String(e), true);
       setStatus("Opslaan mislukt", true);
+      if (lokaal) refreshQuiet();
       return false;
     }
     if (successMsg) showToast(successMsg);
@@ -522,10 +649,22 @@
     '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>' +
     '<path d="M10 11v6M14 11v6"/></svg>';
 
-  /** Actieknoppen (potlood + prullenbak) voor een lijstitem. */
-  function rowActionsHtml() {
+  const ICON_LINK =
+    '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/>' +
+    '<path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
+
+  /**
+   * Actieknoppen voor een lijstitem: potlood + prullenbak, en met {link:true}
+   * ook een ketting-knop (bankregels koppelen).
+   */
+  function rowActionsHtml(opts = {}) {
     return (
       '<span class="row-actions">' +
+      (opts.link
+        ? `<button type="button" class="btn-icon btn-icon-link" data-act="link" aria-label="Bankregels koppelen" title="Bankregels koppelen">${ICON_LINK}</button>`
+        : "") +
       `<button type="button" class="btn-icon" data-act="edit" aria-label="Bewerken" title="Bewerken">${ICON_PENCIL}</button>` +
       `<button type="button" class="btn-icon btn-icon-danger" data-act="del" aria-label="Verwijderen" title="Verwijderen">${ICON_TRASH}</button>` +
       "</span>"
@@ -622,6 +761,11 @@
       el.addEventListener("click", () => el.closest(".modal")?.classList.add("hidden"));
     });
 
+    try {
+      global.BoekKoppel?.init();
+    } catch (e) {
+      console.error("init koppel:", e);
+    }
     for (const name of Object.keys(tabs)) {
       try {
         tabs[name].init?.();
@@ -701,6 +845,7 @@
     nieuweIndexRonde,
     $,
     registerTab,
+    registerLiveView,
     showToast,
     setStatus,
     haptic,
@@ -720,6 +865,7 @@
     setMatchDagen,
     ICON_PENCIL,
     ICON_TRASH,
+    ICON_LINK,
   };
   global.BoekBoot = boot;
 })(window);

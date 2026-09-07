@@ -418,20 +418,26 @@
     const index = App().koppelIndex();
     const losFact = M().facturenZonderBank(st.inkoopRows, st.verkoopRows, index);
     const losBank = M().bankZonderKoppeling(st.bankRows);
-    $("#kpi-fact-los").textContent = String(losFact.length);
-    $("#kpi-bank-los").textContent = String(losBank.length);
+    const fout = M().bankKoppelProblemen(st.bankRows, st.inkoopRows, st.verkoopRows);
+    $("#kpi-fact-los").textContent = losFact.length ? `(${losFact.length})` : "";
+    $("#kpi-bank-los").textContent = losBank.length ? `(${losBank.length})` : "";
+    $("#kpi-koppel-fout").textContent = fout.length ? `(${fout.length})` : "";
     renderOnbetaald(losFact);
     renderKia();
+    zetFoldBadge("todo", losFact.length + losBank.length + fout.length);
 
     // Klikbare lijstjes: tik = koppelen; ingedrukt houden (bankregels) = meerdere
     // selecteren en in één keer "geen factuur nodig" markeren.
-    const lijst = (elId, kop, items, regel, onTik, toonAlles, opts = {}) => {
+    const lijst = (elId, items, regel, onTik, toonAlles, opts = {}) => {
       const el = $(elId);
       el.innerHTML = "";
-      if (!items.length) return;
+      if (!items.length) {
+        el.innerHTML = `<p class="sub ovz-leeg">${opts.leeg || "Niets te doen ✓"}</p>`;
+        return;
+      }
       const h = document.createElement("p");
-      h.className = "sub";
-      h.innerHTML = `<strong>${kop}</strong> <span class="sub">— ${opts.hint || "tik om te koppelen"}</span>`;
+      h.className = "sub ovz-hint";
+      h.textContent = opts.hint || "tik om te koppelen";
       el.appendChild(h);
       const max = toonAlles ? items.length : 8;
       for (const it of items.slice(0, max)) {
@@ -472,18 +478,30 @@
         el.appendChild(p);
       }
     };
+    // Bankregels waarvan het gekoppelde factuurbedrag niet klopt — precies de
+    // gevallen die je anders pas bij de jaaropgaaf tegenkomt.
+    lijst(
+      "#ovz-koppel-fout",
+      fout,
+      (x) =>
+        `• ${x.row.datumStr} · ${x.row.omschrijving.slice(0, 30)} · ${M().fmtEur(
+          x.row.in != null ? x.row.in : x.row.uit
+        )} — ${M().koppelStatusTekst(x.status)}`,
+      (x) => global.BoekUiBank?.openByExcelRow(x.row.excelRow),
+      toonAllesSet.has("#ovz-koppel-fout"),
+      { hint: "tik om de bankregel te openen", leeg: "Alle koppelbedragen kloppen ✓" }
+    );
     lijst(
       "#ovz-fact-los",
-      "Facturen zonder bankregel:",
       losFact,
       (f) =>
         `• ${f.datumStr} · ${f.boek === "verkoop" ? "V" : "I"} · ${f.partij}${f.factuurnummer ? " · " + f.factuurnummer : ""} · ${M().fmtEur(f.bedrag)}`,
       (f) => openFactuurKoppel(f),
-      toonAllesSet.has("#ovz-fact-los")
+      toonAllesSet.has("#ovz-fact-los"),
+      { leeg: "Elke factuur heeft een bankregel ✓" }
     );
     lijst(
       "#ovz-bank-los",
-      "Ingeboekte bankregels zonder factuur:",
       losBank,
       (b) => `• ${b.datumStr} · ${b.omschrijving.slice(0, 38)} · ${M().fmtEur(b.in != null ? b.in : b.uit)}`,
       (b) => {
@@ -495,7 +513,8 @@
       },
       toonAllesSet.has("#ovz-bank-los"),
       {
-        hint: "tik = koppelen · ingedrukt houden = selecteren",
+        hint: "tik = openen en koppelen · ingedrukt houden = selecteren",
+        leeg: "Geen losse bankregels ✓",
         onLang: (b) => toggleBankSelectie(b),
         geselecteerd: (b) => bankSelectie.has(b.excelRow),
       }
@@ -513,6 +532,41 @@
         renderKoppelcontrole();
       });
     }
+  }
+
+  // === Inklapbare secties ===
+  // Het overzicht was één lange rol; nu staat alles in secties die onthouden
+  // of ze open of dicht stonden.
+  const FOLD_KEY = "boek_ovz_folds";
+
+  function foldStand() {
+    try {
+      return JSON.parse(localStorage.getItem(FOLD_KEY) || "{}") || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function initFolds() {
+    const stand = foldStand();
+    document.querySelectorAll("#panel-overzicht details[data-fold]").forEach((d) => {
+      const k = d.dataset.fold;
+      if (Object.prototype.hasOwnProperty.call(stand, k)) d.open = !!stand[k];
+      d.addEventListener("toggle", () => {
+        const s = foldStand();
+        s[k] = d.open;
+        try {
+          localStorage.setItem(FOLD_KEY, JSON.stringify(s));
+        } catch (_) {}
+      });
+    });
+  }
+
+  function zetFoldBadge(naam, n) {
+    const el = document.getElementById(`fold-${naam}-badge`);
+    if (!el) return;
+    el.textContent = n ? String(n) : "";
+    el.classList.toggle("hidden", !n);
   }
 
   const bankSelectie = new Set(); // excelRows in multi-select (long-press)
@@ -554,6 +608,7 @@
     const totaal = onbetaald.reduce((s, f) => s + f.rest, 0);
     $("#kpi-onbetaald").textContent = M().fmtEur(totaal);
     $("#kpi-onbetaald-n").textContent = String(onbetaald.length);
+    zetFoldBadge("onbetaald", onbetaald.length);
     const el = $("#ovz-onbetaald");
     el.innerHTML = "";
     for (const f of onbetaald.slice(0, 6)) {
@@ -670,209 +725,19 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     w.document.close();
   }
 
-  // === Factuur → bankregel koppelen (kiezer) ===
-  let koppelFactuur = null;
-
-  const bankKeuze = new Map(); // excelRow → bankregel (multi-select in de kiezer)
-  let koppelDoel = 0; // nog te dekken bedrag (rest bij deelbetalingen), altijd positief
-  let koppelTeken = 1; // −1 bij een creditnota: de bank staat dan aan de andere kant
-
+  /** Koppelen gaat via het gedeelde koppelcentrum (ui_koppel.js). */
   function openFactuurKoppel(f) {
-    const st = App().state;
-    koppelFactuur = f;
-    bankKeuze.clear();
-    // Nog te dekken: factuurbedrag minus wat al aan bankregels hangt
-    const dekking = App().dekkingIndex();
-    const gedekt = dekking.get(`${f.boek}|${f.excelRow}`) || 0;
-    // Rekenen in de richting van de factuur: bij een creditnota (negatief bedrag)
-    // is "nog te koppelen" het bedrag dat je nog terugkrijgt of terugbetaalt.
-    koppelTeken = (f.bedrag || 0) < 0 ? -1 : 1;
-    koppelDoel = Math.max(0, Math.round(((f.bedrag || 0) - gedekt) * koppelTeken * 100) / 100);
-    const heelBedrag = M().fmtEur(Math.abs(f.bedrag || 0));
-    const werkwoord =
-      koppelTeken < 0
-        ? f.boek === "verkoop" ? "terugbetaald" : "teruggekregen"
-        : f.boek === "verkoop" ? "ontvangen" : "betaald";
-    $("#koppel-modal-title").textContent = `${f.partij}${f.factuurnummer ? " · " + f.factuurnummer : ""}`;
-    $("#koppel-modal-info").textContent =
-      koppelDoel < 0.01
-        ? `${M().fmtEur(f.bedrag)} — volledig gekoppeld ✓`
-        : Math.abs(gedekt) > 0.005
-          ? `Nog ${M().fmtEur(koppelDoel)} van ${heelBedrag} te koppelen. Tik de bankregel(s) aan:`
-          : `Met welke bankregel(s) is deze ${koppelTeken < 0 ? "creditnota van " : ""}${heelBedrag} ` +
-            `${werkwoord}? Tik aan (meerdere kan, bijv. termijnen):`;
-    $("#koppel-zoek").value = "";
-    renderGekoppeldeBankregels(f);
-    // Eén exacte match op het restbedrag alvast aanvinken — één tik op Koppel is genoeg
-    if (koppelDoel >= 0.01) {
-      const kandidaten = M().bankKandidatenVoorFactuur(
-        { ...f, bedrag: koppelDoel * koppelTeken }, st.bankRows, ""
-      );
-      const exact = kandidaten.filter((b) => b.exact);
-      if (exact.length === 1) bankKeuze.set(exact[0].excelRow, exact[0]);
-    }
-    renderKoppelLijst();
-    $("#koppel-modal").classList.remove("hidden");
-  }
-
-  /** Blok "Al gekoppeld aan": bankregels van deze factuur, elk met ✕ om te ontkoppelen. */
-  function renderGekoppeldeBankregels(f) {
-    const st = App().state;
-    const el = $("#koppel-gekoppeld");
-    el.innerHTML = "";
-    const index = App().koppelIndex();
-    const regels = index.get(`${f.boek}|${f.excelRow}`) || [];
-    if (!regels.length) return;
-    const h = document.createElement("p");
-    h.className = "sub";
-    h.innerHTML = "<strong>Al gekoppeld aan:</strong>";
-    el.appendChild(h);
-    const ul = document.createElement("ul");
-    ul.className = "boek-list";
-    for (const b of regels) {
-      const li = document.createElement("li");
-      li.className = "boek-item";
-      const bedrag = b.in != null ? `+ ${M().fmtEur(b.in)}` : `− ${M().fmtEur(b.uit)}`;
-      li.innerHTML = `
-        <div class="bi-head">
-          <span class="bi-title bi-koppel">🔗 ${escapeHtml(b.omschrijving || "(geen omschrijving)")}</span>
-          <span class="bi-amount">${bedrag}</span>
-        </div>
-        <div class="bi-sub"><span>${b.datumStr}</span><span></span></div>
-        <span class="row-actions">
-          <button type="button" class="btn-icon btn-icon-danger" aria-label="Ontkoppelen" title="Ontkoppelen">✕</button>
-        </span>`;
-      li.querySelector("button").addEventListener("click", async () => {
-        const ok = await App().showConfirm(
-          `Deze factuur loskoppelen van bankregel ${b.datumStr} (${bedrag.replace(/[+−] /, "")})?`,
-          "Ontkoppelen",
-          "Annuleren"
-        );
-        if (!ok) return;
-        // Alleen déze factuur van de bankregel halen; andere koppelingen blijven staan
-        const rest = M()
-          .parseKoppelingen(b.koppelingRaw, st.inkoopRows, st.verkoopRows)
-          .filter((k) => !(k.boek === f.boek && k.row && k.row.excelRow === f.excelRow))
-          .map((k) => k.token)
-          .join(", ");
-        sluitFactuurKoppel();
-        await App().persistMutation(
-          { kind: "bank_ontkoppel", excelRow: b.excelRow, waarde: rest },
-          { successMsg: "Ontkoppeld" }
-        );
-      });
-      ul.appendChild(li);
-    }
-    el.appendChild(ul);
-  }
-
-  /** Bijdrage van een bankregel aan deze factuur: hoofdrichting positief,
-   * tegenrichting (terugboeking/refund) negatief. */
-  function bankKant(f, b) {
-    // Welke kant van de bank hoort bij deze factuur? Een creditnota draait het om.
-    const wilIn = M().factuurRichting(f.boek, f.bedrag || 0) > 0;
-    const plus = wilIn ? b.in : b.uit;
-    const min = wilIn ? b.uit : b.in;
-    return (plus || 0) - (min || 0);
-  }
-
-  function renderKoppelLijst() {
-    const f = koppelFactuur;
-    if (!f) return;
-    const st = App().state;
-    const list = $("#koppel-lijst");
-    list.innerHTML = "";
-    if (koppelDoel < 0.01) {
-      $("#koppel-zoek").classList.add("hidden");
-      $("#koppel-som").classList.add("hidden");
-      $("#btn-koppel-doe").classList.add("hidden");
-      return;
-    }
-    $("#koppel-zoek").classList.remove("hidden");
-    $("#btn-koppel-doe").classList.remove("hidden");
-    const zoek = $("#koppel-zoek").value;
-    const kandidaten = M().bankKandidatenVoorFactuur(
-      { ...f, bedrag: koppelDoel * koppelTeken }, st.bankRows, zoek
-    );
-    for (const b of kandidaten.slice(0, 8)) {
-      const sel = bankKeuze.has(b.excelRow);
-      const li = document.createElement("li");
-      li.className = "boek-item koppel-kandidaat" + (sel ? " selected" : "");
-      const bedrag = b.in != null ? `+ ${M().fmtEur(b.in)}` : `− ${M().fmtEur(b.uit)}`;
-      li.innerHTML = `
-        <div class="bi-head">
-          <span class="bi-title"><span class="koppel-check">${sel ? "☑" : "☐"}</span> ${escapeHtml(b.omschrijving || "(geen omschrijving)")}</span>
-          <span class="bi-amount">${bedrag}</span>
-        </div>
-        <div class="bi-sub"><span>${b.datumStr}</span><span class="koppel-exact">${b.exact ? "✓ bedrag klopt" : ""}</span></div>`;
-      li.addEventListener("click", () => {
-        if (bankKeuze.has(b.excelRow)) bankKeuze.delete(b.excelRow);
-        else bankKeuze.set(b.excelRow, b);
-        App().haptic(10);
-        renderKoppelLijst();
-      });
-      list.appendChild(li);
-    }
-    if (!list.children.length) {
-      list.innerHTML = `<li class="sub">${
-        zoek
-          ? "Niets gevonden — probeer een ander woord."
-          : `Geen passende bankregel gevonden — waarschijnlijk is de betaling nog niet binnen. Je kunt hierboven ook op omschrijving zoeken.`
-      }</li>`;
-    }
-    const som = [...bankKeuze.values()].reduce((s, b) => s + (bankKant(f, b) || 0), 0);
-    const somEl = $("#koppel-som");
-    const knop = $("#btn-koppel-doe");
-    somEl.classList.toggle("hidden", !bankKeuze.size);
-    if (bankKeuze.size) {
-      const klopt = Math.abs(som - koppelDoel) < 0.005;
-      somEl.textContent = `${bankKeuze.size} geselecteerd · ${M().fmtEur(som)} van ${M().fmtEur(koppelDoel)} ${klopt ? "✓ dekt precies" : "⚠ wijkt af"}`;
-      somEl.classList.toggle("som-ok", klopt);
-      somEl.classList.toggle("som-af", !klopt);
-    }
-    knop.disabled = !bankKeuze.size;
-    knop.textContent = bankKeuze.size > 1 ? `Koppel ${bankKeuze.size} bankregels` : "Koppel";
-  }
-
-  async function doeFactuurKoppel() {
-    const f = koppelFactuur;
-    if (!f || !bankKeuze.size) return;
-    const st = App().state;
-    const sel = [...bankKeuze.values()];
-    const som = sel.reduce((s, b) => s + (bankKant(f, b) || 0), 0);
-    if (Math.abs(som - koppelDoel) >= 0.005) {
-      const ok = await App().showConfirm(
-        `Som van de bankregels (${M().fmtEur(som)}) wijkt af van het nog te koppelen bedrag (${M().fmtEur(koppelDoel)}). Toch koppelen?`,
-        "Toch koppelen",
-        "Annuleren"
-      );
-      if (!ok) return;
-    }
-    const waarde = M().koppelWaarde(f.boek === "verkoop" ? "V" : "I", f, st.inkoopRows, st.verkoopRows);
-    sluitFactuurKoppel();
-    await App().persistMutation(
-      {
-        kind: "bank_koppel",
-        items: sel.map((b) => ({ excelRow: b.excelRow, waarde, ingeboekt: true })),
-      },
-      { successMsg: sel.length > 1 ? `${f.partij} gekoppeld aan ${sel.length} bankregels ✓` : `${f.partij} gekoppeld ✓` }
-    );
-  }
-
-  function sluitFactuurKoppel() {
-    $("#koppel-modal").classList.add("hidden");
-    koppelFactuur = null;
-  }
-
-  function escapeHtml(s) {
-    const d = document.createElement("div");
-    d.textContent = s == null ? "" : String(s);
-    return d.innerHTML;
+    global.BoekKoppel?.openFactuur(f);
   }
 
   function renderAccount() {
     const label = global.BoekAuth.getAccountLabel();
     $("#account-label").textContent = label || "Niet ingelogd";
+    // Zonder login is de inlogknop het enige wat telt — klap die sectie open.
+    if (!label) {
+      const fold = document.querySelector('#panel-overzicht details[data-fold="instellingen"]');
+      if (fold) fold.open = true;
+    }
     const link = $("#onedrive-link");
     if (App().state.webUrl) {
       link.href = App().state.webUrl;
@@ -938,9 +803,7 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
   }, 350);
 
   function init() {
-    $("#btn-koppel-sluit").addEventListener("click", sluitFactuurKoppel);
-    $("#btn-koppel-doe").addEventListener("click", doeFactuurKoppel);
-    $("#koppel-zoek").addEventListener("input", renderKoppelLijst);
+    initFolds();
     $("#btn-jaarrapport").addEventListener("click", openJaarrapport);
     $("#btn-ovz-year-prev").addEventListener("click", () => {
       jaar -= 1;

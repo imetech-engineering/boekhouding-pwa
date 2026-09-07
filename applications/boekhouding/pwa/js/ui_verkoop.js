@@ -188,9 +188,18 @@
     updateBankCheck();
   }
 
+  /** Bankregels bij de factuur die nu bewerkt wordt (leeg bij een nieuwe regel). */
+  function renderKoppelBlok() {
+    const el = $("#verkoop-koppel-blok");
+    const rows = App().state.verkoopRows;
+    const h = editRow ? rows.find((r) => r.excelRow === editRow) : null;
+    global.BoekKoppel?.renderBankBlok(el, h ? { ...h, boek: "verkoop" } : null);
+  }
+
   /** Bewerkmodus aan/uit: knoptekst en titel volgen de stand. */
   function setEditRow(row) {
     editRow = row;
+    renderKoppelBlok();
     $("#verkoop-form-title").textContent = row ? `Regel bewerken (rij ${row})` : "Factuur inboeken";
     $("#btn-verkoop-boek").textContent = row ? "Bijwerken" : "Inboeken";
     $("#btn-verkoop-boek-move").classList.toggle("hidden", !!row || !selectedFile);
@@ -311,37 +320,50 @@
   }
 
   let kopIndex = new Map();
+  let dekkingMap = new Map();
+
+  /** Betaalstatus onder een historie-regel; leeg voor regels zonder bankregel. */
+  function statusRegel(h) {
+    if (h.categorie === "Reiskosten" || h.categorie === "Afschrijving") return "";
+    const s = M().factuurStatus({ ...h, boek: "verkoop" }, dekkingMap);
+    if (s.kind === "ok") return '<div class="bi-status status-ok">✓ volledig ontvangen</div>';
+    if (s.kind === "deels") {
+      return `<div class="bi-status status-deels">◐ nog ${M().fmtEur(s.open)} van ${M().fmtEur(Math.abs(h.bedrag || 0))} open</div>`;
+    }
+    if (s.kind === "teveel") {
+      return `<div class="bi-status status-teveel">⚠ ${M().fmtEur(s.open)} téveel gekoppeld</div>`;
+    }
+    return '<div class="bi-status status-geen">○ geen bankregel gekoppeld</div>';
+  }
 
   function renderHistory() {
     const st = App().state;
     kopIndex = App().koppelIndex();
+    dekkingMap = App().dekkingIndex();
     const list = $("#verkoop-hist-list");
     const q = $("#verkoop-hist-search").value.trim().toLowerCase();
     list.innerHTML = "";
     let shown = 0;
     for (const h of intel().history) {
       if (q && !`${h.partij} ${h.omschrijving} ${h.categorie} ${h.factuurnummer || ""}`.toLowerCase().includes(q)) continue;
-      const gekoppeld = kopIndex.has(`verkoop|${h.excelRow}`);
       const li = document.createElement("li");
       li.className = "boek-item" + (editRow === h.excelRow ? " selected" : "");
       li.innerHTML = `
         <div class="bi-head">
           <span class="bi-title">${escapeHtml(h.partij)}</span>
-          <span class="bi-amount in">${gekoppeld ? "🔗 " : ""}${M().fmtEur(h.bedrag)}</span>
+          <span class="bi-amount in">${M().fmtEur(h.bedrag)}</span>
         </div>
         <div class="bi-sub"><span>${escapeHtml(h.omschrijving).slice(0, 70)}</span><span>${h.factuurnummer || ""} · ${h.datumStr}</span></div>
-        ${App().rowActionsHtml()}`;
+        ${statusRegel(h)}
+        ${App().rowActionsHtml({ link: true })}`;
       li.addEventListener("click", (ev) => {
         if (ev.target.closest("button")) return;
         applyHistory(h);
       });
-      if (gekoppeld) {
-        // Tik op 🔗 → koppelingen van deze factuur bekijken/ontkoppelen/aanvullen
-        li.querySelector(".bi-amount").addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          global.BoekUiOverzicht?.openFactuurKoppel({ ...h, boek: "verkoop" });
-        });
-      }
+      li.querySelector('[data-act="link"]').addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        global.BoekKoppel?.openFactuur({ ...h, boek: "verkoop" });
+      });
       li.querySelector('[data-act="edit"]').addEventListener("click", () => startEdit(h));
       li.querySelector('[data-act="del"]').addEventListener("click", () => deleteRow(h));
       App().bindSwipe(li, { onEdit: () => startEdit(h), onDelete: () => deleteRow(h) });
@@ -370,6 +392,7 @@
   function render() {
     renderFiles();
     renderHistory();
+    renderKoppelBlok();
     updateBankCheck();
   }
 

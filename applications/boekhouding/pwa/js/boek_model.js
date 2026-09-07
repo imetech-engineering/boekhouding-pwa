@@ -727,6 +727,123 @@
     return dekking;
   }
 
+
+  // === Klopt de koppeling? (bedragcontrole per bankregel en per factuur) ===
+
+  /**
+   * Vergelijkt het bedrag van een bankregel met de som van de gekoppelde
+   * facturen (tegenrichting telt negatief) én kijkt of die facturen over álle
+   * bankregels heen volledig gedekt zijn.
+   * kind: geen | geenNodig | ok | deel | open | teveel | onbekend
+   *   ok       — bankbedrag == som van de facturen
+   *   deel     — bankregel dekt een deel, de rest hangt aan andere bankregels
+   *   open     — deelbetaling, factuur nog niet volledig gedekt
+   *   teveel   — een stuk van de bankregel hangt aan geen enkele factuur
+   *   onbekend — koppeltekst verwijst naar een factuur die niet (meer) bestaat
+   */
+  function bankKoppelStatus(bankRow, inkoopRows, verkoopRows, dekking) {
+    const bedrag = bankRow.in != null ? bankRow.in : bankRow.uit;
+    const raw = String(bankRow.koppelingRaw || "").trim();
+    const basis = {
+      bedrag, som: 0, verschil: bedrag || 0, aantal: 0, koppelingen: [], open: 0, onbekend: 0,
+    };
+    if (!raw) return { ...basis, kind: "geen" };
+    const alle = parseKoppelingen(raw, inkoopRows, verkoopRows);
+    const ks = alle.filter((k) => k.token !== "-");
+    if (!ks.length) return { ...basis, kind: "geenNodig", koppelingen: alle };
+    const onbekend = ks.filter((k) => !k.row).length;
+    const hoofd = bankRow.in != null ? "verkoop" : "inkoop";
+    const som =
+      Math.round(
+        ks.reduce((s, k) => s + (k.row ? (k.boek === hoofd ? 1 : -1) * (k.row.bedrag || 0) : 0), 0) * 100
+      ) / 100;
+    const verschil = bedrag == null ? 0 : Math.round((bedrag - som) * 100) / 100;
+    // Hoeveel van de gekoppelde facturen staat over het geheel genomen nog open?
+    // Alleen facturen die aan déze kant van de bank horen tellen mee; een
+    // verrekening (fee op een uitbetaling) is per definitie niet "open", en een
+    // creditnota hoort juist wél bij de andere bankkant.
+    let open = 0;
+    if (dekking) {
+      for (const k of ks) {
+        if (!k.row) continue;
+        const hoortHier = factuurRichting(k.boek, k.row.bedrag || 0) > 0 === (bankRow.in != null);
+        if (!hoortHier) continue;
+        const fs = factuurStatus({ ...k.row, boek: k.boek }, dekking);
+        if (fs.kind === "deels") open += fs.open;
+      }
+      open = Math.round(open * 100) / 100;
+    }
+    const s = { ...basis, som, verschil, aantal: ks.length, koppelingen: alle, open, onbekend };
+    if (onbekend || bedrag == null) return { ...s, kind: "onbekend" };
+    if (Math.abs(verschil) < 0.005) return { ...s, kind: "ok" };
+    if (verschil < 0) return { ...s, kind: open > 0.005 ? "open" : "deel" };
+    return { ...s, kind: "teveel" };
+  }
+
+  /** Statussen die aandacht vragen (filter "controle" in het bankboek). */
+  const KOPPEL_PROBLEEM = new Set(["open", "teveel", "onbekend"]);
+
+  function koppelStatusTekst(s) {
+    switch (s.kind) {
+      case "ok":
+        return `bedrag klopt${s.aantal > 1 ? ` (${s.aantal} facturen)` : ""}`;
+      case "deel":
+        return "deelbetaling · factuur verder gedekt";
+      case "open":
+        return `deelbetaling · nog ${fmtEur(s.open)} open op de factuur`;
+      case "teveel":
+        return `${fmtEur(Math.abs(s.verschil))} van deze bankregel niet gekoppeld`;
+      case "onbekend":
+        return "koppeling verwijst naar een onbekende factuur";
+      case "geenNodig":
+        return "geen factuur nodig";
+      default:
+        return "niet gekoppeld";
+    }
+  }
+
+  /** Icoon per status — één blik is genoeg in de lijst. */
+  function koppelStatusIcoon(kind) {
+    if (kind === "ok" || kind === "deel") return "✓";
+    if (kind === "geenNodig") return "–";
+    if (kind === "geen") return "○";
+    return "⚠";
+  }
+
+  /**
+   * Hoe ver is een factuur betaald? gedekt/rest uit de dekkingskaart.
+   * `open` is altijd positief: het bedrag dat nog moet komen of terug moet.
+   * Bij een creditnota (negatief bedrag) staat de bank aan de andere kant, dus
+   * het teken van het factuurbedrag bepaalt wat "nog open" betekent.
+   * kind: geen | deels | ok | teveel
+   */
+  function factuurStatus(factuur, dekking) {
+    const boek = String(factuur.boek || "").toLowerCase() === "verkoop" ? "verkoop" : "inkoop";
+    const bedrag = factuur.bedrag || 0;
+    const teken = bedrag < 0 ? -1 : 1;
+    const ruw = dekking ? dekking.get(`${boek}|${factuur.excelRow}`) : 0;
+    if (ruw === Infinity) return { kind: "ok", gedekt: bedrag, rest: 0, open: 0 };
+    const gedekt = ruw || 0;
+    const rest = Math.round((bedrag - gedekt) * 100) / 100;
+    if (Math.abs(gedekt) < 0.005) {
+      return { kind: "geen", gedekt: 0, rest: bedrag, open: Math.abs(bedrag) };
+    }
+    if (Math.abs(rest) < 0.005) return { kind: "ok", gedekt, rest: 0, open: 0 };
+    return { kind: rest * teken > 0 ? "deels" : "teveel", gedekt, rest, open: Math.abs(rest) };
+  }
+
+  /** Alle bankregels waarvan de koppeling niet klopt — de controlelijst. */
+  function bankKoppelProblemen(bankRows, inkoopRows, verkoopRows) {
+    const dekking = factuurDekking(bankRows, inkoopRows, verkoopRows);
+    const uit = [];
+    for (const r of bankRows) {
+      if (r.isEmpty || !r.koppelingRaw) continue;
+      const status = bankKoppelStatus(r, inkoopRows, verkoopRows, dekking);
+      if (KOPPEL_PROBLEEM.has(status.kind)) uit.push({ row: r, status });
+    }
+    return uit.reverse();
+  }
+
   /**
    * Richting van een factuur: brengt hij geld binnen (+1) of gaat er geld uit (−1)?
    * Een creditnota draait het om — een negatieve inkoopfactuur wordt aan jou
@@ -830,10 +947,11 @@
 
   /**
    * Kandidaat-bankregels om een losse factuur aan te koppelen (vanuit de controle-lijst).
-   * Richting: verkoop → bank-in, inkoop → bank-uit. Exact bedrag + dichtstbijzijnde datum eerst;
-   * bankregels waar deze factuur al aan hangt vallen af. Met zoekterm: filter op omschrijving.
+   * Richting: verkoop → bank-in, inkoop → bank-uit. Exact bedrag + dichtstbijzijnde datum eerst.
+   * Bankregels in alGekoppeld (Set van excelRows) en regels die met "-" als
+   * "geen factuur nodig" gemarkeerd zijn doen niet mee. Met zoekterm: filter op omschrijving.
    */
-  function bankKandidatenVoorFactuur(factuur, bankRows, zoek = "") {
+  function bankKandidatenVoorFactuur(factuur, bankRows, zoek = "", alGekoppeld = null) {
     const q = String(zoek || "").trim().toLowerCase();
     // Een creditnota staat aan de andere kant van de bank: een negatieve
     // inkoopfactuur krijg je terug (bijschrijving), een negatieve verkoopfactuur
@@ -845,6 +963,8 @@
     const tegenPool = [];
     for (const r of bankRows) {
       if (r.isEmpty || (r.in == null && r.uit == null)) continue;
+      if (alGekoppeld && alGekoppeld.has(r.excelRow)) continue; // hangt er al aan
+      if (String(r.koppelingRaw || "").trim() === "-") continue; // bewust zonder factuur
       const kant = wilIn ? r.in : r.uit;
       const exact = kant != null && doel != null && Math.abs(kant - doel) < 0.005;
       if (q) {
@@ -1466,6 +1586,8 @@
     bankMatchesForInvoice, invoiceMatchesForBankRow, factuurRichting,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
+    bankKoppelStatus, koppelStatusTekst, koppelStatusIcoon, factuurStatus, bankKoppelProblemen,
+    KOPPEL_PROBLEEM,
     priveInkoop, isPriveBetaald,
     normalizeLand, countryToType,
     parseVerkoopFilename, parseInkoopFilename, buildInkoopFilename,

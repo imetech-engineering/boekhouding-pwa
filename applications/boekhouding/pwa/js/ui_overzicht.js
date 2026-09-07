@@ -419,12 +419,14 @@
     const losFact = M().facturenZonderBank(st.inkoopRows, st.verkoopRows, index);
     const losBank = M().bankZonderKoppeling(st.bankRows);
     const fout = M().bankKoppelProblemen(st.bankRows, st.inkoopRows, st.verkoopRows);
+    const teveel = M().facturenTeveelGedekt(st.bankRows, st.inkoopRows, st.verkoopRows);
     $("#kpi-fact-los").textContent = losFact.length ? `(${losFact.length})` : "";
     $("#kpi-bank-los").textContent = losBank.length ? `(${losBank.length})` : "";
-    $("#kpi-koppel-fout").textContent = fout.length ? `(${fout.length})` : "";
+    const nFout = fout.length + teveel.length;
+    $("#kpi-koppel-fout").textContent = nFout ? `(${nFout})` : "";
     renderOnbetaald(losFact);
     renderKia();
-    zetFoldBadge("todo", losFact.length + losBank.length + fout.length);
+    zetFoldBadge("todo", losFact.length + losBank.length + nFout);
 
     // Klikbare lijstjes: tik = koppelen; ingedrukt houden (bankregels) = meerdere
     // selecteren en in één keer "geen factuur nodig" markeren.
@@ -480,16 +482,31 @@
     };
     // Bankregels waarvan het gekoppelde factuurbedrag niet klopt — precies de
     // gevallen die je anders pas bij de jaaropgaaf tegenkomt.
-    lijst(
-      "#ovz-koppel-fout",
-      fout,
-      (x) =>
-        `• ${x.row.datumStr} · ${x.row.omschrijving.slice(0, 30)} · ${M().fmtEur(
+    // Bankregels met een probleem én facturen waar in totaal te veel aan hangt;
+    // dat laatste is niet aan één bankregel toe te schrijven.
+    const foutItems = [
+      ...fout.map((x) => ({
+        soort: "bank",
+        tekst: `• ${x.row.datumStr} · ${x.row.omschrijving.slice(0, 30)} · ${M().fmtEur(
           x.row.in != null ? x.row.in : x.row.uit
         )} — ${M().koppelStatusTekst(x.status)}`,
-      (x) => global.BoekUiBank?.openByExcelRow(x.row.excelRow),
+        open: () => global.BoekUiBank?.openByExcelRow(x.row.excelRow),
+      })),
+      ...teveel.map((f) => ({
+        soort: "factuur",
+        tekst: `• ${f.datumStr} · ${f.boek === "verkoop" ? "V" : "I"} · ${f.partij} · ${M().fmtEur(
+          f.bedrag
+        )} — er hangt ${M().fmtEur(f.status.open)} téveel aan bankregels`,
+        open: () => openFactuurKoppel(f),
+      })),
+    ];
+    lijst(
+      "#ovz-koppel-fout",
+      foutItems,
+      (x) => x.tekst,
+      (x) => x.open(),
       toonAllesSet.has("#ovz-koppel-fout"),
-      { hint: "tik om de bankregel te openen", leeg: "Alle koppelbedragen kloppen ✓" }
+      { hint: "tik om te openen en te corrigeren", leeg: "Alle koppelbedragen kloppen ✓" }
     );
     lijst(
       "#ovz-fact-los",

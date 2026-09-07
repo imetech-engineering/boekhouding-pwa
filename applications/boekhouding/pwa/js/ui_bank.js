@@ -105,9 +105,12 @@
     if (k.token === "-") return "geen factuur (bewust)";
     if (k.row) {
       const nr = k.row.factuurnummer ? ` · ${escapeHtml(k.row.factuurnummer)}` : "";
-      return `${escapeHtml(k.row.partij)}${nr} · ${M().fmtEur(k.row.bedrag)} · ${k.row.datumStr}`;
+      // Eén nummer over meerdere regels: toon het totaal van de hele groep.
+      const bedrag = k.groepBedrag != null ? k.groepBedrag : k.row.bedrag;
+      const dubbel = k.ambigu ? ` (${k.ambigu} regels met dit nummer)` : "";
+      return `${escapeHtml(k.row.partij)}${nr} · ${M().fmtEur(bedrag)} · ${k.row.datumStr}${dubbel}`;
     }
-    return `${escapeHtml(k.token)} (niet gevonden)`;
+    return escapeHtml(k.token); // de statusregel eronder legt uit wat eraan schort
   }
 
   function recenteOmschrijvingen() {

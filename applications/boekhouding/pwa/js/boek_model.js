@@ -586,16 +586,28 @@
         continue;
       }
       const laag = token.toLowerCase();
-      const inI = inkoopRows.filter((r) => !r.isEmpty && r.factuurnummer.toLowerCase() === laag);
-      const inV = verkoopRows.filter((r) => !r.isEmpty && r.factuurnummer.toLowerCase() === laag);
-      if (inI.length + inV.length === 1) {
-        uit.push(
-          inI.length
-            ? { boek: "inkoop", row: inI[0], token }
-            : { boek: "verkoop", row: inV[0], token }
-        );
+      const kandidaten = [
+        ...inkoopRows
+          .filter((r) => !r.isEmpty && r.factuurnummer.toLowerCase() === laag)
+          .map((r) => ({ boek: "inkoop", row: r })),
+        ...verkoopRows
+          .filter((r) => !r.isEmpty && r.factuurnummer.toLowerCase() === laag)
+          .map((r) => ({ boek: "verkoop", row: r })),
+      ];
+      if (kandidaten.length === 1) {
+        uit.push({ ...kandidaten[0], token });
+      } else if (kandidaten.length > 1) {
+        // Nummer komt vaker voor: een factuur die over twee regels gesplitst is,
+        // of een leverancier die nummers hergebruikt. Geen kapotte koppeling —
+        // de koppeling wijst naar de hele groep. `row` is de oudste boeking
+        // (zodat er altijd iets te tonen is), `groep` bevat ze allemaal en
+        // `groepBedrag` het totaal, waarmee de bedragen weer kloppen.
+        const groep = kandidaten.slice().sort((a, b) => a.row.excelRow - b.row.excelRow);
+        const groepBedrag =
+          Math.round(groep.reduce((t, g) => t + (g.row.bedrag || 0), 0) * 100) / 100;
+        uit.push({ ...groep[0], token, ambigu: groep.length, groep, groepBedrag });
       } else {
-        uit.push({ boek: null, row: null, token }); // onbekend of niet uniek
+        uit.push({ boek: null, row: null, token }); // hoort bij geen enkele factuur
       }
     }
     return uit;
@@ -608,9 +620,12 @@
       if (b.isEmpty || !b.koppelingRaw) continue;
       for (const k of parseKoppelingen(b.koppelingRaw, inkoopRows, verkoopRows)) {
         if (!k.row) continue;
-        const sleutel = `${k.boek}|${k.row.excelRow}`;
-        if (!index.has(sleutel)) index.set(sleutel, []);
-        index.get(sleutel).push(b);
+        // Bij een gesplitste factuur hoort de bankregel bij alle regels met dat nummer.
+        for (const g of k.groep || [{ boek: k.boek, row: k.row }]) {
+          const sleutel = `${g.boek}|${g.row.excelRow}`;
+          if (!index.has(sleutel)) index.set(sleutel, []);
+          index.get(sleutel).push(b);
+        }
       }
     }
     return index;
@@ -718,8 +733,18 @@
         const k = ks[0];
         const bijdrage =
           k.boek === "inkoop" ? (b.uit || 0) - (b.in || 0) : (b.in || 0) - (b.uit || 0);
-        const key = `${k.boek}|${k.row.excelRow}`;
-        dekking.set(key, (dekking.get(key) || 0) + bijdrage);
+        if (k.groep && k.groepBedrag) {
+          // Eén factuurnummer over meerdere regels (gesplitste factuur): de
+          // betaling hoort naar rato bij alle regels, niet alleen bij de eerste.
+          for (const g of k.groep) {
+            const deel = (bijdrage * (g.row.bedrag || 0)) / k.groepBedrag;
+            const gk = `${g.boek}|${g.row.excelRow}`;
+            dekking.set(gk, (dekking.get(gk) || 0) + deel);
+          }
+        } else {
+          const key = `${k.boek}|${k.row.excelRow}`;
+          dekking.set(key, (dekking.get(key) || 0) + bijdrage);
+        }
       } else {
         for (const k of ks) dekking.set(`${k.boek}|${k.row.excelRow}`, Infinity);
       }
@@ -745,17 +770,27 @@
     const bedrag = bankRow.in != null ? bankRow.in : bankRow.uit;
     const raw = String(bankRow.koppelingRaw || "").trim();
     const basis = {
-      bedrag, som: 0, verschil: bedrag || 0, aantal: 0, koppelingen: [], open: 0, onbekend: 0,
+      bedrag, som: 0, verschil: bedrag || 0, aantal: 0, koppelingen: [], open: 0,
+      onbekend: 0, onbekendTokens: [], ambigu: 0,
     };
     if (!raw) return { ...basis, kind: "geen" };
     const alle = parseKoppelingen(raw, inkoopRows, verkoopRows);
     const ks = alle.filter((k) => k.token !== "-");
     if (!ks.length) return { ...basis, kind: "geenNodig", koppelingen: alle };
-    const onbekend = ks.filter((k) => !k.row).length;
+    const onbekendTokens = ks.filter((k) => !k.row).map((k) => k.token);
+    const onbekend = onbekendTokens.length;
+    const ambigu = ks.filter((k) => k.ambigu).length;
     const hoofd = bankRow.in != null ? "verkoop" : "inkoop";
     const som =
       Math.round(
-        ks.reduce((s, k) => s + (k.row ? (k.boek === hoofd ? 1 : -1) * (k.row.bedrag || 0) : 0), 0) * 100
+        ks.reduce(
+          (s, k) =>
+            s +
+            (k.row
+              ? (k.boek === hoofd ? 1 : -1) * (k.groepBedrag != null ? k.groepBedrag : k.row.bedrag || 0)
+              : 0),
+          0
+        ) * 100
       ) / 100;
     const verschil = bedrag == null ? 0 : Math.round((bedrag - som) * 100) / 100;
     // Hoeveel van de gekoppelde facturen staat over het geheel genomen nog open?
@@ -766,14 +801,19 @@
     if (dekking) {
       for (const k of ks) {
         if (!k.row) continue;
-        const hoortHier = factuurRichting(k.boek, k.row.bedrag || 0) > 0 === (bankRow.in != null);
-        if (!hoortHier) continue;
-        const fs = factuurStatus({ ...k.row, boek: k.boek }, dekking);
-        if (fs.kind === "deels") open += fs.open;
+        for (const g of k.groep || [{ boek: k.boek, row: k.row }]) {
+          const hoortHier = factuurRichting(g.boek, g.row.bedrag || 0) > 0 === (bankRow.in != null);
+          if (!hoortHier) continue;
+          const fs = factuurStatus({ ...g.row, boek: g.boek }, dekking);
+          if (fs.kind === "deels") open += fs.open;
+        }
       }
       open = Math.round(open * 100) / 100;
     }
-    const s = { ...basis, som, verschil, aantal: ks.length, koppelingen: alle, open, onbekend };
+    const s = {
+      ...basis, som, verschil, aantal: ks.length, koppelingen: alle, open,
+      onbekend, onbekendTokens, ambigu,
+    };
     if (onbekend || bedrag == null) return { ...s, kind: "onbekend" };
     if (Math.abs(verschil) < 0.005) return { ...s, kind: "ok" };
     if (verschil < 0) return { ...s, kind: open > 0.005 ? "open" : "deel" };
@@ -799,7 +839,9 @@
       case "teveel":
         return `${fmtEur(Math.abs(s.verschil))} van deze bankregel niet gekoppeld`;
       case "onbekend":
-        return "koppeling verwijst naar een onbekende factuur";
+        return s.onbekendTokens && s.onbekendTokens.length
+          ? `"${s.onbekendTokens.join('", "')}" hoort bij geen enkele factuur`
+          : "koppeling verwijst naar een onbekende factuur";
       case "geenNodig":
         return "geen factuur nodig";
       default:
@@ -864,6 +906,24 @@
       if (KOPPEL_PROBLEEM.has(status.kind)) uit.push({ row: r, status });
     }
     return uit.reverse();
+  }
+
+  /**
+   * Facturen waar méér aan bankregels hangt dan het factuurbedrag. Dat is niet
+   * aan één bankregel toe te schrijven (samen zijn ze te veel), dus staat het
+   * hier apart in de controlelijst.
+   */
+  function facturenTeveelGedekt(bankRows, inkoopRows, verkoopRows) {
+    const dekking = factuurDekking(bankRows, inkoopRows, verkoopRows);
+    const uit = [];
+    for (const boek of ["inkoop", "verkoop"]) {
+      for (const r of boek === "inkoop" ? inkoopRows : verkoopRows) {
+        if (r.isEmpty || r.bedrag == null) continue;
+        const st = factuurStatus({ ...r, boek }, dekking);
+        if (st.kind === "teveel") uit.push({ ...r, boek, status: st });
+      }
+    }
+    return uit.sort((a, b) => (b.datum || 0) - (a.datum || 0));
   }
 
   /**
@@ -1614,6 +1674,7 @@
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
     bankKoppelStatus, koppelStatusTekst, koppelStatusIcoon, factuurStatus, bankKoppelProblemen,
+    facturenTeveelGedekt,
     selectieOordeel,
     KOPPEL_PROBLEEM,
     priveInkoop, isPriveBetaald,

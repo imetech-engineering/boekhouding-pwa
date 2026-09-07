@@ -1852,42 +1852,6 @@ html[data-theme="dark"] {
   color: #fff;
 }
 
-/* ===== Bankregels bij een factuur (inkoop-/verkoopformulier) ===== */
-.koppel-blok {
-  margin: 12px 0 4px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-}
-
-.koppel-blok-kop {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.koppel-blok-titel {
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-
-.koppel-blok-status {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-align: right;
-}
-
-.koppel-blok .boek-list {
-  margin: 4px 0 8px;
-}
-
-.koppel-blok .btn-inline {
-  margin-top: 0;
-}
-
 /* Kop van de koppelmodal: meteen zien of de factuur rond is */
 .koppel-info.ok {
   color: var(--status-ok);

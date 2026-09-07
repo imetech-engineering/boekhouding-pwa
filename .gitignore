@@ -15,6 +15,11 @@
 /*
 !/.gitignore
 
+# --- Dev-servers voor de preview (alleen paden en poorten, geen geheimen) ---
+!/.claude/
+/.claude/*
+!/.claude/launch.json
+
 # --- GitHub Actions (Pages deploy workflow only) ---
 !/.github/
 /.github/*

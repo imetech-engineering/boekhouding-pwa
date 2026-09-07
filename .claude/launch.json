@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "boekhouding-pwa",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8080",
+        "--directory",
+        "applications/boekhouding/pwa"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "uren-pwa",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8081",
+        "--directory",
+        "applications/uren/pwa"
+      ],
+      "port": 8081
+    },
+    {
+      "name": "projectdoc-pwa",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8082",
+        "--directory",
+        "applications/projectdoc-pwa/pwa"
+      ],
+      "port": 8082
+    }
+  ]
+}

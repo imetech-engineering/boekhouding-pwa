@@ -242,15 +242,16 @@
         </div>
 
         <div class="card">
-          <h2>Historie</h2>
-          <p class="sub">Tik om over te nemen · veeg rechts = bewerken, links = verwijderen.</p>
+          <h2>Inkoopfacturen</h2>
           <div id="inkoop-status-filter" class="rek-filter status-filter">
             <button type="button" data-s="alles" class="chip active">Alles <span class="chip-n"></span></button>
             <button type="button" data-s="open" class="chip">Niet betaald <span class="chip-n"></span></button>
             <button type="button" data-s="controle" class="chip chip-controle">⚠ Controle <span class="chip-n"></span></button>
           </div>
-          <input id="inkoop-hist-search" type="search" placeholder="Filter historie…" class="hist-search" />
+          <input id="inkoop-hist-search" type="search" placeholder="🔍 Zoek in facturen…" class="hist-search" />
+          <p class="sub">Tik een regel om de gegevens over te nemen, 🔗 om bankregels te koppelen. Vegen kan ook: rechts bewerken, links verwijderen.</p>
           <ul id="inkoop-hist-list" class="boek-list"></ul>
+          <button type="button" id="btn-inkoop-meer" class="btn-secondary btn-inline hidden"></button>
         </div>
       </section>
 
@@ -351,15 +352,16 @@
         </div>
 
         <div class="card">
-          <h2>Historie</h2>
-          <p class="sub">Tik om over te nemen · veeg rechts = bewerken, links = verwijderen.</p>
+          <h2>Verkoopfacturen</h2>
           <div id="verkoop-status-filter" class="rek-filter status-filter">
             <button type="button" data-s="alles" class="chip active">Alles <span class="chip-n"></span></button>
             <button type="button" data-s="open" class="chip">Niet ontvangen <span class="chip-n"></span></button>
             <button type="button" data-s="controle" class="chip chip-controle">⚠ Controle <span class="chip-n"></span></button>
           </div>
-          <input id="verkoop-hist-search" type="search" placeholder="Filter historie…" class="hist-search" />
+          <input id="verkoop-hist-search" type="search" placeholder="🔍 Zoek in facturen…" class="hist-search" />
+          <p class="sub">Tik een regel om de gegevens over te nemen, 🔗 om bankregels te koppelen. Vegen kan ook: rechts bewerken, links verwijderen.</p>
           <ul id="verkoop-hist-list" class="boek-list"></ul>
+          <button type="button" id="btn-verkoop-meer" class="btn-secondary btn-inline hidden"></button>
         </div>
       </section>
 

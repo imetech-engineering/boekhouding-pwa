@@ -2,7 +2,7 @@
  * Service worker — network-first voor same-origin (updates komen direct door),
  * cache als offline-fallback. Verbetering t.o.v. uren-PWA (cache-first + handmatige bump).
  */
-const CACHE = "imtech-boekhouding-pwa-v42";
+const CACHE = "imtech-boekhouding-pwa-v43";
 const ASSETS = [
   "./",
   "./index.html",
@@ -41,10 +41,21 @@ const ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE)
-      .then((cache) => cache.addAll(ASSETS))
-      .then(() => self.skipWaiting())
+    (async () => {
+      const cache = await caches.open(CACHE);
+      // Belangrijk: cache "reload" slaat de HTTP-cache van de browser over.
+      // Met cache.addAll() kan de ene helft van de app vers zijn en de andere
+      // helft uit een oude browsercache komen — dan draait er bijvoorbeeld een
+      // nieuwe index.html met een oude ui_bank.js en werkt er van alles niet.
+      // Zo halen we altijd één samenhangende set binnen.
+      await Promise.all(
+        ASSETS.map(async (pad) => {
+          const res = await fetch(new Request(pad, { cache: "reload" }));
+          if (res && res.ok) await cache.put(pad, res);
+        })
+      );
+      await self.skipWaiting();
+    })()
   );
 });
 
@@ -78,7 +89,9 @@ const BEWAAR_CACHES = [CDN_CACHE, "share-inbox"];
 async function uitCacheEnBijwerken(request) {
   const cache = await caches.open(CACHE);
   const cached = await cache.match(request, { ignoreSearch: true });
-  const netwerk = fetch(request)
+  // "no-cache" laat de browser altijd even navragen of het bestand nog klopt,
+  // zodat de achtergrond-update niet zelf een verouderde kopie binnenhaalt.
+  const netwerk = fetch(new Request(request, { cache: "no-cache" }))
     .then((res) => {
       if (res && res.ok) cache.put(request, res.clone());
       return res;

@@ -545,6 +545,7 @@
   let kopIndex = new Map();
   let dekkingMap = new Map();
   let statusFilter = "alles"; // alles | open | controle
+  let toonAantal = 20; // zelfde stapgrootte als in het bankboek
 
   /** Hoort deze regel bij het gekozen filter? */
   function pastBijStatus(h) {
@@ -585,13 +586,15 @@
       ["geen", "deels"].includes(M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap).kind);
     const isFout = (h) =>
       M().factuurStatus({ ...h, boek: "inkoop" }, dekkingMap).kind === "teveel";
+    const zoekt = (h) =>
+      !q || `${h.partij} ${h.omschrijving} ${h.categorie} ${h.project} ${h.factuurnummer || ""}`.toLowerCase().includes(q);
     zetTeller("alles", alle.length);
     zetTeller("open", alle.filter(isOpen).length);
     zetTeller("controle", alle.filter(isFout).length);
     let shown = 0;
     for (const h of alle) {
       if (!pastBijStatus(h)) continue;
-      if (q && !`${h.partij} ${h.omschrijving} ${h.categorie} ${h.project} ${h.factuurnummer || ""}`.toLowerCase().includes(q)) continue;
+      if (!zoekt(h)) continue;
       const li = document.createElement("li");
       li.className = "boek-item" + (editRow === h.excelRow ? " selected" : "");
       const nr = h.factuurnummer ? `${escapeHtml(h.factuurnummer)} · ` : "";
@@ -615,7 +618,13 @@
       li.querySelector('[data-act="del"]').addEventListener("click", () => deleteRow(h));
       App().bindSwipe(li, { onEdit: () => startEdit(h), onDelete: () => deleteRow(h) });
       list.appendChild(li);
-      if (++shown >= 20) break;
+      if (++shown >= toonAantal) break;
+    }
+    const meer = $("#btn-inkoop-meer");
+    if (meer) {
+      const totaal = alle.filter((h) => pastBijStatus(h) && zoekt(h)).length;
+      meer.classList.toggle("hidden", totaal <= toonAantal);
+      meer.textContent = `Toon meer (${totaal - toonAantal} resterend)`;
     }
   }
 
@@ -716,9 +725,14 @@
       document.getElementById(id).addEventListener("change", updateRenameButton);
     }
     $("#inkoop-hist-search").addEventListener("input", renderHistory);
+    $("#btn-inkoop-meer")?.addEventListener("click", () => {
+      toonAantal += 20;
+      renderHistory();
+    });
     document.querySelectorAll("#inkoop-status-filter .chip").forEach((c) => {
       c.addEventListener("click", () => {
         statusFilter = c.dataset.s;
+        toonAantal = 20;
         document.querySelectorAll("#inkoop-status-filter .chip").forEach((x) =>
           x.classList.toggle("active", x === c)
         );

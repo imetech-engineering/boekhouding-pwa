@@ -534,19 +534,49 @@
     return {};
   }
 
-  /** Duplicaatcontrole: zelfde partij + (factuurnr gelijk óf bedrag+datum gelijk). */
-  function findDuplicate(intelBoek, { partij, datumIso, bedrag, factuurnummer }) {
+  /** Factuurnummer zonder hoofdletters, spaties en leestekens: "INV-2024/001" = "inv2024001". */
+  function normalizeFactuurnummer(fnr) {
+    return String(fnr || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  }
+
+  /**
+   * Duplicaatcontrole over het hele boek. Zelfde partij + zelfde factuurnummer is altijd
+   * verdacht, ongeacht datum of bedrag (een tikfout daarin mag de melding niet verbergen).
+   * Zonder nummermatch: zelfde partij, dag en bedrag. excludeRow slaat de regel zelf over
+   * bij bewerken. nummerPerPartij=false (verkoop): eigen factuurnummers zijn uniek over alle
+   * klanten. Geeft { row, reden: "factuurnummer" | "bedrag_datum" } of null.
+   */
+  function findDuplicate(intelBoek, { partij, datumIso, bedrag, factuurnummer, excludeRow, nummerPerPartij = true }) {
     const datum = isoToDate(datumIso);
-    const fnr = (factuurnummer || "").trim().toLowerCase();
-    for (const h of intelBoek.history.slice(0, 120)) {
-      if (partij && h.partij && h.partij.toLowerCase() !== partij.toLowerCase()) continue;
-      if (datum && h.datum && daysBetween(datum, h.datum) > 0.5) continue;
-      if (bedrag != null && h.bedrag != null && Math.abs(h.bedrag - bedrag) > 0.02) continue;
-      const fnrMatch = fnr && h.factuurnummer && h.factuurnummer.toLowerCase() === fnr;
-      const amountDateMatch = bedrag != null && h.bedrag != null && datum && h.datum;
-      if (fnrMatch || amountDateMatch) return h;
+    const fnr = normalizeFactuurnummer(factuurnummer);
+    const anders = intelBoek.history.filter((h) => h.excelRow !== excludeRow);
+    const zelfdePartij = (h) => !partij || !h.partij || partyNamesMatch(partij, h.partij);
+    const kandidaten = anders.filter(zelfdePartij);
+    if (fnr) {
+      const h = (nummerPerPartij ? kandidaten : anders).find(
+        (k) => normalizeFactuurnummer(k.factuurnummer) === fnr
+      );
+      if (h) return { row: h, reden: "factuurnummer" };
     }
-    return null;
+    if (bedrag == null || !datum) return null;
+    const h = kandidaten.find(
+      (k) =>
+        k.bedrag != null && k.datum &&
+        Math.abs(k.bedrag - bedrag) <= 0.02 &&
+        daysBetween(datum, k.datum) <= 0.5 &&
+        // Twee verschillende factuurnummers op dezelfde dag zijn gewoon twee facturen.
+        !(fnr && normalizeFactuurnummer(k.factuurnummer))
+    );
+    return h ? { row: h, reden: "bedrag_datum" } : null;
+  }
+
+  /** Meldingstekst bij een mogelijk dubbele boeking. */
+  function duplicaatMelding(dup, soort) {
+    const h = dup.row;
+    const wat = `${h.partij} · ${h.datumStr} · ${fmtEur(h.bedrag)} (${h.factuurnummer || "geen nr"}, regel ${h.excelRow})`;
+    return dup.reden === "factuurnummer"
+      ? `Factuurnummer ${h.factuurnummer} staat al in het boek: ${wat}. Toch inboeken?`
+      : `Mogelijk dubbel — zelfde ${soort}, datum en bedrag: ${wat}. Toch inboeken?`;
   }
 
   // === Koppeling bankregel ↔ factuur (kolom I in het Bankboek) ===
@@ -1718,7 +1748,7 @@
     parseBankRows, parseInkoopRows, parseVerkoopRows,
     firstEmptyBankSlot, lastFilledBankRowBefore, saldoFormula, saldiPerRekening,
     priveOverzicht, firstEmptyBoekSlot,
-    normalizeParty, partyNamesMatch, buildIntel, partyDefaults, findDuplicate,
+    normalizeParty, partyNamesMatch, buildIntel, partyDefaults, findDuplicate, duplicaatMelding, normalizeFactuurnummer,
     btwBedragVanPercentage, btwPercentageVanBedrag, isHandmatigBtw, valutaAanvullen,
     bankMatchesForInvoice, invoiceMatchesForBankRow, factuurRichting,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,

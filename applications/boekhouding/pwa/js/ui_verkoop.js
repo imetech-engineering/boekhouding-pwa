@@ -265,6 +265,23 @@
     if (f.bedrag == null) return App().showToast("Vul een geldig bedrag incl. BTW in.", true);
     if (!f.datumIso) return App().showToast("Vul een geldige factuurdatum in.", true);
 
+    const dup = M().findDuplicate(intel(), {
+      partij: f.klant,
+      datumIso: f.datumIso,
+      bedrag: f.bedrag,
+      factuurnummer: f.factuurnummer,
+      excludeRow: editRow,
+      nummerPerPartij: false,
+    });
+    if (dup) {
+      const doorgaan = await App().showConfirm(
+        M().duplicaatMelding(dup, "klant"),
+        editRow ? "Toch opslaan" : "Toch inboeken",
+        "Annuleren"
+      );
+      if (!doorgaan) return;
+    }
+
     if (editRow) {
       const row = editRow;
       clearForm();
@@ -275,20 +292,6 @@
       return;
     }
 
-    const dup = M().findDuplicate(intel(), {
-      partij: f.klant,
-      datumIso: f.datumIso,
-      bedrag: f.bedrag,
-      factuurnummer: f.factuurnummer,
-    });
-    if (dup) {
-      const doorgaan = await App().showConfirm(
-        `Mogelijk dubbel: ${dup.partij} · ${dup.datumStr} · ${M().fmtEur(dup.bedrag)} (${dup.factuurnummer || "geen nr"}). Toch inboeken?`,
-        "Toch inboeken",
-        "Annuleren"
-      );
-      if (!doorgaan) return;
-    }
 
     const afvinken = $("#verkoop-bank-check").checked ? [...bankMatchRows] : [];
     const fileToMove = move && selectedFile ? selectedFile : null;

@@ -1,7 +1,8 @@
-const CACHE = "imtech-uren-pwa-v35";
+const CACHE = "imtech-uren-pwa-v36";
 const ASSETS = [
   "./",
   "./index.html",
+  "./js/melding.js",
   "./css/app.css",
   "./manifest.webmanifest",
   "./config.js",

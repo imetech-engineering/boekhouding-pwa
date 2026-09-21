@@ -2014,3 +2014,24 @@ button.inst-knop:active, a.inst-knop:active, .inst-uit > summary:active { backgr
 .inst-fold[open] > summary .inst-chev { transform: rotate(-45deg); margin-top: 4px; }
 /* Kaarttitels overal gelijk */
 .card > h2:first-child { font-size: 1rem; font-weight: 600; margin: 0 0 10px; }
+
+/* ---------- Melding onderin (toast): kaart in het thema, met accentstreep; wegvegen kan (js/melding.js) ---------- */
+#toast, .toast {
+  background: var(--bg-primary); color: var(--text-primary);
+  border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .16), 0 2px 6px rgba(0, 0, 0, .08);
+  padding: 12px 14px; font-size: 0.875rem; line-height: 1.4;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  animation: melding-in .22s ease-out;
+}
+html[data-theme="dark"] #toast, html[data-theme="dark"] .toast { background: var(--bg-tertiary); color: var(--text-primary); border-color: var(--border-strong); border-left-color: var(--accent); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+#toast.error, .toast.fout, html[data-theme="dark"] #toast.error, html[data-theme="dark"] .toast.fout { border-left-color: var(--danger); color: var(--text-primary); }
+#toast.error, .toast.fout { background: var(--danger-light, var(--bg-primary)); }
+html[data-theme="dark"] #toast.error, html[data-theme="dark"] .toast.fout { background: var(--danger-light, var(--bg-tertiary)); }
+#toast.toast-klikbaar { cursor: pointer; padding-right: 34px; position: fixed; }
+#toast.toast-klikbaar::after { content: "›"; position: absolute; right: 14px; top: 50%; transform: translateY(-52%); font-size: 1.4rem; color: var(--accent); }
+.toast-knop, .toast-actie, html[data-theme="dark"] .toast-knop, .toast.fout .toast-knop { background: var(--accent-light); color: var(--accent); border: 0; border-radius: 999px; padding: 6px 12px; min-height: 32px; font-weight: 600; }
+#toast::before, .toast::before { content: ""; position: absolute; top: 5px; left: 50%; width: 28px; height: 3px; margin-left: -14px; border-radius: 2px; background: var(--border-strong); opacity: .7; }
+@keyframes melding-in { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #toast, .toast { animation: none; } }
+#toast.toast-klikbaar, #toast.toast-klikbaar * { text-decoration: none; font-weight: 500; }

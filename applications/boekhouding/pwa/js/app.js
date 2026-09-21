@@ -818,7 +818,7 @@
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (eersteInstallatie || gemeld) return; // eerste keer is gewoon installeren
       gemeld = true;
-      showToast("Nieuwe versie klaar — tik om te vernieuwen", false, () => location.reload());
+      showToast("Nieuwe versie klaar, tik om te vernieuwen", false, () => location.reload());
     });
     // De service worker vraagt de wachtrij weg te werken zodra er weer
     // verbinding is (Background Sync); het opslaan zelf gebeurt hier, want de

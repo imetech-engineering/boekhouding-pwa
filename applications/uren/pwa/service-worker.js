@@ -1,4 +1,4 @@
-const CACHE = "imtech-uren-pwa-v38";
+const CACHE = "imtech-uren-pwa-v39";
 const ASSETS = [
   "./",
   "./index.html",
@@ -29,7 +29,9 @@ const ASSETS = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    // cache: "reload" = langs de HTTP-cache van de browser: anders kan een net gepubliceerde versie
+    // de oude index.html (GitHub Pages cachet 10 min) in de nieuwe cache zetten.
+    caches.open(CACHE).then((cache) => cache.addAll(ASSETS.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting())
   );
 });
 

@@ -1256,3 +1256,6 @@ body:has(.invoer-sticky-bar:not(.hidden)) #toast, body:has(.install-banner:not(.
 /* Overlap: de Opslaan/Wis-balk onder pop-ups (keuzelijsten, vensters) en de installatiebalk er netjes boven */
 .invoer-sticky-bar { z-index: 35; }
 body:has(.invoer-sticky-bar:not(.hidden)) .install-banner { bottom: calc(var(--nav-h) + var(--safe-bottom) + var(--sticky-h)); }
+
+/* Echte schermhoogte (gemeten in melding.js), zodat de balk onderin na vernieuwen in beeld blijft. */
+html body { height: var(--app-h, 100dvh); }

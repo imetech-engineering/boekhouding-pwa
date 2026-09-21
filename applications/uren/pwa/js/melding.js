@@ -47,3 +47,29 @@
   const start = () => bind(document.getElementById("toast"));
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
+
+/* Schermhoogte vastzetten. Na "Nieuwe versie, vernieuwen" (een herlaad binnen de
+   geïnstalleerde app) rekent Android 100dvh soms te hoog uit, waardoor de balk
+   onderin buiten beeld valt tot je de app herstart. We meten de echte hoogte en
+   geven die aan de pagina als --app-h; het scrollen van het document zelf zetten
+   we terug naar boven. */
+(function () {
+  try { history.scrollRestoration = "manual"; } catch (_) {}
+  const root = document.documentElement;
+  function meet() {
+    const vv = window.visualViewport;
+    const h = Math.round(Math.min(window.innerHeight || 0, vv ? vv.height + vv.offsetTop : Infinity) || window.innerHeight);
+    if (h > 200) root.style.setProperty("--app-h", h + "px");
+    if (window.scrollY || root.scrollTop) window.scrollTo(0, 0);
+  }
+  meet();
+  ["resize", "orientationchange", "pageshow", "load"].forEach((ev) => window.addEventListener(ev, meet));
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", meet);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) meet(); });
+  [100, 400, 1200, 3000].forEach((t) => setTimeout(meet, t));
+  // Vernieuwen als navigatie in plaats van reload: dan neemt de browser geen
+  // oude scroll- en zoomstand mee.
+  window.IMeTechHerlaad = () => {
+    try { location.replace(location.href.split("#")[0]); } catch (_) { location.reload(); }
+  };
+})();

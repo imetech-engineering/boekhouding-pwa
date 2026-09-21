@@ -2047,3 +2047,7 @@ html[data-theme="dark"] #app-wissel { background: var(--bg-tertiary); border-col
 #app-wissel span { flex: 1; }
 #app-wissel small { font-size: 0.75rem; color: var(--text-tertiary); font-weight: 400; }
 @keyframes wissel-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* Melding altijd bovenop, en boven een vaste knoppenbalk (bijv. Opslaan/Wis) in plaats van erachter */
+#toast, .toast { z-index: 95; }
+body:has(.invoer-sticky-bar:not(.hidden)) #toast, body:has(.install-banner:not(.hidden)) #toast { bottom: calc(var(--nav-h) + var(--safe-bottom) + var(--sticky-h, 52px) + 12px); }

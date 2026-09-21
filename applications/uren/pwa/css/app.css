@@ -1200,3 +1200,18 @@ button.inst-knop:active, a.inst-knop:active, .inst-uit > summary:active { backgr
 .schakel input:checked + i { background: var(--accent); }
 .schakel input:checked + i::after { transform: translateX(18px); }
 .schakel input:focus-visible + i { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- Gedeelde basis voor alle IMeTech-PWA's (assistent, uren, boekhouding, projectdoc) ---------- */
+/* Onderste navigatie: icoon boven label, actief in accentkleur */
+.bottom-nav button, .tabbar .tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); border-top: 0; min-width: 0; padding: 6px 2px; }
+.bottom-nav button.active, .tabbar .tab.actief { color: var(--accent); }
+.nav-ic { width: 22px; height: 22px; display: block; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* Inklapbare instellingen-sectie */
+.inst-fold { margin-top: 8px; }
+.inst-fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+.inst-fold > summary::-webkit-details-marker { display: none; }
+.inst-fold > summary .inst-chev { transform: rotate(135deg); margin-right: 6px; }
+.inst-fold[open] > summary .inst-chev { transform: rotate(-45deg); margin-top: 4px; }
+/* Kaarttitels overal gelijk */
+.card > h2:first-child { font-size: 1rem; font-weight: 600; margin: 0 0 10px; }

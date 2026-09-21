@@ -586,50 +586,39 @@
           </div>
         </details>
 
-        <!-- ---- Instellingen ---- -->
-        <details class="card card-fold" data-fold="instellingen">
-          <summary class="fold-head">Instellingen en account</summary>
-
-          <h3 class="fold-sub">Microsoft-account</h3>
-          <p id="account-label">—</p>
-          <div class="btn-row">
-            <button type="button" id="btn-login" class="btn-primary">Inloggen</button>
-            <button type="button" id="btn-logout" class="btn-secondary">Uitloggen</button>
+        <!-- ---- Instellingen (gedeeld lijstpatroon, zelfde als assistent/uren/projectdoc) ---- -->
+        <details class="inst-fold" data-fold="instellingen">
+          <summary class="inst-kop inst-fold-kop">Instellingen en account<i class="inst-chev"></i></summary>
+          <div class="inst-kaart">
+            <div class="inst-rij"><span class="inst-label">Microsoft</span><span class="inst-waarde"><span id="account-label" class="afkap">—</span></span></div>
+            <button type="button" id="btn-login" class="inst-rij inst-knop"><span class="inst-label">Inloggen</span><span class="inst-waarde"><i class="inst-chev"></i></span></button>
+            <button type="button" id="btn-logout" class="inst-rij inst-knop"><span class="inst-label">Uitloggen</span><span class="inst-waarde"><i class="inst-chev"></i></span></button>
           </div>
 
-          <h3 class="fold-sub">OneDrive-sync</h3>
-          <p class="sub">
-            Schrijven gaat per cel via de Excel API — formules en opmaak blijven intact.
-            Niet tegelijk schrijven in Excel op de PC en hier.
-          </p>
-          <div class="btn-row">
-            <button type="button" id="btn-refresh" class="btn-primary">Ververs uit OneDrive</button>
+          <h3 class="inst-kop">OneDrive</h3>
+          <div class="inst-kaart">
+            <button type="button" id="btn-refresh" class="inst-rij inst-knop"><span class="inst-label">Ververs uit OneDrive</span><span class="inst-waarde"><i class="inst-chev"></i></span></button>
+            <a id="onedrive-link" class="inst-rij inst-knop hidden" href="#" target="_blank" rel="noopener"><span class="inst-label">Open werkboek in OneDrive</span><span class="inst-waarde"><i class="inst-chev"></i></span></a>
           </div>
-          <a id="onedrive-link" class="link hidden" href="#" target="_blank" rel="noopener"
-            >Open werkboek in OneDrive</a
-          >
+          <p class="inst-noot">Schrijven gaat per cel via de Excel API; formules en opmaak blijven heel. Niet tegelijk in Excel op de pc en hier schrijven.</p>
 
-          <h3 class="fold-sub">Reiskosten</h3>
-          <label for="set-km-tarief">Km-tarief (€/km)</label>
-          <input id="set-km-tarief" inputmode="decimal" autocomplete="off" />
-          <label for="set-thuis-adres">Thuisadres (vertrekpunt)</label>
-          <input id="set-thuis-adres" autocomplete="off" placeholder="Typ adres…" />
-          <ul id="set-thuis-results" class="adres-results hidden"></ul>
-          <p id="set-thuis-label" class="sub">—</p>
+          <h3 class="inst-kop">Reiskosten</h3>
+          <div class="inst-kaart">
+            <label class="inst-rij" for="set-km-tarief"><span class="inst-label">Km-tarief (€/km)</span><input id="set-km-tarief" class="inst-getal" inputmode="decimal" autocomplete="off" /></label>
+            <details class="inst-uit">
+              <summary class="inst-rij"><span class="inst-label">Thuisadres</span><span class="inst-waarde"><span id="set-thuis-label" class="afkap">—</span><i class="inst-chev"></i></span></summary>
+              <div class="inst-inhoud">
+                <input id="set-thuis-adres" autocomplete="off" placeholder="Typ adres…" />
+                <ul id="set-thuis-results" class="adres-results hidden"></ul>
+              </div>
+            </details>
+          </div>
 
-          <h3 class="fold-sub">Weergave</h3>
-          <label class="check-row toggle-dark">
-            <input type="checkbox" id="toggle-dark-mode" />
-            Donkere modus
-          </label>
-
-          <h3 class="fold-sub">App installeren</h3>
-          <p id="install-manual" class="sub hidden">
-            Geen installatie-knop zichtbaar? In Chrome: menu (⋮) →
-            <strong>Toevoegen aan startscherm</strong> of <strong>App installeren</strong>.
-          </p>
-          <div class="btn-row">
-            <button type="button" id="btn-install-settings" class="btn-primary">Installeren op startscherm</button>
+          <h3 class="inst-kop">Weergave</h3>
+          <div class="inst-kaart">
+            <label class="inst-rij"><span class="inst-label">Donkere modus</span><span class="schakel"><input type="checkbox" id="toggle-dark-mode" /><i></i></span></label>
+            <button type="button" id="btn-install-settings" class="inst-rij inst-knop"><span class="inst-label">App installeren</span><span class="inst-waarde"><i class="inst-chev"></i></span></button>
+            <p id="install-manual" class="inst-noot hidden">Geen installatieknop? In Chrome: menu (⋮) → <strong>Toevoegen aan startscherm</strong> of <strong>App installeren</strong>.</p>
           </div>
         </details>
       </section>
@@ -862,11 +851,11 @@
     </div>
 
     <nav class="bottom-nav" aria-label="Hoofdnavigatie">
-      <button type="button" data-tab="bank" class="active">Bank</button>
-      <button type="button" data-tab="inkoop">Inkoop</button>
-      <button type="button" data-tab="verkoop">Verkoop</button>
-      <button type="button" data-tab="reis">Reis</button>
-      <button type="button" data-tab="overzicht">Overzicht</button>
+      <button type="button" data-tab="bank" class="active"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M4 10h16M6 10v8M10 10v8M14 10v8M18 10v8M12 3l9 5H3z"/></svg>Bank</button>
+      <button type="button" data-tab="inkoop"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>Inkoop</button>
+      <button type="button" data-tab="verkoop"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 14h6M9 17h4"/></svg>Verkoop</button>
+      <button type="button" data-tab="reis"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13l2-6h14l2 6v4H3z"/><path d="M6 17v2M18 17v2"/><circle cx="7.5" cy="13.5" r="1"/><circle cx="16.5" cy="13.5" r="1"/></svg>Reis</button>
+      <button type="button" data-tab="overzicht"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Overzicht</button>
     </nav>
 
     <div id="toast" class="hidden" role="status"></div>

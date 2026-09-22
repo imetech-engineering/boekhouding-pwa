@@ -4,6 +4,7 @@
 (function () {
   const state = {
     tab: "invoer",
+    tt: null,
     entries: [],
     intel: null,
     etag: null,
@@ -572,6 +573,7 @@
   }
 
   async function refreshFromCloud() {
+    laadTimetick();
     state.loading = true;
     setStatus("Laden uit OneDrive…");
     try {
@@ -1031,6 +1033,15 @@
     `${String(e.uren).replace(".", ",")} u × €${String(e.tarief).replace(".", ",")}`;
   const historySub = (e) =>
     [e.datumStr, e.locatie, e.werkzaamheden].filter(Boolean).join(" · ");
+  const kortDatum = (iso) => (/^\d{4}-\d{2}-\d{2}/.test(iso || "") ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}` : iso || "");
+  const ICON_TT =
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+
+  function ttBadge(st) {
+    if (st === "in") return '<span class="tt-badge tt-in" title="Staat in Timetick">TT ✓</span>';
+    if (st === "verstuurd") return '<span class="tt-badge tt-verstuurd" title="Verstuurd, wordt ingevoerd">TT …</span>';
+    return "";
+  }
 
   function renderHistory() {
     const list = $("#history-list");
@@ -1048,26 +1059,30 @@
     if (state.selectedHistoryRow != null && !items.some((e) => e.row_index === state.selectedHistoryRow)) {
       state.selectedHistoryRow = null;
     }
+    renderTimetickBalk();
     for (const e of items) {
       const li = document.createElement("li");
-      li.className = "history-item";
-      if (e.row_index === state.selectedHistoryRow) li.classList.add("selected");
+      const tt = ttStatus(e);
+      const open = e.row_index === state.selectedHistoryRow;
+      li.className = "history-item" + (open ? " selected" : "") + (tt ? " tt-" + tt : "");
       li.dataset.row = String(e.row_index);
-      li.innerHTML = `<span class="history-text">
-          <span class="hi-head">
-            <span class="hi-title">${esc(historyTitel(e))}</span>
-            <span class="hi-uren">${esc(historyUren(e))}</span>
-          </span>
-          <span class="hi-sub">${esc(historySub(e))}</span>
+      const kanTT = isR2R(e) && getal(e.tarief) > 0 && getal(e.uren) > 0 && !tt;
+      li.innerHTML = `<span class="hi-head">
+          <span class="hi-title">${esc(e.project || "(geen project)")}${e.opdrachtgever ? `<span class="hi-og"> · ${esc(e.opdrachtgever)}</span>` : ""}</span>
+          <span class="hi-uren">${ttBadge(tt)}${esc(historyUren(e))}</span>
         </span>
+        <span class="hi-werk"><span class="hi-datum">${esc(kortDatum(e.datumStr))}</span>${esc(e.werkzaamheden || "(geen omschrijving)")}</span>
+        ${
+          open
+            ? `${e.locatie ? `<span class="hi-loc">${esc(e.locatie)}</span>` : ""}
         <span class="history-actions">
-          <button type="button" class="btn-icon" data-act="apply" data-row="${e.row_index}"
-            aria-label="Overnemen in formulier" title="Overnemen">${ICON_APPLY}</button>
-          <button type="button" class="btn-icon" data-act="edit" data-row="${e.row_index}"
-            aria-label="Bewerken" title="Bewerken">${ICON_PENCIL}</button>
-          <button type="button" class="btn-icon btn-icon-danger" data-act="del" data-row="${e.row_index}"
-            aria-label="Verwijderen" title="Verwijderen">${ICON_TRASH}</button>
-        </span>`;
+          <button type="button" class="hi-knop" data-act="apply" data-row="${e.row_index}">${ICON_APPLY}<span>Overnemen</span></button>
+          <button type="button" class="hi-knop" data-act="edit" data-row="${e.row_index}">${ICON_PENCIL}<span>Bewerken</span></button>
+          ${kanTT ? `<button type="button" class="hi-knop" data-act="tt" data-row="${e.row_index}">${ICON_TT}<span>Timetick</span></button>` : ""}
+          <button type="button" class="btn-icon btn-icon-danger" data-act="del" data-row="${e.row_index}" aria-label="Verwijderen" title="Verwijderen">${ICON_TRASH}</button>
+        </span>`
+            : ""
+        }`;
       bindHistorySwipe(li, e);
       li.addEventListener("dblclick", (ev) => {
         if (ev.target.closest("button")) return;
@@ -1085,7 +1100,8 @@
           return;
         }
         renderHistory._lastTap = { row: e.row_index, t: now };
-        state.selectedHistoryRow = e.row_index;
+        // Nog eens tikken op een open regel klapt hem weer dicht.
+        state.selectedHistoryRow = open ? null : e.row_index;
         renderHistory();
       });
       list.appendChild(li);
@@ -1097,6 +1113,8 @@
         const entry = state.entries.find((x) => x.row_index === row);
         if (btn.dataset.act === "apply" && entry) {
           applyHistoryToForm(entry, true);
+        } else if (btn.dataset.act === "tt" && entry) {
+          stuurNaarTimetick([entry]);
         } else if (btn.dataset.act === "edit" && entry) {
           state.editRow = row;
           state.selectedHistoryRow = row;
@@ -1658,6 +1676,95 @@
     });
   }
 
+  /** Wat de assistent weet over Timetick: verstuurd en wat er echt in staat. */
+  async function laadTimetick() {
+    const inst = await assistentInstellingen();
+    if (!inst?.adres || !inst?.token) return;
+    try {
+      const res = await fetch(inst.adres.replace(/\/$/, "") + "/api/uren/timetick", {
+        headers: { Authorization: "Bearer " + inst.token },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      state.tt = await res.json();
+      renderHistory();
+    } catch (_) {
+      /* assistent niet bereikbaar: dan zonder aanduiding */
+    }
+  }
+
+  const zelfde = (r, datum, uren, nr) =>
+    r.datum === datum && Math.abs(getal(r.uren) - uren) < 0.01 && (!r.nr || !nr || r.nr === nr);
+
+  function ttStatus(e) {
+    if (!state.tt || !isR2R(e) || getal(e.tarief) <= 0) return null;
+    const nr = (/^\s*(\d{4})\b/.exec(e.project || "") || [])[1] || null;
+    const uren = getal(e.uren);
+    if ((state.tt.stand?.regels || []).some((r) => zelfde(r, e.datumStr, uren, nr))) return "in";
+    const v = (state.tt.verstuurd || []).find((r) => zelfde(r, e.datumStr, uren, nr));
+    return v ? v.status : null;
+  }
+
+  function openVoorTimetick(datum) {
+    return (state.entries || []).filter(
+      (e) => e.datumStr === datum && isR2R(e) && getal(e.tarief) > 0 && getal(e.uren) > 0 && !ttStatus(e)
+    );
+  }
+
+  function renderTimetickBalk() {
+    const lijst = $("#history-list");
+    if (!lijst) return;
+    let balk = $("#tt-balk");
+    if (!balk) {
+      balk = document.createElement("div");
+      balk.id = "tt-balk";
+      balk.className = "tt-balk hidden";
+      lijst.parentNode.insertBefore(balk, lijst);
+    }
+    const vandaag = UrenExcel.formatDateIso(new Date());
+    const open = state.tt ? openVoorTimetick(vandaag) : [];
+    balk.classList.toggle("hidden", !open.length);
+    if (!open.length) return;
+    const uren = open.reduce((t, e) => t + getal(e.uren), 0);
+    balk.innerHTML = `<span>${open.length} R2R-${open.length === 1 ? "regel" : "regels"} van vandaag (${String(uren).replace(".", ",")} u) nog niet in Timetick</span><button type="button" class="tt-knop">Versturen</button>`;
+    balk.querySelector("button").onclick = () => stuurNaarTimetick(open);
+  }
+
+  async function stuurNaarTimetick(entries) {
+    const inst = await assistentInstellingen();
+    if (!inst?.adres || !inst?.token) {
+      showToast("Stel eerst de assistent-app in (adres en token)", true);
+      return;
+    }
+    const regels = entries.map((e) => ({
+      datum: e.datumStr,
+      project: e.project || "",
+      opdrachtgever: e.opdrachtgever || "",
+      werkzaamheden: e.werkzaamheden || "",
+      locatie: e.locatie || "",
+      uren: getal(e.uren),
+      tarief: getal(e.tarief),
+    }));
+    try {
+      const res = await fetch(inst.adres.replace(/\/$/, "") + "/api/uren/timetick", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + inst.token, "Content-Type": "application/json" },
+        body: JSON.stringify({ regels }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.detail || "Assistent gaf geen akkoord");
+      // Meteen tonen als verstuurd; de assistent bevestigt later.
+      state.tt = state.tt || { verstuurd: [], stand: { regels: [] } };
+      for (const r of regels) {
+        state.tt.verstuurd.push({ datum: r.datum, uren: r.uren, nr: (/^\s*(\d{4})\b/.exec(r.project) || [])[1] || null, status: "verstuurd" });
+      }
+      renderHistory();
+      showToast(`${regels.length === 1 ? "Regel" : regels.length + " regels"} naar Timetick, komt binnen een uur`);
+    } catch (e) {
+      showToast("Timetick lukte niet: " + (e.message || e), true);
+    }
+  }
+
   async function biedTimetickAan(f) {
     if (!isR2R(f) || getal(f.uren) <= 0 || getal(f.tarief) <= 0) return;
     const inst = await assistentInstellingen();
@@ -1671,20 +1778,9 @@
       uren: getal(f.uren),
       tarief: getal(f.tarief),
     };
-    showToast("Opgeslagen. Ook in Timetick zetten?", false, async () => {
-      try {
-        const res = await fetch(inst.adres.replace(/\/$/, "") + "/api/uren/timetick", {
-          method: "POST",
-          headers: { Authorization: "Bearer " + inst.token, "Content-Type": "application/json" },
-          body: JSON.stringify({ regels: [regel] }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.ok) throw new Error(data.detail || "Assistent gaf geen akkoord");
-        showToast("Komt binnen een uur in Timetick, je krijgt een melding");
-      } catch (e) {
-        showToast("Timetick lukte niet: " + (e.message || e), true);
-      }
-    });
+    showToast("Opgeslagen. Ook in Timetick zetten?", false, () =>
+      stuurNaarTimetick([{ ...regel, datumStr: regel.datum }])
+    );
   }
 
   function bindPullToRefresh() {
@@ -1949,7 +2045,10 @@
     });
     // Terug in beeld (van andere app teruggeschakeld): meteen bijwerken.
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") flushOfflineQueue().catch(() => {});
+      if (document.visibilityState === "visible") {
+        flushOfflineQueue().catch(() => {});
+        laadTimetick();
+      }
     });
     bindPullToRefresh();
     setInterval(() => {
@@ -2025,5 +2124,5 @@
   document.addEventListener("DOMContentLoaded", init);
 
   // Kleine ingang voor debuggen en tests in de browser (geen app-logica).
-  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, biedTimetickAan };
+  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, biedTimetickAan, renderHistory, laadTimetick };
 })();

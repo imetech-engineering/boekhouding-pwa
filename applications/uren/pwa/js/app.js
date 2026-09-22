@@ -382,6 +382,7 @@
     try {
       await refreshFromCloudQuiet();
       showToast("Opgeslagen in OneDrive");
+      return true;
     } catch (e) {
       showToast("Opgeslagen in OneDrive — ververs handmatig als de lijst niet klopt.", true);
       throw e;
@@ -1613,18 +1614,77 @@
     $("#btn-save").textContent = "Opslaan";
     resetFormAfterSave();
     try {
+      let gelukt;
       if (bewerkRij) {
-        await persistMutation(
+        gelukt = await persistMutation(
           { kind: "hours_update", fields, rowIndex: bewerkRij },
           () => optimisticUpdate(bewerkRij, fields)
         );
       } else {
-        await persistMutation(
+        gelukt = await persistMutation(
           { kind: "hours_add", fields, rowIndex: null },
           () => optimisticAdd(fields)
         );
       }
+      if (gelukt) biedTimetickAan(fields);
     } catch (_) {}
+  }
+
+  /* ------------------------------------------------------------ Timetick */
+
+  // R2R-uren met tarief kunnen via de assistent (Pi → Cowork op de pc) ook in
+  // Timetick. Adres en token komen uit de assistent-app op hetzelfde domein.
+  const isR2R = (f) => /r2r/i.test(f.opdrachtgever || "") || /^\s*60\d\d/.test(f.project || "");
+  const getal = (v) => parseFloat(String(v ?? "").replace(",", ".")) || 0;
+
+  function assistentInstellingen() {
+    return new Promise((ok) => {
+      try {
+        const r = indexedDB.open("assistent", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("kv");
+        r.onerror = () => ok(null);
+        r.onsuccess = () => {
+          try {
+            const t = r.result.transaction("kv", "readonly").objectStore("kv").get("instellingen");
+            t.onsuccess = () => ok(t.result || null);
+            t.onerror = () => ok(null);
+          } catch (_) {
+            ok(null);
+          }
+        };
+      } catch (_) {
+        ok(null);
+      }
+    });
+  }
+
+  async function biedTimetickAan(f) {
+    if (!isR2R(f) || getal(f.uren) <= 0 || getal(f.tarief) <= 0) return;
+    const inst = await assistentInstellingen();
+    if (!inst?.adres || !inst?.token) return;
+    const regel = {
+      datum: f.datumStr,
+      project: f.project || "",
+      opdrachtgever: f.opdrachtgever || "",
+      werkzaamheden: f.werkzaamheden || "",
+      locatie: f.locatie || "",
+      uren: getal(f.uren),
+      tarief: getal(f.tarief),
+    };
+    showToast("Opgeslagen. Ook in Timetick zetten?", false, async () => {
+      try {
+        const res = await fetch(inst.adres.replace(/\/$/, "") + "/api/uren/timetick", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + inst.token, "Content-Type": "application/json" },
+          body: JSON.stringify({ regels: [regel] }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) throw new Error(data.detail || "Assistent gaf geen akkoord");
+        showToast("Komt binnen een uur in Timetick, je krijgt een melding");
+      } catch (e) {
+        showToast("Timetick lukte niet: " + (e.message || e), true);
+      }
+    });
   }
 
   function bindPullToRefresh() {
@@ -1965,5 +2025,5 @@
   document.addEventListener("DOMContentLoaded", init);
 
   // Kleine ingang voor debuggen en tests in de browser (geen app-logica).
-  window.UrenApp = { state, switchTab, renderAll, renderAnalyse };
+  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, biedTimetickAan };
 })();

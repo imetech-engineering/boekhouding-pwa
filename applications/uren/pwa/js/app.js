@@ -161,8 +161,7 @@
     tekenTab(state.tab, initialForm);
   }
 
-  function optimisticAdd(fields) {
-    const tempRow = -Date.now();
+  function optimisticAdd(fields, tempRow = -Date.now()) {
     const entry = fieldsToEntry(fields, tempRow);
     const snapshot = { entries: [...state.entries] };
     state.entries = [...state.entries, entry];
@@ -1132,12 +1131,7 @@
             $("#btn-save").textContent = "Opslaan";
             resetFormAfterSave();
           }
-          try {
-            await persistMutation(
-              { kind: "hours_delete", fields: null, rowIndex: row },
-              () => optimisticDelete(row)
-            );
-          } catch (_) {}
+          await verwijderRegel(entry || { row_index: row });
         }
       });
     });
@@ -1193,13 +1187,8 @@
         applyHistoryToForm(entry, true);
       } else if (dx < -threshold) {
         if (!confirm("Regel verwijderen uit Excel?")) return;
-        try {
-          await persistMutation(
-            { kind: "hours_delete", fields: null, rowIndex: entry.row_index },
-            () => optimisticDelete(entry.row_index)
-          );
-          resetFormAfterSave();
-        } catch (_) {}
+        await verwijderRegel(entry);
+        resetFormAfterSave();
       }
     });
   }
@@ -1634,6 +1623,15 @@
     state.editRow = null;
     $("#btn-save").textContent = "Opslaan";
     resetFormAfterSave();
+    // Nog niet geüploade regel (offline toegevoegd): de wachtende toevoeging zelf aanpassen.
+    if (bewerkRij && bewerkRij < 0) {
+      if (await wijzigWachtende(bewerkRij, fields)) {
+        optimisticUpdate(bewerkRij, fields);
+        renderAll();
+        showToast("Wachtende regel bijgewerkt, gaat mee bij de volgende sync");
+      }
+      return;
+    }
     try {
       let gelukt;
       if (bewerkRij) {
@@ -1641,14 +1639,50 @@
           { kind: "hours_update", fields, rowIndex: bewerkRij },
           () => optimisticUpdate(bewerkRij, fields)
         );
+        if (gelukt && prevEntry) volgTimetick(prevEntry, { ...fields, datumStr: fields.datumStr });
       } else {
+        const tempRow = -Date.now();
         gelukt = await persistMutation(
-          { kind: "hours_add", fields, rowIndex: null },
-          () => optimisticAdd(fields)
+          { kind: "hours_add", fields, rowIndex: null, tempRow },
+          () => optimisticAdd(fields, tempRow)
         );
       }
-      if (gelukt) biedTimetickAan(fields);
+      if (gelukt && !bewerkRij) biedTimetickAan(fields);
     } catch (_) {}
+  }
+
+  /** Verwijderen: wachtende (offline) regel uit de wachtrij halen, anders uit Excel; Timetick volgt. */
+  async function verwijderRegel(entry) {
+    const row = entry.row_index;
+    if (row < 0) {
+      if (await wijzigWachtende(row, null)) {
+        optimisticDelete(row);
+        renderAll();
+        showToast("Wachtende regel weggehaald");
+      }
+      return;
+    }
+    try {
+      const gelukt = await persistMutation(
+        { kind: "hours_delete", fields: null, rowIndex: row },
+        () => optimisticDelete(row)
+      );
+      if (gelukt && entry.datumStr) volgTimetick(entry, null);
+    } catch (_) {}
+  }
+
+  /** Offline toegevoegde regel die nog in de wachtrij staat: aanpassen of weghalen in plaats van een los verzoek. */
+  async function wijzigWachtende(tempRow, fields) {
+    const items = await UrenOfflineQueue.getAll();
+    const item = items.find((i) => i.kind === "hours_add" && i.tempRow === tempRow);
+    if (!item) {
+      showToast("Deze regel wordt nog geüpload; probeer het zo nog eens", true);
+      return false;
+    }
+    if (fields) await UrenOfflineQueue.put({ ...item, fields });
+    else await UrenOfflineQueue.remove(item.id);
+    await updateQueueBadge();
+    return true;
   }
 
   /* ------------------------------------------------------------ Timetick */
@@ -1868,6 +1902,43 @@
       showToast(`${regels.length === 1 ? "Regel" : regels.length + " regels"} naar Timetick, komt binnen een uur`);
     } catch (e) {
       showToast("Timetick lukte niet: " + (e.message || e), true);
+    }
+  }
+
+  /**
+   * Een regel die al naar Timetick was gestuurd is aangepast of verwijderd. Wacht de Timetick-opdracht
+   * nog, dan past de Pi die aan; staat hij al in Timetick, dan vragen we of het daar ook moet.
+   */
+  async function volgTimetick(oud, nieuw) {
+    if (!isR2R(oud) || !ttStatus(oud)) return;
+    const regel = (e) =>
+      e && {
+        datum: e.datumStr,
+        project: e.project || "",
+        opdrachtgever: e.opdrachtgever || "",
+        werkzaamheden: e.werkzaamheden || "",
+        locatie: e.locatie || "",
+        uren: getal(e.uren),
+        tarief: getal(e.tarief),
+      };
+    const body = { oud: regel(oud), nieuw: regel(nieuw) };
+    try {
+      const r = await piCall("/uren/timetick/wijzig", { body });
+      if (r.status === "bijgewerkt") {
+        showToast(nieuw ? "Ook aangepast in de Timetick-wachtrij" : "Ook uit de Timetick-wachtrij gehaald");
+      } else if (r.status === "staat_al_in") {
+        showToast(nieuw ? "Staat al in Timetick. Daar ook aanpassen?" : "Staat al in Timetick. Daar ook weghalen?", false, async () => {
+          try {
+            await piCall("/uren/timetick/wijzig", { body: { ...body, corrigeer: true } });
+            showToast("Correctie voor Timetick staat klaar, komt binnen een uur");
+          } catch (e) {
+            showToast(e.message || String(e), true);
+          }
+        });
+      }
+      laadTimetick();
+    } catch (_) {
+      /* assistent niet bereikbaar: niets aan te doen, Timetick blijft zoals het was */
     }
   }
 
@@ -2233,5 +2304,5 @@
   document.addEventListener("DOMContentLoaded", init);
 
   // Kleine ingang voor debuggen en tests in de browser (geen app-logica).
-  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, biedTimetickAan, renderHistory, laadTimetick, laadWbso };
+  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, biedTimetickAan, renderHistory, laadTimetick, laadWbso, volgTimetick, wijzigWachtende };
 })();

@@ -53,6 +53,17 @@
     });
   }
 
+  /** Een wachtend item bijwerken (zelfde id). */
+  async function put(item) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const req = tx.objectStore(STORE).put(item);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
   async function count() {
     const items = await getAll();
     return items.length;
@@ -66,6 +77,7 @@
     getAll,
     add,
     remove,
+    put,
     count,
     isOnline,
   };

@@ -17,6 +17,8 @@
   --goed-light: #f0fdf4;
   --let-op: #b45309;
   --let-op-light: #fffbeb;
+  --wbso: #7c3aed;
+  --wbso-light: #f5f3ff;
   --chart-grid: #e5e3de;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -44,6 +46,8 @@ html[data-theme="dark"] {
   --goed-light: #16301f;
   --let-op: #fbbf24;
   --let-op-light: #3a2c12;
+  --wbso: #a78bfa;
+  --wbso-light: #2e2350;
   --chart-grid: #3d3d38;
 }
 
@@ -420,27 +424,17 @@ button {
 .tt-badge.tt-in { color: var(--goed, #15803d); background: var(--goed-light, #f0fdf4); }
 .tt-badge.tt-verstuurd { color: var(--let-op, #b45309); background: var(--let-op-light, #fffbeb); }
 
-.history-actions { display: flex; gap: 6px; margin-top: 6px; }
-.hi-knop {
-  flex: 1 1 0;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 36px;
-  padding: 4px 8px;
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-strong, var(--border));
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-.hi-knop svg { flex-shrink: 0; width: 16px; height: 16px; }
-.history-actions .btn-icon { flex: 0 0 40px; min-height: 36px; }
+.history-item.wbso:not(.tt-in):not(.tt-verstuurd) { border-left-color: var(--wbso); }
+.wbso-badge { color: var(--wbso); background: var(--wbso-light); }
+
+/* Acties: alleen iconen, rechts uitgelijnd. */
+.history-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+.history-actions .btn-icon { flex: 0 0 auto; width: 40px; height: 34px; min-height: 34px; padding: 0; }
+.btn-icon-tt { color: var(--let-op); }
+
+.wbso-rij { display: flex; gap: 8px; margin-top: 10px; }
+.wbso-rij input { flex: 1; min-width: 0; margin: 0; }
+.wbso-rij .btn-primary { flex: 0 0 auto; }
 
 .tt-balk {
   display: flex;

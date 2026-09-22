@@ -5,6 +5,7 @@
   const state = {
     tab: "invoer",
     tt: null,
+    wbso: null,
     entries: [],
     intel: null,
     etag: null,
@@ -574,6 +575,7 @@
 
   async function refreshFromCloud() {
     laadTimetick();
+    laadWbso();
     state.loading = true;
     setStatus("Laden uit OneDrive…");
     try {
@@ -1064,21 +1066,22 @@
       const li = document.createElement("li");
       const tt = ttStatus(e);
       const open = e.row_index === state.selectedHistoryRow;
-      li.className = "history-item" + (open ? " selected" : "") + (tt ? " tt-" + tt : "");
+      const wbso = isWbso(e);
+      li.className = "history-item" + (open ? " selected" : "") + (tt ? " tt-" + tt : "") + (wbso ? " wbso" : "");
       li.dataset.row = String(e.row_index);
       const kanTT = isR2R(e) && getal(e.tarief) > 0 && getal(e.uren) > 0 && !tt;
       li.innerHTML = `<span class="hi-head">
           <span class="hi-title">${esc(e.project || "(geen project)")}${e.opdrachtgever ? `<span class="hi-og"> · ${esc(e.opdrachtgever)}</span>` : ""}</span>
-          <span class="hi-uren">${ttBadge(tt)}${esc(historyUren(e))}</span>
+          <span class="hi-uren">${wbso ? '<span class="tt-badge wbso-badge" title="Telt voor de WBSO">WBSO</span>' : ""}${ttBadge(tt)}${esc(historyUren(e))}</span>
         </span>
         <span class="hi-werk"><span class="hi-datum">${esc(kortDatum(e.datumStr))}</span>${esc(e.werkzaamheden || "(geen omschrijving)")}</span>
         ${
           open
             ? `${e.locatie ? `<span class="hi-loc">${esc(e.locatie)}</span>` : ""}
         <span class="history-actions">
-          <button type="button" class="hi-knop" data-act="apply" data-row="${e.row_index}">${ICON_APPLY}<span>Overnemen</span></button>
-          <button type="button" class="hi-knop" data-act="edit" data-row="${e.row_index}">${ICON_PENCIL}<span>Bewerken</span></button>
-          ${kanTT ? `<button type="button" class="hi-knop" data-act="tt" data-row="${e.row_index}">${ICON_TT}<span>Timetick</span></button>` : ""}
+          <button type="button" class="btn-icon" data-act="apply" data-row="${e.row_index}" aria-label="Overnemen in formulier" title="Overnemen">${ICON_APPLY}</button>
+          <button type="button" class="btn-icon" data-act="edit" data-row="${e.row_index}" aria-label="Bewerken" title="Bewerken">${ICON_PENCIL}</button>
+          ${kanTT ? `<button type="button" class="btn-icon btn-icon-tt" data-act="tt" data-row="${e.row_index}" aria-label="Naar Timetick" title="Naar Timetick">${ICON_TT}</button>` : ""}
           <button type="button" class="btn-icon btn-icon-danger" data-act="del" data-row="${e.row_index}" aria-label="Verwijderen" title="Verwijderen">${ICON_TRASH}</button>
         </span>`
             : ""
@@ -1676,6 +1679,109 @@
     });
   }
 
+  /* ---------------------------------------------------------------- WBSO */
+
+  // De lijst WBSO-projecten per jaar staat op de Pi (zelfde als in de
+  // assistent-app), dus wat je hier of daar instelt is overal gelijk.
+  const wbsoSleutel = (naam) =>
+    String(naam || "").replace(/^\s*\d{3,}\s*/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  function isWbso(e) {
+    if (/wbso/i.test(e.project || "")) return true;
+    const jaar = String(e.datumStr || "").slice(0, 4);
+    const lijst = state.wbso?.perJaar?.[jaar];
+    if (!lijst) return false;
+    const k = wbsoSleutel(e.project);
+    return !!k && lijst.some((n) => wbsoSleutel(n) === k);
+  }
+
+  async function piCall(pad, opties = {}) {
+    const inst = await assistentInstellingen();
+    if (!inst?.adres || !inst?.token) throw new Error("Stel eerst de assistent-app in (adres en token)");
+    const res = await fetch(inst.adres.replace(/\/$/, "") + "/api" + pad, {
+      method: opties.body ? "POST" : "GET",
+      headers: { Authorization: "Bearer " + inst.token, ...(opties.body ? { "Content-Type": "application/json" } : {}) },
+      body: opties.body ? JSON.stringify(opties.body) : undefined,
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || `Fout ${res.status} van de assistent`);
+    return data;
+  }
+
+  async function laadWbso() {
+    const dit = new Date().getFullYear();
+    state.wbso = state.wbso || { perJaar: {}, info: {} };
+    for (const jaar of [dit, dit - 1]) {
+      try {
+        const w = await piCall("/instellingen/wbso?jaar=" + jaar);
+        state.wbso.perJaar[String(jaar)] = w.projecten || [];
+        state.wbso.info[String(jaar)] = w;
+      } catch (_) {
+        return;
+      }
+    }
+    renderHistory();
+    tekenWbsoSamenvatting();
+  }
+
+  function tekenWbsoSamenvatting() {
+    const el = $("#wbso-samenvatting");
+    if (!el) return;
+    const jaar = String(new Date().getFullYear());
+    const w = state.wbso?.info?.[jaar];
+    const n = (w?.projecten || []).length;
+    el.textContent = w ? `${n} ${n === 1 ? "project" : "projecten"}` : "—";
+  }
+
+  async function tekenWbsoInstellingen(jaar) {
+    const el = $("#wbso-inhoud");
+    if (!el) return;
+    const dit = new Date().getFullYear();
+    jaar = jaar || dit;
+    el.innerHTML = '<p class="inst-noot">Laden…</p>';
+    let w;
+    try {
+      w = await piCall("/instellingen/wbso?jaar=" + jaar);
+    } catch (e) {
+      el.innerHTML = `<p class="inst-noot">${esc(e.message)}</p>`;
+      return;
+    }
+    const gekozen = new Set(w.projecten || []);
+    const namen = [...new Set([...(w.beschikbaar || []), ...(w.projecten || [])])];
+    const stand = w.stand && String(w.stand.jaar) === String(jaar)
+      ? `<p class="inst-noot">Stand ${jaar}: ${String(w.stand.totaal ?? 0).replace(".", ",")} van ${w.doel} uur</p>`
+      : "";
+    el.innerHTML = `
+      <label class="inst-rij wbso-jaar"><span class="inst-label">Jaar</span><select id="wbso-jaar" class="inst-select">${[dit - 1, dit, dit + 1]
+        .map((j) => `<option value="${j}"${j === Number(w.jaar) ? " selected" : ""}>${j}</option>`)
+        .join("")}</select></label>
+      ${stand}
+      <div id="wbso-lijst">${
+        namen.length
+          ? namen.map((n) => `<label class="check-row"><input type="checkbox" value="${esc(n)}"${gekozen.has(n) ? " checked" : ""} /> ${esc(n)}</label>`).join("")
+          : '<p class="inst-noot">Nog geen projecten uit de urenadministratie voor dit jaar.</p>'
+      }</div>
+      <div class="wbso-rij"><input id="wbso-extra" type="text" placeholder="Ander project" autocomplete="off" /><button type="button" id="wbso-opslaan" class="btn-primary">Opslaan</button></div>`;
+    $("#wbso-jaar").addEventListener("change", (ev) => tekenWbsoInstellingen(Number(ev.target.value)));
+    $("#wbso-opslaan").addEventListener("click", async () => {
+      const lijst = [...el.querySelectorAll("#wbso-lijst input:checked")].map((i) => i.value);
+      const extra = $("#wbso-extra").value.trim();
+      if (extra) lijst.push(extra);
+      const j = Number($("#wbso-jaar").value);
+      try {
+        const uit = await piCall("/instellingen/wbso", { body: { jaar: j, projecten: lijst } });
+        state.wbso = state.wbso || { perJaar: {}, info: {} };
+        state.wbso.perJaar[String(j)] = uit.projecten || lijst;
+        showToast("WBSO-projecten opgeslagen, ook in de assistent");
+        tekenWbsoInstellingen(j);
+        laadWbso();
+      } catch (e) {
+        showToast(e.message || String(e), true);
+      }
+    });
+  }
+
   /** Wat de assistent weet over Timetick: verstuurd en wat er echt in staat. */
   async function laadTimetick() {
     const inst = await assistentInstellingen();
@@ -2051,6 +2157,9 @@
       }
     });
     bindPullToRefresh();
+    $("#wbso-sectie")?.addEventListener("toggle", (ev) => {
+      if (ev.target.open) tekenWbsoInstellingen();
+    });
     setInterval(() => {
       if (UrenAuth.isLoggedIn() && UrenOfflineQueue.isOnline() && !state.loading) {
         flushOfflineQueue().catch(() => {});
@@ -2124,5 +2233,5 @@
   document.addEventListener("DOMContentLoaded", init);
 
   // Kleine ingang voor debuggen en tests in de browser (geen app-logica).
-  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, biedTimetickAan, renderHistory, laadTimetick };
+  window.UrenApp = { state, switchTab, renderAll, renderAnalyse, biedTimetickAan, renderHistory, laadTimetick, laadWbso };
 })();

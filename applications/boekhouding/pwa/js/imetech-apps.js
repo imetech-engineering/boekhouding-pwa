@@ -1,6 +1,6 @@
-/* Koppeling tussen de IMeTech-apps (assistent, uren, boekhouding, projectdoc). Gedeeld bestand, in alle vier gelijk.
+/* Koppeling tussen de IMeTech-apps (assistent, uren, boekhouding, projectdoc, pi). Gedeeld bestand, in alle vijf gelijk.
    - IMeTechApps.url(app, params): link naar een andere app, bijv. url("projectdoc", { project: "5008", tekst: "..." }).
-   - App-wisselaar: tik op het logo rechtsboven voor een menu met de vier apps.
+   - App-wisselaar: tik op het logo rechtsboven voor een menu met de vijf apps.
    - Deeplinks: ?tab=<tab> opent dat tabblad; ?zet=<veld-id>:<waarde> vult een veld in (bijv. een zoekveld of datum).
      App-specifieke parameters (zoals project) leest de app zelf via IMeTechApps.params(). */
 (function () {
@@ -10,6 +10,7 @@
     { id: "uren", naam: "Uren", pad: "uren-pwa/", ic: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
     { id: "boekhouding", naam: "Boekhouding", pad: "boekhouding-pwa/", ic: '<path d="M3 21h18M4 10h16M6 10v8M10 10v8M14 10v8M18 10v8M12 3l9 5H3z"/>' },
     { id: "projectdoc", naam: "Projectdoc", pad: "projectdoc-pwa/", ic: '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 14h6M9 17h4"/>' },
+    { id: "pi", naam: "Pi", pad: "pi-pwa/", ic: '<rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/>' },
   ];
   const lokaal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
   const huidig = () => (APPS.find((a) => location.pathname.includes("/" + a.pad)) || {}).id;

@@ -103,7 +103,7 @@
     return !$("#reis-all-wrap").classList.contains("hidden");
   }
 
-  function vulFavoriet(f) {
+  function vulFavoriet(f, { scroll = true } = {}) {
     $("#reis-naam").value = f.naam;
     $("#reis-bestemming").value = f.bestemming;
     $("#reis-km").value = M().formatKm(f.km);
@@ -113,8 +113,8 @@
     $("#reis-km-status").textContent = f.bron === "vast" ? "uit favoriet" : "uit historie";
     updatePreview();
     App().haptic(15);
-    // Direct naar het ingevulde formulier — scheelt handmatig scrollen.
-    $("#reis-form-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Direct naar het ingevulde formulier, scheelt handmatig scrollen (niet bij direct boeken).
+    if (scroll) $("#reis-form-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   // === Adres zoeken ===
@@ -296,6 +296,8 @@
     $("#reis-form-title").textContent = row ? `Rit bewerken (rij ${row})` : "Rit inboeken";
     $("#btn-reis-boek").textContent = row ? "Rit bijwerken" : "Reiskosten inboeken";
     $("#btn-reis-cancel-edit").classList.toggle("hidden", !row);
+    // Tijdens bewerken doet de gum hetzelfde als het kruisje: alleen het kruisje tonen.
+    $("#btn-reis-clear").classList.toggle("hidden", !!row);
   }
 
   function startEdit(h) {
@@ -472,7 +474,8 @@
       });
       li.querySelector(".voorstel-boek").addEventListener("click", async () => {
         if (v.fav) {
-          vulFavoriet(v.fav);
+          // Bekende bestemming: meteen boeken en in de lijst blijven, niet naar het formulier springen.
+          vulFavoriet(v.fav, { scroll: false });
           $("#reis-datum").value = v.datumIso;
           updatePreview();
           await boek();

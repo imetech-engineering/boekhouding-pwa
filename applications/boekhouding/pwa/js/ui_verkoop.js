@@ -277,6 +277,8 @@
     updateBoekKnoppen();
     checkDubbel();
     $("#btn-verkoop-cancel-edit").classList.toggle("hidden", !row);
+    // Tijdens bewerken doet de gum hetzelfde als het kruisje: alleen het kruisje tonen.
+    $("#btn-verkoop-clear").classList.toggle("hidden", !!row);
     // Bewerken verlaten zonder gekozen bestand → voorbeeld weg.
     if (!row && !selectedFile) pane.verberg();
   }

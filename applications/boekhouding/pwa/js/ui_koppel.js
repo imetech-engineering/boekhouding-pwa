@@ -218,8 +218,8 @@
       ? `Rest (${M().fmtEur(Math.abs(rest))}) hoeft geen factuur`
       : "Geen factuur nodig";
     zoekEl.placeholder = bank
-      ? "🔍 Zoek op naam of factuurnummer…"
-      : "🔍 Zoek in bankregels…";
+      ? "Zoek op naam of factuurnummer…"
+      : "Zoek in bankregels…";
     if (dicht) {
       $("#koppel-lijst").innerHTML = "";
       $("#koppel-som").classList.add("hidden");
@@ -309,7 +309,7 @@
       li.className = "boek-item";
       li.innerHTML = `
         <div class="bi-head">
-          <span class="bi-title bi-koppel">🔗 ${r.titel}</span>
+          <span class="bi-title bi-koppel">${global.BoekIc.koppel}${r.titel}</span>
           <span class="bi-amount">${r.bedrag}</span>
         </div>
         <div class="bi-sub"><span>${r.sub}</span><span></span></div>

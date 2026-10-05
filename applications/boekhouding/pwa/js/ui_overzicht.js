@@ -105,7 +105,7 @@
       .map(
         (r) =>
           `<div class="ovz-lijst-rij"><span>${escapeHtml(r.datumStr)} · ${escapeHtml(r.omschrijving)}` +
-          `${r.teltMee ? "" : " ⚠️ geen rekening"}</span>` +
+          `${r.teltMee ? "" : " ⚠ geen rekening"}</span>` +
           `<span class="num ${r.bedrag >= 0 ? "pos" : "neg"}">${M().fmtEur(r.bedrag)}</span></div>`
       )
       .join("");

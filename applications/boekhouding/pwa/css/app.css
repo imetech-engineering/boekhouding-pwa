@@ -1312,6 +1312,7 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   font-size: 1.35rem;
   line-height: 1;
 }
+.scan-opt .opt-icon .ic { width: 26px; height: 26px; }
 
 .scan-add-hint {
   grid-column: 1 / -1;
@@ -1456,6 +1457,7 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
 .scan-doc-icon {
   font-size: 2rem;
 }
+.scan-doc-icon .ic { width: 34px; height: 34px; color: var(--text-secondary); }
 
 .scan-doc-naam {
   font-size: 0.6875rem;
@@ -2097,3 +2099,37 @@ body:has(.tab-panel:not(.hidden) .sticky-acties) .install-banner { bottom: calc(
   justify-content: center;
 }
 .fi-del:active { background: var(--bg-hover); color: var(--danger); }
+
+/* Lijn-iconen in tekst en knoppen (vervangt emoji's) */
+.ic-inline { display: inline-block; width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin-right: 5px; }
+.file-item .fi-icon .ic { width: 18px; height: 18px; color: var(--text-secondary); }
+.sticky-acties > .btn-primary { order: -1; }
+
+/* Teller (nog te verwerken) in de navigatie */
+.bottom-nav button { position: relative; }
+.nav-badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+}
+.nav-badge.hidden { display: none; }
+
+/* Waarschuwing mogelijk dubbel, direct onder het factuurnummer */
+.dup-waarschuwing {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-size: 0.8125rem;
+}

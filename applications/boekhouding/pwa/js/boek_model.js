@@ -576,7 +576,7 @@
     const wat = `${h.partij} · ${h.datumStr} · ${fmtEur(h.bedrag)} (${h.factuurnummer || "geen nr"}, regel ${h.excelRow})`;
     return dup.reden === "factuurnummer"
       ? `Factuurnummer ${h.factuurnummer} staat al in het boek: ${wat}. Toch inboeken?`
-      : `Mogelijk dubbel — zelfde ${soort}, datum en bedrag: ${wat}. Toch inboeken?`;
+      : `Mogelijk dubbel: zelfde ${soort}, datum en bedrag: ${wat}. Toch inboeken?`;
   }
 
   // === Koppeling bankregel ↔ factuur (kolom I in het Bankboek) ===

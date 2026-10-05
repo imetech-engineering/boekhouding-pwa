@@ -27,12 +27,17 @@
     const list = $("#inkoop-files-list");
     const items = st.files.inkoop;
     $("#inkoop-files-count").textContent = items.length ? `(${items.length})` : "";
+    const navBadge = document.querySelector('.bottom-nav [data-tab="inkoop"] .nav-badge');
+    if (navBadge) {
+      navBadge.textContent = items.length > 99 ? "99+" : String(items.length);
+      navBadge.classList.toggle("hidden", !items.length);
+    }
     $("#inkoop-files-empty").classList.toggle("hidden", items.length > 0);
     list.innerHTML = "";
     for (const item of items) {
       const li = document.createElement("li");
       li.className = "file-item" + (selectedFile?.id === item.id ? " selected" : "");
-      const icon = item.folder ? "📁" : item.name.toLowerCase().endsWith(".pdf") ? "📄" : "🖼️";
+      const icon = global.BoekIc.groot(item.folder ? "map" : item.name.toLowerCase().endsWith(".pdf") ? "pdf" : "beeld");
       li.innerHTML = `<span class="fi-icon">${icon}</span><span class="fi-name">${escapeHtml(item.name)}</span>` +
         `<button type="button" class="fi-del" aria-label="Naar archief" title="Naar archief"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></svg></button>`;
       li.addEventListener("click", () => selectFile(item));
@@ -59,20 +64,26 @@
     const st = App().state;
     st.files.inkoop = st.files.inkoop.filter((f) => f.id !== item.id);
     renderFiles();
-    await App().persistMutation(
+    const gelukt = await App().persistMutation(
       {
         kind: "file_archive",
         itemId: item.id,
         destFolder: global.BoekGraph.archiefPad(global.BOEK_CONFIG.graph.folders.inkoopNieuw),
-      },
-      { successMsg: "Naar archief verplaatst" }
+      }
     );
+    if (!gelukt) return;
+    App().showToast(`Naar archief verplaatst. Tik om ongedaan te maken.`, false, () => {
+      App().persistMutation(
+        { kind: "file_move", itemId: item.id, destFolder: global.BOEK_CONFIG.graph.folders.inkoopNieuw },
+        { successMsg: "Teruggezet in nog te verwerken" }
+      );
+    });
   }
 
   async function selectFile(item) {
     selectedFile = item;
     renderFiles();
-    $("#btn-inkoop-boek-move").classList.remove("hidden");
+    updateBoekKnoppen();
 
     // Vers formulier voor deze factuur, dan vullen: bestandsnaam → PDF → Excel-historie.
     clearFormFields();
@@ -116,7 +127,7 @@
     if (!img) return;
     if ($("#inkoop-leverancier").value && $("#inkoop-bedrag").value) return;
     const gevuldVoor = OCR_VELDEN.filter((id) => document.getElementById(id).value).length;
-    pane.notitie("🔍 Bon lezen…");
+    pane.notitie("Bon lezen…");
     try {
       const tekst = await global.BoekOcr.tekstUit(img);
       if (selectedFile !== item) return; // ondertussen een andere factuur gekozen
@@ -126,7 +137,7 @@
       const gevuld = OCR_VELDEN.filter((id) => document.getElementById(id).value).length - gevuldVoor;
       pane.notitie(
         gevuld
-          ? `🔍 ${gevuld} gegeven${gevuld === 1 ? "" : "s"} uit de bon gelezen — controleer even.`
+          ? `${gevuld} gegeven${gevuld === 1 ? "" : "s"} uit de bon gelezen, controleer even.`
           : ""
       );
     } catch (_) {
@@ -138,7 +149,7 @@
     selectedFile = null;
     filenameParsed = null;
     pane.verberg();
-    $("#btn-inkoop-boek-move").classList.add("hidden");
+    updateBoekKnoppen();
     $("#btn-inkoop-rename").classList.add("hidden");
     renderFiles();
   }
@@ -278,7 +289,47 @@
   }
 
   // === Bankregel-koppeling ===
+  /** Al in het boek? Meteen tonen tijdens het invullen, niet pas bij inboeken. */
+  function checkDubbel() {
+    const el = $("#inkoop-dup");
+    if (!el) return;
+    let dup = null;
+    try {
+      const f = readFields();
+      if (f.leverancier && (f.factuurnummer || f.bedrag != null)) {
+        dup = M().findDuplicate(intel(), {
+          partij: f.leverancier,
+          datumIso: f.datumIso,
+          bedrag: f.bedrag,
+          factuurnummer: f.factuurnummer,
+          excludeRow: editRow,
+        });
+      }
+    } catch (_) { /* boek nog niet geladen */ }
+    el.textContent = dup ? M().duplicaatMelding(dup, "leverancier").replace(/ Toch inboeken\?$/, "") : "";
+    el.classList.toggle("hidden", !dup);
+  }
+
+  /** Bij een gekozen bestand is "Boek + verplaats" de hoofdknop en gewoon inboeken een icoon. */
+  function updateBoekKnoppen() {
+    const knop = $("#btn-inkoop-boek");
+    const metBestand = !!selectedFile && !editRow;
+    $("#btn-inkoop-boek-move").classList.toggle("hidden", !metBestand);
+    if (metBestand) {
+      knop.className = "btn-secondary btn-ic";
+      knop.innerHTML = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+      knop.setAttribute("aria-label", "Alleen inboeken, bestand laten staan");
+      knop.title = "Alleen inboeken, bestand laten staan";
+    } else {
+      knop.className = "btn-primary";
+      knop.textContent = editRow ? "Bijwerken" : "Inboeken";
+      knop.removeAttribute("aria-label");
+      knop.title = "";
+    }
+  }
+
   function updateBankCheck() {
+    checkDubbel();
     const bedrag = M().parseUserAmount($("#inkoop-bedrag").value);
     const datumIso = $("#inkoop-datum").value;
     bankMatchRows = [];
@@ -387,8 +438,8 @@
     editRow = row;
     updateAfschrijfPreview();
     $("#inkoop-form-title").textContent = row ? `Regel bewerken (rij ${row})` : "Factuur inboeken";
-    $("#btn-inkoop-boek").textContent = row ? "Bijwerken" : "Inboeken";
-    $("#btn-inkoop-boek-move").classList.toggle("hidden", !!row || !selectedFile);
+    updateBoekKnoppen();
+    checkDubbel();
     $("#btn-inkoop-cancel-edit").classList.toggle("hidden", !row);
     // Bewerken verlaten zonder gekozen bestand → voorbeeld weg.
     if (!row && !selectedFile) pane.verberg();
@@ -435,7 +486,7 @@
   /** Bijbehorend bestand opzoeken en meteen tonen, net als bij het inboeken. */
   async function toonBijbehorendeFactuur(h) {
     pane.verberg();
-    pane.melding("🔎 Bijbehorende factuur zoeken…");
+    pane.melding("Bijbehorende factuur zoeken…");
     const gevonden = await global.BoekDocFinder.findFor("inkoop", h);
     // Ondertussen kan er al een andere regel gekozen zijn.
     if (editRow !== h.excelRow) return;
@@ -762,6 +813,9 @@
       document.getElementById(id).addEventListener("change", updateRenameButton);
     }
     $("#inkoop-hist-search").addEventListener("input", renderHistory);
+    for (const id of ["inkoop-leverancier", "inkoop-fnr", "inkoop-bedrag", "inkoop-datum"]) {
+      document.getElementById(id).addEventListener("input", checkDubbel);
+    }
     $("#btn-inkoop-meer")?.addEventListener("click", () => {
       toonAantal += 20;
       renderHistory();

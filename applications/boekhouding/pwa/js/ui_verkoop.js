@@ -25,12 +25,17 @@
     const list = $("#verkoop-files-list");
     const items = st.files.verkoop;
     $("#verkoop-files-count").textContent = items.length ? `(${items.length})` : "";
+    const navBadge = document.querySelector('.bottom-nav [data-tab="verkoop"] .nav-badge');
+    if (navBadge) {
+      navBadge.textContent = items.length > 99 ? "99+" : String(items.length);
+      navBadge.classList.toggle("hidden", !items.length);
+    }
     $("#verkoop-files-empty").classList.toggle("hidden", items.length > 0);
     list.innerHTML = "";
     for (const item of items) {
       const li = document.createElement("li");
       li.className = "file-item" + (selectedFile?.id === item.id ? " selected" : "");
-      const icon = item.folder ? "📁" : item.name.toLowerCase().endsWith(".pdf") ? "📄" : "🖼️";
+      const icon = global.BoekIc.groot(item.folder ? "map" : item.name.toLowerCase().endsWith(".pdf") ? "pdf" : "beeld");
       li.innerHTML = `<span class="fi-icon">${icon}</span><span class="fi-name">${escapeHtml(item.name)}</span>` +
         `<button type="button" class="fi-del" aria-label="Naar archief" title="Naar archief"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></svg></button>`;
       li.addEventListener("click", () => selectFile(item));
@@ -57,20 +62,26 @@
     const st = App().state;
     st.files.verkoop = st.files.verkoop.filter((f) => f.id !== item.id);
     renderFiles();
-    await App().persistMutation(
+    const gelukt = await App().persistMutation(
       {
         kind: "file_archive",
         itemId: item.id,
         destFolder: global.BoekGraph.archiefPad(global.BOEK_CONFIG.graph.folders.verkoopNieuw),
-      },
-      { successMsg: "Naar archief verplaatst" }
+      }
     );
+    if (!gelukt) return;
+    App().showToast(`Naar archief verplaatst. Tik om ongedaan te maken.`, false, () => {
+      App().persistMutation(
+        { kind: "file_move", itemId: item.id, destFolder: global.BOEK_CONFIG.graph.folders.verkoopNieuw },
+        { successMsg: "Teruggezet in nog te verwerken" }
+      );
+    });
   }
 
   async function selectFile(item) {
     selectedFile = item;
     renderFiles();
-    $("#btn-verkoop-boek-move").classList.remove("hidden");
+    updateBoekKnoppen();
 
     // Vers formulier voor deze factuur, dan vullen: bestandsnaam → PDF → Excel-historie.
     clearFormFields();
@@ -102,7 +113,7 @@
   function deselectFile() {
     selectedFile = null;
     pane.verberg();
-    $("#btn-verkoop-boek-move").classList.add("hidden");
+    updateBoekKnoppen();
     renderFiles();
   }
 
@@ -154,7 +165,48 @@
         : "Vul er twee in, dan rekent de app de derde uit.";
   }
 
+  /** Al in het boek? Meteen tonen tijdens het invullen, niet pas bij inboeken. */
+  function checkDubbel() {
+    const el = $("#verkoop-dup");
+    if (!el) return;
+    let dup = null;
+    try {
+      const f = readFields();
+      if (f.klant && (f.factuurnummer || f.bedrag != null)) {
+        dup = M().findDuplicate(intel(), {
+          partij: f.klant,
+          datumIso: f.datumIso,
+          bedrag: f.bedrag,
+          factuurnummer: f.factuurnummer,
+          excludeRow: editRow,
+      nummerPerPartij: false,
+        });
+      }
+    } catch (_) { /* boek nog niet geladen */ }
+    el.textContent = dup ? M().duplicaatMelding(dup, "klant").replace(/ Toch inboeken\?$/, "") : "";
+    el.classList.toggle("hidden", !dup);
+  }
+
+  /** Bij een gekozen bestand is "Boek + verplaats" de hoofdknop en gewoon inboeken een icoon. */
+  function updateBoekKnoppen() {
+    const knop = $("#btn-verkoop-boek");
+    const metBestand = !!selectedFile && !editRow;
+    $("#btn-verkoop-boek-move").classList.toggle("hidden", !metBestand);
+    if (metBestand) {
+      knop.className = "btn-secondary btn-ic";
+      knop.innerHTML = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+      knop.setAttribute("aria-label", "Alleen inboeken, bestand laten staan");
+      knop.title = "Alleen inboeken, bestand laten staan";
+    } else {
+      knop.className = "btn-primary";
+      knop.textContent = editRow ? "Bijwerken" : "Inboeken";
+      knop.removeAttribute("aria-label");
+      knop.title = "";
+    }
+  }
+
   function updateBankCheck() {
+    checkDubbel();
     const bedrag = M().parseUserAmount($("#verkoop-bedrag").value);
     const datumIso = $("#verkoop-datum").value;
     bankMatchRows = [];
@@ -222,8 +274,8 @@
   function setEditRow(row) {
     editRow = row;
     $("#verkoop-form-title").textContent = row ? `Regel bewerken (rij ${row})` : "Factuur inboeken";
-    $("#btn-verkoop-boek").textContent = row ? "Bijwerken" : "Inboeken";
-    $("#btn-verkoop-boek-move").classList.toggle("hidden", !!row || !selectedFile);
+    updateBoekKnoppen();
+    checkDubbel();
     $("#btn-verkoop-cancel-edit").classList.toggle("hidden", !row);
     // Bewerken verlaten zonder gekozen bestand → voorbeeld weg.
     if (!row && !selectedFile) pane.verberg();
@@ -259,7 +311,7 @@
   /** Bijbehorend bestand opzoeken en meteen tonen, net als bij het inboeken. */
   async function toonBijbehorendeFactuur(h) {
     pane.verberg();
-    pane.melding("🔎 Bijbehorende factuur zoeken…");
+    pane.melding("Bijbehorende factuur zoeken…");
     const gevonden = await global.BoekDocFinder.findFor("verkoop", h);
     // Ondertussen kan er al een andere regel gekozen zijn.
     if (editRow !== h.excelRow) return;
@@ -509,6 +561,9 @@
     for (const id of ["verkoop-bedrag", "verkoop-datum"]) {
       document.getElementById(id).addEventListener("input", updateBankCheck);
       document.getElementById(id).addEventListener("change", updateBankCheck);
+    }
+    for (const id of ["verkoop-klant", "verkoop-fnr"]) {
+      document.getElementById(id).addEventListener("input", checkDubbel);
     }
     $("#verkoop-hist-search").addEventListener("input", renderHistory);
     $("#btn-verkoop-meer")?.addEventListener("click", () => {

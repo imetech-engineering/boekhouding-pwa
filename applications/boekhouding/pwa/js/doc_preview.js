@@ -44,7 +44,7 @@
     $("#dv-naam").textContent = naam;
     $("#dv-text").value = "";
     $("#dv-text-panel").classList.add("hidden");
-    $("#btn-dv-text").textContent = "🔤 Tekst";
+    $("#btn-dv-text").innerHTML = `${global.BoekIc.tekst}Tekst`;
     $("#doc-preview-modal").classList.remove("hidden");
     status("");
 
@@ -134,7 +134,7 @@
   async function huidigeTekst() {
     if (pdfDoc) return global.BoekPdf.pageText(pdfDoc, pageNum);
     if (!imgUrl) return "";
-    status("🔍 Tekst lezen uit de foto…");
+    status("Tekst lezen uit de foto…");
     try {
       const tekst = await global.BoekOcr.tekstUit($("#dv-img"));
       status(tekst.trim() ? "" : "Geen tekst gevonden in de foto.");
@@ -156,7 +156,7 @@
     tekstZichtbaar = !tekstZichtbaar;
     const paneel = $("#dv-text-panel");
     paneel.classList.toggle("hidden", !tekstZichtbaar);
-    $("#btn-dv-text").textContent = tekstZichtbaar ? "🖼️ Alleen beeld" : "🔤 Tekst";
+    $("#btn-dv-text").innerHTML = tekstZichtbaar ? `${global.BoekIc.beeld}Alleen beeld` : `${global.BoekIc.tekst}Tekst`;
     if (tekstZichtbaar) {
       await vulTekstPaneel();
       paneel.scrollIntoView({ behavior: "smooth", block: "nearest" });

@@ -157,7 +157,7 @@
     const status = $("#scan-ocr-status");
     status.classList.toggle("hidden", !gevuld);
     status.textContent = gevuld
-      ? `🔍 ${gevuld} gegeven${gevuld === 1 ? "" : "s"} uit ${bron} gehaald — controleer even.`
+      ? `${gevuld} gegeven${gevuld === 1 ? "" : "s"} uit ${bron} gehaald — controleer even.`
       : "";
   }
 
@@ -371,7 +371,7 @@
     ocrBezig = true;
     const status = $("#scan-ocr-status");
     status.classList.remove("hidden");
-    status.textContent = "🔍 Bon lezen…";
+    status.textContent = "Bon lezen…";
     try {
       const tekst = await global.BoekOcr.tekstUit(bron);
       meldHerkenning(vulVelden(global.BoekPdf.extractInvoiceData(tekst)), "de foto");
@@ -431,7 +431,7 @@
         const doc = document.createElement("div");
         doc.className = "scan-page-doc";
         const isPdf = page.ext === ".pdf";
-        doc.innerHTML = `<span class="scan-doc-icon">${isPdf ? "📄" : "🖼️"}</span>
+        doc.innerHTML = `<span class="scan-doc-icon">${global.BoekIc.groot(isPdf ? "pdf" : "beeld")}</span>
           <span class="scan-doc-naam">${escapeHtml(page.naam)}</span>`;
         item.appendChild(doc);
       } else {
@@ -460,7 +460,7 @@
       const tools = document.createElement("div");
       tools.className = "scan-page-tools";
       tools.innerHTML =
-        '<button type="button" class="btn-icon" data-a="zoom" aria-label="Groot bekijken" title="Groot bekijken">🔍</button>' +
+        '<button type="button" class="btn-icon" data-a="zoom" aria-label="Groot bekijken" title="Groot bekijken">' + global.BoekIc.zoek + '</button>' +
         (page.kind === "scan"
           ? '<button type="button" class="btn-icon" data-a="crop" aria-label="Opnieuw bijsnijden" title="Opnieuw bijsnijden">✎</button>' +
             '<button type="button" class="btn-icon" data-a="rot" aria-label="Draaien" title="Draaien">⟳</button>'

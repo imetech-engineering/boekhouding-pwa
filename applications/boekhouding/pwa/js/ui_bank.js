@@ -149,7 +149,7 @@
       matchHtml =
         s.kind === "geenNodig"
           ? `<div class="bi-status status-geenNodig">– geen factuur nodig (bewust)</div>`
-          : `<div class="bi-match-line bi-koppel">🔗 ${eerste ? koppelLabel(eerste) : ""}${extra}</div>` +
+          : `<div class="bi-match-line bi-koppel">${global.BoekIc.koppel}${eerste ? koppelLabel(eerste) : ""}${extra}</div>` +
             `<div class="bi-status status-${s.kind}">${M().koppelStatusIcoon(s.kind)} ${M().koppelStatusTekst(s)}</div>`;
     } else if (showMatch) {
       const matches = matchesVoorBankRow(r, facturen || recenteFacturen());
@@ -158,7 +158,7 @@
         const extra = matches.length > 1 ? ` +${matches.length - 1} meer` : "";
         const nr = m.factuurnummer ? ` · ${escapeHtml(m.factuurnummer)}` : "";
         li.classList.add("has-match");
-        matchHtml = `<div class="bi-match-line">⚡ ${escapeHtml(m.boek)}: ${escapeHtml(m.partij)}${nr} · ${m.datumStr}${extra}</div>`;
+        matchHtml = `<div class="bi-match-line">${global.BoekIc.bliksem}${escapeHtml(m.boek)}: ${escapeHtml(m.partij)}${nr} · ${m.datumStr}${extra}</div>`;
       }
     }
     li.innerHTML = `
@@ -328,7 +328,7 @@
         zoekterm
           ? "Niets gevonden."
           : statusFilter === "open"
-            ? "Alles is ingeboekt 🎉"
+            ? "Alles is ingeboekt"
             : statusFilter === "controle"
               ? "Alle koppelingen kloppen ✓"
               : "Geen regels in deze selectie."
@@ -384,7 +384,7 @@
     el.classList.toggle("hidden", !matches.length);
     if (matches.length) {
       const first = matches[0];
-      el.textContent = `⚡ Match: ${first.boek} ${first.partij} — ${M().fmtEur(first.bedrag)} (${first.datumStr})`;
+      el.innerHTML = `${global.BoekIc.bliksem}Match: ${escapeHtml(first.boek)} ${escapeHtml(first.partij)}, ${M().fmtEur(first.bedrag)} (${escapeHtml(first.datumStr)})`;
     }
   }
 
@@ -490,7 +490,7 @@
     // bankregel zelf gaat.
     const knopKoppel = $("#btn-bank-m-koppel");
     const n = (s.koppelingen || []).filter((k) => k.token !== "-").length;
-    knopKoppel.textContent = n ? `🔗 Koppelingen (${n})` : "🔗 Koppelen";
+    knopKoppel.innerHTML = `${global.BoekIc.koppel}${n ? `Koppelingen (${n})` : "Koppelen"}`;
   }
 
   /** Open de modal voor een specifieke Excel-rij (vanuit andere schermen). */

@@ -47,6 +47,58 @@
 
   const $ = (sel) => document.querySelector(sel);
 
+  // === Vaste prijs: bij een project met offerte volgt het tarief uit de offerte ===
+  // Offertes en meerwerk van de projectdoc-bridge; de laatste stand bewaard, zodat het ook werkt als de pc uit staat.
+  const GELD_CACHE = "imtech-uren-geld";
+  const OF_VINKJES = "imtech-uren-offerte-vinkjes";
+  const leesLokaal = (k, standaard) => {
+    try {
+      return JSON.parse(localStorage.getItem(k) || "null") ?? standaard;
+    } catch (_) {
+      return standaard;
+    }
+  };
+  const schrijfLokaal = (k, v) => {
+    try {
+      localStorage.setItem(k, JSON.stringify(v));
+    } catch (_) {}
+  };
+  let geld = leesLokaal(GELD_CACHE, null); // { offertes, meerwerk, tijd }
+  let vinkjes = leesLokaal(OF_VINKJES, {}); // { nummer: [regelindex, ...] } — welke regels uren zijn
+
+  let vpCache = { entries: null, estimates: null, geld: null, vinkjes: null, map: new Map(), rows: [] };
+  function vastePrijsMap() {
+    if (
+      vpCache.entries !== state.entries ||
+      vpCache.estimates !== state.estimates ||
+      vpCache.geld !== geld ||
+      vpCache.vinkjes !== vinkjes
+    ) {
+      const map = UrenVastePrijs.tarieven(state.estimates, state.entries, geld, vinkjes);
+      vpCache = {
+        entries: state.entries,
+        estimates: state.estimates,
+        geld,
+        vinkjes,
+        map,
+        rows: UrenVastePrijs.pasToe(state.entries, map),
+      };
+    }
+    return vpCache.map;
+  }
+
+  /** Regels voor analyse en grafieken: bij vaste prijs met het offertetarief in plaats van dat uit Excel. */
+  function analyseRows() {
+    vastePrijsMap();
+    return vpCache.rows;
+  }
+
+  function suggestTarief(og, proj) {
+    const vp = vastePrijsMap().get(UrenVastePrijs.sleutel(proj));
+    if (vp) return vp.tarief;
+    return UrenInvoer.suggestTarief(state.intel, og, proj);
+  }
+
   function setStatus(msg, isError) {
     state.syncStatus = msg;
     const el = $("#sync-status");
@@ -95,7 +147,7 @@
     try {
       localStorage.setItem("imtech-uren-dark", on ? "1" : "0");
     } catch (_) {}
-    if (state.chartInstance) renderGrafiekenChart(state.entries);
+    if (state.chartInstance) renderGrafiekenChart(analyseRows());
   }
 
   function loadDarkPreference() {
@@ -135,6 +187,35 @@
       locatie: (fields.locatie || "").trim(),
       uren: Number(fields.uren) || 0,
       tarief: Number(fields.tarief) || 0,
+      row_index: rowIndex,
+    };
+  }
+
+  /** Projectregel zoals hij uit Excel zou komen; gemaakte uren zijn de som van de geschreven uren. */
+  function fieldsToEstimate(fields, rowIndex, vorige = null) {
+    const project = (fields.project || "").trim();
+    const d = fields.datumStr ? new Date(fields.datumStr + "T12:00:00") : null;
+    const planned = Number(fields.ureninschatting) || 0;
+    const actual = (state.entries || [])
+      .filter((e) => (e.project || "").trim().toLowerCase() === project.toLowerCase())
+      .reduce((t, e) => t + (Number(e.uren) || 0), 0);
+    const status = (fields.status || "").trim() || UrenEstimates.DEFAULT_STATUS;
+    return {
+      ...(vorige || {}),
+      datum: d,
+      datumStr: fields.datumStr || "",
+      opdrachtgever: (fields.opdrachtgever || "").trim(),
+      project,
+      ureninschatting: planned,
+      gemaakte_uren: Math.round(actual * 100) / 100,
+      uurstatus: status === "In opdracht" ? planned - actual : null,
+      uur_eindstatus: status === "Afgerond" ? planned - actual : null,
+      status,
+      opmerking: (fields.opmerking || "").trim(),
+      ...("offerteUren" in fields
+        ? { offerte: String(fields.offerte || "").trim(), offerteUren: Number(fields.offerteUren) > 0 ? Number(fields.offerteUren) : null }
+        : {}),
+      formuleLeeg: false,
       row_index: rowIndex,
     };
   }
@@ -200,6 +281,35 @@
     };
   }
 
+  function optimisticEstimateAdd(fields, tempRow = -Date.now()) {
+    const snapshot = [...(state.estimates || [])];
+    state.estimates = [...snapshot, fieldsToEstimate(fields, tempRow)];
+    return () => {
+      state.estimates = snapshot;
+    };
+  }
+
+  function optimisticEstimateUpdate(rowIndex, fields) {
+    const idx = (state.estimates || []).findIndex((e) => e.row_index === rowIndex);
+    if (idx < 0) return null;
+    const snapshot = [...state.estimates];
+    const next = [...state.estimates];
+    next[idx] = fieldsToEstimate(fields, rowIndex, snapshot[idx]);
+    state.estimates = next;
+    return () => {
+      state.estimates = snapshot;
+    };
+  }
+
+  function optimisticEstimateDelete(rowIndex) {
+    const snapshot = [...(state.estimates || [])];
+    if (!snapshot.some((e) => e.row_index === rowIndex)) return null;
+    state.estimates = snapshot.filter((e) => e.row_index !== rowIndex);
+    return () => {
+      state.estimates = snapshot;
+    };
+  }
+
   async function updateQueueBadge() {
     const el = $("#queue-status");
     if (!el) return;
@@ -258,6 +368,10 @@
     } else if (kind === "hours_delete") {
       await UrenGraphExcel.withSession(path, token, (sid) =>
         UrenGraphExcel.deleteEntry(path, token, sid, rowIndex)
+      );
+    } else if (kind === "tarief_zet") {
+      await UrenGraphExcel.withSession(path, token, (sid) =>
+        UrenGraphExcel.zetTarief(path, token, sid, fields.project, fields.tarief, fields.rows)
       );
     } else if (kind === "estimate_add") {
       await UrenGraphEstimates.withSession(path, token, (sid) =>
@@ -349,7 +463,7 @@
    * meteen in de lijst, daarna gaat hij naar OneDrive. Mislukt dat, dan draaien
    * we hem terug. De verversing achteraf raakt het invulformulier niet aan.
    */
-  async function persistMutation(descriptor, optimisticRollback) {
+  async function persistMutation(descriptor, optimisticRollback, klopt = null) {
     const rollback = applyOptimistic(optimisticRollback);
     if (!UrenOfflineQueue.isOnline()) {
       await queueOfflineMutation(descriptor);
@@ -382,6 +496,16 @@
     }
     try {
       await refreshFromCloudQuiet();
+      // OneDrive geeft vlak na het schrijven soms nog de oude inhoud terug. Dan zou de
+      // verversing je wijziging van het scherm halen; even opnieuw kijken en anders
+      // je eigen versie laten staan tot de volgende ronde.
+      if (klopt && !klopt()) {
+        await new Promise((r) => setTimeout(r, 1500));
+        await refreshFromCloudQuiet();
+        if (!klopt() && optimisticRollback) {
+          applyOptimistic(optimisticRollback);
+        }
+      }
       showToast("Opgeslagen in OneDrive");
       return true;
     } catch (e) {
@@ -525,14 +649,14 @@
       }
       return;
     }
-    const base = UrenAnalyse.filterRowsForCharts(state.entries, state.analyseFilters);
+    const base = UrenAnalyse.filterRowsForCharts(analyseRows(), state.analyseFilters);
     const year = state.chartFilters.year || UrenAnalyse.chartYearFromRows(base);
     const yearRows = UrenAnalyse.rowsForChartYear(base, year);
     const sum = UrenAnalyse.summarize(yearRows);
     if (summary) {
       summary.textContent = `${year}: ${sum.totU.toFixed(1)} u · €${sum.totE.toFixed(2)} · ${sum.count} regels`;
     }
-    renderGrafiekenChart(state.entries);
+    renderGrafiekenChart(analyseRows());
   }
 
   async function ensureLoggedIn() {
@@ -575,6 +699,7 @@
   async function refreshFromCloud() {
     laadTimetick();
     laadWbso();
+    laadGeld();
     state.loading = true;
     setStatus("Laden uit OneDrive…");
     try {
@@ -623,6 +748,8 @@
       ureninschatting: $("#est-planned")?.value,
       status: $("#est-status")?.value,
       opmerking: $("#est-opmerking")?.value,
+      // Offerte alleen meesturen als je hem in dit formulier hebt gekoppeld of ontkoppeld.
+      ...(estOfferte ? { offerte: estOfferte.offerte, offerteUren: estOfferte.offerteUren } : {}),
     };
   }
 
@@ -654,6 +781,8 @@
     $("#est-delta").textContent =
       delta != null ? `${Number(delta).toFixed(1)} u` : entry ? "—" : "—";
     $("#btn-est-delete")?.classList.toggle("hidden", !entry);
+    estOfferte = null;
+    tekenEstOfferte();
     const dl = $("#dl-og-est");
     if (dl && state.intel) {
       dl.innerHTML = "";
@@ -684,11 +813,25 @@
     const bewerkRij = state.estimateEditRow;
     closeProjectModal(); // meteen dicht; opslaan gebeurt daarna
     try {
+      const verwacht = fieldsToEstimate(fields, bewerkRij || 0);
       await persistMutation(
         bewerkRij
           ? { kind: "estimate_update", fields, rowIndex: bewerkRij }
-          : { kind: "estimate_add", fields, rowIndex: null }
+          : { kind: "estimate_add", fields, rowIndex: null },
+        bewerkRij
+          ? () => optimisticEstimateUpdate(bewerkRij, fields)
+          : () => optimisticEstimateAdd(fields),
+        () =>
+          (state.estimates || []).some(
+            (e) =>
+              (e.project || "").trim().toLowerCase() === verwacht.project.toLowerCase() &&
+              Math.abs((Number(e.ureninschatting) || 0) - verwacht.ureninschatting) < 0.01 &&
+              (e.status || "") === verwacht.status &&
+              (e.opmerking || "") === verwacht.opmerking
+          )
       );
+      // Afgerond met een vaste prijs: dan is het uurtarief definitief; voorstellen het in de regels te zetten.
+      if (verwacht.status === "Afgerond") await zetTariefVoorProject(verwacht.project, { naAfronden: true });
     } catch (_) {}
   }
 
@@ -698,8 +841,433 @@
     const rij = state.estimateEditRow;
     closeProjectModal();
     try {
-      await persistMutation({ kind: "estimate_delete", fields: null, rowIndex: rij });
+      await persistMutation(
+        { kind: "estimate_delete", fields: null, rowIndex: rij },
+        () => optimisticEstimateDelete(rij),
+        () => !(state.estimates || []).some((e) => e.row_index === rij)
+      );
     } catch (_) {}
+  }
+
+  // === Vaste prijs in het projectblad: automatisch uit projectdoc, aanpassen kan, vastleggen bij afronden ===
+  // estOfferte: wat je in dit formulier aan de offerte hebt veranderd (null = niets, dan blijft Excel zoals het is).
+  let estOfferte = null; // { offerte, offerteUren }
+  const fmtEur = (v) =>
+    `€ ${(Number(v) || 0).toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const fmtUur = (u) => `${(Number(u) || 0).toFixed(1).replace(".", ",")} u`;
+  const nummerLijst = (tekst) =>
+    String(tekst || "")
+      .split(/[,\s+]+/)
+      .map((x) => x.trim().toUpperCase())
+      .filter((x) => /^(OF|PR|FA)\d{6}$/.test(x));
+
+  function gemaakteUren(project) {
+    return UrenVastePrijs.urenPerProject(state.entries).get(UrenVastePrijs.sleutel(project)) || 0;
+  }
+
+  /** Adres en token van de projectdoc-bridge: die bewaart de projectdoc-app op hetzelfde domein. */
+  function projectdocBridge() {
+    const inst = leesLokaal("pdoc_instellingen", null);
+    if (inst?.bridgeUrl && inst?.token) {
+      return { adres: String(inst.bridgeUrl).trim().replace(/\/+$/, ""), token: String(inst.token).trim() };
+    }
+    return null;
+  }
+
+  let geldBezig = null;
+  /** Offertes en meerwerk ophalen (hooguit eens per 5 minuten, tenzij nodig). Stil als de bridge er niet is. */
+  function laadGeld({ nodig = false } = {}) {
+    if (geldBezig) return geldBezig;
+    if (!nodig && geld?.tijd && Date.now() - geld.tijd < 5 * 60000) return Promise.resolve(geld);
+    geldBezig = (async () => {
+      const b = projectdocBridge();
+      if (!b) {
+        throw new Error("De offertes komen via de projectdoc-app: stel daar eerst het adres en token van de bridge in.");
+      }
+      const afbreker = new AbortController();
+      const klok = setTimeout(() => afbreker.abort(), 30000);
+      let res;
+      try {
+        res = await fetch(b.adres + "/api/offertes", {
+          headers: { Authorization: "Bearer " + b.token },
+          cache: "no-store",
+          signal: afbreker.signal,
+        });
+      } catch (_) {
+        throw new Error("Geen verbinding met de bridge op je pc. Staat hij aan? Je kunt het bedrag ook zelf invullen.");
+      } finally {
+        clearTimeout(klok);
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 404) throw new Error("De bridge op je pc is nog een oude versie — werk hem bij (git pull en herstart).");
+      if (!res.ok) throw new Error(data.fout || `Fout ${res.status} van de bridge`);
+      geld = { offertes: data.offertes || [], meerwerk: data.meerwerk || [], tijd: Date.now() };
+      schrijfLokaal(GELD_CACHE, geld);
+      renderAll(false);
+      return geld;
+    })().finally(() => {
+      geldBezig = null;
+    });
+    if (!nodig) geldBezig.catch(() => {}); // op de achtergrond: stil, de laatste stand blijft gelden
+    return geldBezig;
+  }
+
+  /** Wat geldt er voor het project in het formulier, inclusief wat je net hebt veranderd? */
+  function formulierVastePrijs() {
+    const project = ($("#est-project")?.value || "").trim();
+    const status = $("#est-status")?.value || "";
+    const opgeslagen = state.estimateEditRow
+      ? (state.estimates || []).find((e) => e.row_index === state.estimateEditRow)
+      : null;
+    const est = {
+      project,
+      status,
+      ureninschatting: Number($("#est-planned")?.value) || 0,
+      offerte: estOfferte ? estOfferte.offerte : opgeslagen?.offerte || "",
+      offerteUren: estOfferte ? estOfferte.offerteUren : opgeslagen?.offerteUren || null,
+    };
+    const lijst = UrenVastePrijs.bronnen(geld);
+    const auto = lijst.length ? UrenVastePrijs.autoVoorstel(project, lijst, vinkjes) : null;
+    return { est, eff: UrenVastePrijs.effectief(est, auto), gemaakt: gemaakteUren(project) };
+  }
+
+  const bronTekst = (nummers) => {
+    const lijst = nummerLijst(nummers);
+    const of = lijst.filter((n) => !n.startsWith("FA"));
+    const fa = lijst.filter((n) => n.startsWith("FA"));
+    return [of.join(" + "), fa.length ? `meerwerk ${fa.join(" + ")}` : ""].filter(Boolean).join(" + ");
+  };
+
+  /** Het blok "Vaste prijs" in het projectblad. */
+  function tekenEstOfferte() {
+    if (!$("#est-offerte")) return;
+    const { est, eff, gemaakt } = formulierVastePrijs();
+    const tekst = $("#est-offerte-tekst");
+    const tariefEl = $("#est-offerte-tarief");
+    const zetKnop = $("#btn-est-tarief-zet");
+    const knop = $("#btn-est-offerte");
+    tariefEl.classList.add("hidden");
+    zetKnop.classList.add("hidden");
+    if (est.status === "Regie") {
+      tekst.textContent = "Regie: het tarief komt uit de urenregels.";
+      knop.classList.add("hidden");
+      return;
+    }
+    knop.classList.remove("hidden");
+    if (!eff) {
+      const uit = String(est.offerte || "").trim() === UrenVastePrijs.UIT;
+      tekst.textContent = uit
+        ? "Geen vaste prijs (door jou uitgezet) — het tarief komt uit de urenregels."
+        : UrenVastePrijs.projectNr(est.project)
+          ? "Geen offerte gevonden bij dit projectnummer — het tarief komt uit de urenregels."
+          : "Geen offerte gekoppeld — het tarief komt uit de urenregels.";
+      knop.textContent = "Offerte koppelen";
+      return;
+    }
+    knop.textContent = "Aanpassen";
+    const bron = eff.bron === "auto" ? `<span class="vp-auto">automatisch</span> ` : "";
+    tekst.innerHTML = `${bron}<strong>${esc(bronTekst(eff.offerte) || "Zelf ingevuld")}</strong> · ${fmtEur(eff.bedrag)} voor uren`;
+    const tarief = UrenVastePrijs.tariefVoor(eff.bedrag, est, gemaakt);
+    tariefEl.classList.remove("hidden");
+    if (tarief == null) {
+      tariefEl.textContent = "Nog geen uren of inschatting — vul de ureninschatting in voor een tarief.";
+      return;
+    }
+    const afgerond = est.status === "Afgerond";
+    const noemer =
+      afgerond || gemaakt > est.ureninschatting
+        ? `${fmtUur(gemaakt)} gemaakt`
+        : `${fmtUur(est.ureninschatting)} geschat, ${fmtUur(gemaakt)} gemaakt`;
+    tariefEl.innerHTML =
+      `<span class="vp-tarief">${fmtEur(tarief)}/u</span> <span class="sub">${afgerond ? "definitief" : "nu"} · ${fmtEur(eff.bedrag)} ÷ ${noemer}</span>` +
+      (!afgerond && eff.bron === "auto" ? `<span class="sub vp-noot">Wordt vastgelegd als je het project afrondt.</span>` : "");
+    // Hybride: tijdens het project rekent alleen de app; vastzetten in Excel pas bij een opgeslagen, afgerond project.
+    const scheef = UrenVastePrijs.afwijkend(state.entries, est.project, tarief).length;
+    zetKnop.classList.toggle("hidden", !afgerond || !state.estimateEditRow || !!estOfferte || !scheef);
+    zetKnop.textContent = `Tarief in ${scheef} urenregel${scheef === 1 ? "" : "s"} zetten`;
+  }
+
+  /**
+   * Afronden: het bedrag vastleggen in Ureninschattingen (als het automatisch was) en het tarief in
+   * kolom Tarief van alle regels van dit project zetten — na één bevestiging. Timetick blijft ongemoeid.
+   */
+  async function zetTariefVoorProject(project, { naAfronden = false } = {}) {
+    const est = (state.estimates || []).find(
+      (e) => UrenVastePrijs.sleutel(e.project) === UrenVastePrijs.sleutel(project)
+    );
+    const vp = vastePrijsMap().get(UrenVastePrijs.sleutel(project));
+    if (!est || !vp) return;
+    const regels = UrenVastePrijs.afwijkend(state.entries, project, vp.tarief).filter((e) => e.row_index > 0);
+    const vastleggen = vp.bron === "auto";
+    if (!regels.length && !vastleggen) {
+      if (!naAfronden) showToast("Alle urenregels hebben dit tarief al.");
+      return;
+    }
+    const perTarief = {};
+    for (const e of regels) {
+      const t = Number(e.tarief) || 0;
+      perTarief[t] = (perTarief[t] || 0) + 1;
+    }
+    const nu = Object.entries(perTarief)
+      .map(([t, n]) => `${fmtEur(t)} (${n}×)`)
+      .join(", ");
+    const vraag =
+      (naAfronden ? `${est.project} is afgerond.\n\n` : "") +
+      `Voor uren: ${fmtEur(vp.bedrag)} (${bronTekst(vp.offerte) || "zelf ingevuld"}).\n` +
+      (regels.length
+        ? `${regels.length} urenregel${regels.length === 1 ? "" : "s"} krijgen ${fmtEur(vp.tarief)}/u (÷ ${fmtUur(vp.gemaakt)}).\nNu: ${nu}.\n\n`
+        : `Alle urenregels hebben al ${fmtEur(vp.tarief)}/u.\n\n`) +
+      "Klopt dit? Timetick wordt niet aangepast.";
+    if (!confirm(vraag)) return;
+    try {
+      if (vastleggen) {
+        const fields = {
+          datumStr: est.datumStr,
+          opdrachtgever: est.opdrachtgever,
+          project: est.project,
+          ureninschatting: est.ureninschatting,
+          status: est.status,
+          opmerking: est.opmerking,
+          offerte: vp.offerte,
+          offerteUren: vp.bedrag,
+        };
+        await persistMutation(
+          { kind: "estimate_update", fields, rowIndex: est.row_index },
+          () => optimisticEstimateUpdate(est.row_index, fields),
+          () => (state.estimates || []).some((e) => e.row_index === est.row_index && Number(e.offerteUren) > 0)
+        );
+      }
+      if (!regels.length) return;
+      const rows = regels.map((e) => e.row_index);
+      const tarief = vp.tarief;
+      await persistMutation(
+        { kind: "tarief_zet", fields: { project: est.project, tarief, rows }, rowIndex: null },
+        () => {
+          const snapshot = state.entries;
+          const set = new Set(rows);
+          state.entries = state.entries.map((e) =>
+            set.has(e.row_index) ? { ...e, tarief, bedrag: (Number(e.uren) || 0) * tarief } : e
+          );
+          state.intel = UrenExcel.buildIntel(state.entries);
+          return () => {
+            state.entries = snapshot;
+            state.intel = UrenExcel.buildIntel(state.entries);
+          };
+        },
+        () => !UrenVastePrijs.afwijkend(state.entries, est.project, tarief).length
+      );
+    } catch (_) {}
+  }
+
+  /* ---------- aanpassen: offertes en meerwerk kiezen (tweede blad) ---------- */
+
+  let ofState = { lijst: [], gekozen: [], vinkjes: {} };
+
+  function ofScore(b, og, project) {
+    const nr = UrenVastePrijs.projectNr(project);
+    let score = 0;
+    if (nr && b.projectNummer === nr) score += 100;
+    const woorden = (t) =>
+      String(t || "")
+        .toLowerCase()
+        .replace(/^\s*\d{4}\s+/, "")
+        .split(/[^a-z0-9à-ÿ]+/)
+        .filter((w) => w.length >= 3 && !["b.v", "the", "van", "het", "een", "voor", "engineering"].includes(w));
+    const ogW = new Set(woorden(og));
+    if (ogW.size && woorden(b.klant).some((w) => ogW.has(w))) score += 20;
+    const projW = new Set(woorden(project));
+    score += Math.min(3, woorden(b.zoek).filter((w) => projW.has(w)).length) * 5;
+    return score;
+  }
+
+  function ofBedrag() {
+    const gekozen = ofState.gekozen.map((nr) => ofState.lijst.find((b) => b.nummer === nr)).filter(Boolean);
+    return UrenVastePrijs.urenBedrag(gekozen, ofState.vinkjes);
+  }
+
+  function ofTekenUitkomst() {
+    const bedrag = Number($("#of-bedrag").value) || 0;
+    const { est, gemaakt } = formulierVastePrijs();
+    const t = UrenVastePrijs.tariefVoor(bedrag, est, gemaakt);
+    $("#of-uitkomst").textContent =
+      bedrag && t != null
+        ? `Uurtarief ${fmtEur(t)}/u (${fmtUur(gemaakt)} gemaakt, ${fmtUur(est.ureninschatting)} geschat)`
+        : bedrag
+          ? "Vul in het projectblad een ureninschatting in om een tarief te zien."
+          : "";
+  }
+
+  function ofItemHtml({ b, score }) {
+    const gekozen = ofState.gekozen.includes(b.nummer);
+    const tip =
+      b.soort === "factuur"
+        ? "Meerwerk"
+        : score >= 100
+          ? "Hoort bij dit project"
+          : score >= 20
+            ? "Zelfde klant"
+            : "";
+    const datum = b.datum ? b.datum.split("-").reverse().join("-") : "";
+    return `<li><button type="button" class="of-item${gekozen ? " gekozen" : ""}" data-nr="${esc(b.nummer)}">
+      <span class="of-vink" aria-hidden="true">${gekozen ? "✓" : ""}</span>
+      <span class="of-body">
+        <span class="of-kop"><strong>${esc(b.nummer)}</strong> ${esc(b.titel)}</span>
+        <span class="of-meta">${esc(datum)} · ${esc(b.klant || "—")} · ${fmtEur(b.totaal)}${b.regie ? " · regie" : ""}</span>
+        ${tip ? `<span class="of-tip${b.soort === "factuur" ? " meerwerk" : ""}">${tip}</span>` : ""}
+      </span>
+    </button></li>`;
+  }
+
+  function ofTekenLijst() {
+    const og = ($("#est-og")?.value || "").trim();
+    const project = ($("#est-project")?.value || "").trim();
+    const q = ($("#of-zoek")?.value || "").trim().toLowerCase();
+    const gescoord = ofState.lijst
+      .map((b) => ({ b, score: ofScore(b, og, project) }))
+      .sort((x, y) => y.score - x.score || y.b.datum.localeCompare(x.b.datum));
+    const past = (x) =>
+      q
+        ? `${x.b.nummer} ${x.b.klant} ${x.b.titel} ${x.b.zoek}`.toLowerCase().includes(q)
+        : x.score > 0 || ofState.gekozen.includes(x.b.nummer);
+    const zichtbaar = gescoord.filter(past).slice(0, q ? 30 : 10);
+    // Gekozen stukken altijd in beeld, ook als de zoekterm ze wegfiltert.
+    for (const nr of ofState.gekozen) {
+      if (!zichtbaar.some((x) => x.b.nummer === nr)) {
+        const g = gescoord.find((x) => x.b.nummer === nr);
+        if (g) zichtbaar.unshift(g);
+      }
+    }
+    const offertes = zichtbaar.filter((x) => x.b.soort === "offerte");
+    const facturen = zichtbaar.filter((x) => x.b.soort === "factuur");
+    $("#of-lijst").innerHTML =
+      (offertes.length
+        ? offertes.map(ofItemHtml).join("")
+        : `<li class="sub">${q ? "Geen offerte gevonden." : "Geen offerte die bij dit project lijkt te horen — zoek hierboven."}</li>`) +
+      (facturen.length
+        ? `<li class="of-groep">Meerwerk — facturen zonder offerte</li>` + facturen.map(ofItemHtml).join("")
+        : "");
+    ofTekenRegels();
+  }
+
+  function ofTekenRegels() {
+    const gekozen = ofState.gekozen.map((nr) => ofState.lijst.find((b) => b.nummer === nr)).filter(Boolean);
+    $("#of-regels-blok").classList.toggle("hidden", !gekozen.length);
+    $("#of-regels").innerHTML = gekozen
+      .map((b) => {
+        const v = new Set(UrenVastePrijs.urenVinkjes(b, ofState.vinkjes));
+        const regels = b.regels
+          .map(
+            (r, i) => `<li><label class="check-row of-regel">
+              <input type="checkbox" data-nr="${esc(b.nummer)}" data-i="${i}"${v.has(i) ? " checked" : ""} />
+              <span class="of-regel-oms">${esc(r.omschrijving || "—")}</span>
+              <span class="of-regel-bedrag">${fmtEur(r.bedrag)}</span>
+            </label></li>`
+          )
+          .join("");
+        return (
+          (gekozen.length > 1 ? `<li class="of-regels-kop">${esc(b.nummer)}${b.soort === "factuur" ? " · meerwerk" : ""}</li>` : "") +
+          (regels || `<li class="sub">Geen regels gevonden in ${esc(b.nummer)} — vul het bedrag zelf in.</li>`)
+        );
+      })
+      .join("");
+  }
+
+  function ofHerbereken() {
+    $("#of-bedrag").value = ofState.gekozen.length ? ofBedrag() || "" : "";
+    ofTekenUitkomst();
+  }
+
+  async function openOfferteModal() {
+    const { eff } = formulierVastePrijs();
+    ofState = { lijst: UrenVastePrijs.bronnen(geld), gekozen: nummerLijst(eff?.offerte), vinkjes: { ...vinkjes } };
+    $("#of-zoek").value = "";
+    $("#of-bedrag").value = eff?.bedrag || "";
+    $("#btn-of-weg").classList.toggle("hidden", !eff);
+    const melding = $("#of-melding");
+    melding.classList.remove("error");
+    const uitleg = "Kies de offerte(s) en het meerwerk van dit project, en vink aan wat uren zijn.";
+    melding.textContent = ofState.lijst.length ? uitleg : "Offertes ophalen via de projectdoc-bridge…";
+    ofTekenLijst();
+    ofTekenUitkomst();
+    $("#offerte-modal").classList.remove("hidden");
+    try {
+      await laadGeld({ nodig: !ofState.lijst.length });
+      ofState.lijst = UrenVastePrijs.bronnen(geld);
+      melding.textContent = uitleg;
+      ofTekenLijst();
+    } catch (e) {
+      // Met een bewaarde lijst kun je gewoon door; zonder: bedrag zelf invullen.
+      if (!ofState.lijst.length) {
+        melding.textContent = e.message || String(e);
+        melding.classList.add("error");
+      }
+    }
+  }
+
+  function sluitOfferteModal() {
+    $("#offerte-modal")?.classList.add("hidden");
+  }
+
+  function ofGebruik() {
+    const bedrag = Math.round((Number($("#of-bedrag").value) || 0) * 100) / 100;
+    if (!(bedrag > 0)) {
+      showToast("Vul het bedrag voor uren in, of kies een offerte.", true);
+      return;
+    }
+    // Vinkjes onthouden: die gelden ook voor het automatische voorstel.
+    vinkjes = { ...vinkjes };
+    for (const nr of ofState.gekozen) if (ofState.vinkjes[nr]) vinkjes[nr] = ofState.vinkjes[nr];
+    schrijfLokaal(OF_VINKJES, vinkjes);
+    estOfferte = { offerte: ofState.gekozen.join(", "), offerteUren: bedrag };
+    sluitOfferteModal();
+    tekenEstOfferte();
+  }
+
+  function ofOntkoppel() {
+    estOfferte = { offerte: UrenVastePrijs.UIT, offerteUren: null };
+    sluitOfferteModal();
+    tekenEstOfferte();
+  }
+
+  function bindOfferteModal() {
+    $("#btn-est-offerte")?.addEventListener("click", openOfferteModal);
+    $("#btn-est-tarief-zet")?.addEventListener("click", async () => {
+      const project = ($("#est-project")?.value || "").trim();
+      closeProjectModal();
+      await zetTariefVoorProject(project);
+    });
+    for (const id of ["#est-status", "#est-planned", "#est-project"]) {
+      $(id)?.addEventListener("input", tekenEstOfferte);
+      $(id)?.addEventListener("change", tekenEstOfferte);
+    }
+    document.querySelectorAll("[data-close-offerte]").forEach((el) => el.addEventListener("click", sluitOfferteModal));
+    $("#btn-of-annuleer")?.addEventListener("click", sluitOfferteModal);
+    $("#btn-of-ok")?.addEventListener("click", ofGebruik);
+    $("#btn-of-weg")?.addEventListener("click", ofOntkoppel);
+    $("#of-zoek")?.addEventListener("input", ofTekenLijst);
+    $("#of-lijst")?.addEventListener("click", (ev) => {
+      const b = ev.target.closest(".of-item");
+      if (!b) return;
+      const nr = b.dataset.nr;
+      const i = ofState.gekozen.indexOf(nr);
+      if (i >= 0) ofState.gekozen.splice(i, 1);
+      else ofState.gekozen.push(nr);
+      ofTekenLijst();
+      ofHerbereken();
+    });
+    $("#of-regels")?.addEventListener("change", (ev) => {
+      const cb = ev.target.closest("input[type=checkbox]");
+      if (!cb) return;
+      const b = ofState.lijst.find((x) => x.nummer === cb.dataset.nr);
+      if (!b) return;
+      const v = new Set(UrenVastePrijs.urenVinkjes(b, ofState.vinkjes));
+      const i = Number(cb.dataset.i);
+      if (cb.checked) v.add(i);
+      else v.delete(i);
+      ofState.vinkjes[b.nummer] = [...v].sort((x, y) => x - y);
+      ofHerbereken();
+    });
+    $("#of-bedrag")?.addEventListener("input", ofTekenUitkomst);
   }
 
   function renderProjecten() {
@@ -789,6 +1357,12 @@
         delta != null
           ? `<span class="${over ? "delta-negative" : ""}">${delta > 0 ? "+" : ""}${Number(delta).toFixed(1)} u</span>`
           : "";
+      const vp = vastePrijsMap().get(UrenVastePrijs.sleutel(row.project));
+      // ≈ = voorlopig (project loopt nog, of het bedrag is nog niet vastgelegd).
+      const voorlopig = vp && (row.status !== "Afgerond" || vp.bron === "auto");
+      const vpHtml = vp
+        ? `<span class="vp-tarief" title="Vaste prijs: ${fmtEur(vp.bedrag)} voor uren${vp.bron === "auto" ? " (automatisch)" : ""}">${voorlopig ? "≈ " : ""}${fmtEur(vp.tarief).replace(/,00$/, "")}/u</span>`
+        : "";
       li.innerHTML = `<div class="project-card-head">
           <span class="project-card-title">${row.project}</span>
           <span class="status-badge ${UrenEstimates.statusClass(row.status)}">${row.status}</span>
@@ -797,6 +1371,7 @@
         <div class="project-progress"><div class="project-progress-bar${over ? " over" : ""}" style="width:${pct}%"></div></div>
         <div class="project-stats">
           <span>${actual.toFixed(1)} / ${planned.toFixed(1)} u</span>
+          ${vpHtml}
           ${deltaHtml}
         </div>`;
       li.addEventListener("click", () => openProjectModal(row));
@@ -866,7 +1441,7 @@
     renderDatalists();
     const { og, proj, loc } = invoerContext();
     if (og && proj) {
-      const t = UrenInvoer.suggestTarief(state.intel, og, proj);
+      const t = suggestTarief(og, proj);
       if (t !== "") $("#field-tarief").value = t;
     }
     if (trigger === "project" && og && proj) {
@@ -1041,6 +1616,7 @@
   function ttBadge(st) {
     if (st === "in") return '<span class="tt-badge tt-in" title="Staat in Timetick">TT ✓</span>';
     if (st === "verstuurd") return '<span class="tt-badge tt-verstuurd" title="Verstuurd, wordt ingevoerd">TT …</span>';
+    if (st === "tarief0") return '<span class="tt-badge tt-tarief0">TT ?</span>';
     return "";
   }
 
@@ -1076,7 +1652,8 @@
         <span class="hi-werk"><span class="hi-datum">${esc(kortDatum(e.datumStr))}</span>${esc(e.werkzaamheden || "(geen omschrijving)")}</span>
         ${
           open
-            ? `${e.locatie ? `<span class="hi-loc">${esc(e.locatie)}</span>` : ""}
+            ? `${tt === "tarief0" ? '<span class="hi-tt-uitleg">Staat in Timetick, maar hier op tarief 0</span>' : ""}
+        ${e.locatie ? `<span class="hi-loc">${esc(e.locatie)}</span>` : ""}
         <span class="history-actions">
           <button type="button" class="btn-icon" data-act="apply" data-row="${e.row_index}" aria-label="Overnemen in formulier" title="Overnemen">${ICON_APPLY}</button>
           <button type="button" class="btn-icon" data-act="edit" data-row="${e.row_index}" aria-label="Bewerken" title="Bewerken">${ICON_PENCIL}</button>
@@ -1202,7 +1779,7 @@
       const og = $("#field-og")?.value;
       const pr = $("#field-project")?.value;
       if (state.intel && og && pr) {
-        const t = UrenInvoer.suggestTarief(state.intel, og, pr);
+        const t = suggestTarief(og, pr);
         if (t !== "" && !$("#field-tarief").value) $("#field-tarief").value = t;
       }
     }
@@ -1255,13 +1832,13 @@
   }
 
   function tariefChipSource() {
-    return UrenAnalyse.sortFilterValues(state.entries, "tarief").map((v) =>
+    return UrenAnalyse.sortFilterValues(analyseRows(), "tarief").map((v) =>
       typeof v === "number" ? v : Number(v)
     );
   }
 
   function renderAnalyse() {
-    const gefilterd = UrenAnalyse.filterRows(state.entries, state.analyseFilters);
+    const gefilterd = UrenAnalyse.filterRows(analyseRows(), state.analyseFilters);
     renderPeriode(gefilterd);
     renderJaarcijfers();
     if (!state.entries.length) {
@@ -1507,7 +2084,7 @@
 
     // Maandbalkjes van het gekozen jaar; tikken kiest die maand.
     const maanden = window.UrenInzichten
-      ? window.UrenInzichten.maandCijfers(state.entries, jaar)
+      ? window.UrenInzichten.maandCijfers(analyseRows(), jaar)
       : [];
     const max = Math.max(1, ...maanden.map((m) => m.uren));
     const actief = f.periodMode === "custom_month" ? (f.customMonth || 0) - 1 : -1;
@@ -1527,7 +2104,7 @@
     }
 
     const sum = UrenAnalyse.summarize(
-      gefilterd || UrenAnalyse.filterRows(state.entries, f)
+      gefilterd || UrenAnalyse.filterRows(analyseRows(), f)
     );
     const uitleg = $("#periode-uitleg");
     if (uitleg) {
@@ -1547,7 +2124,7 @@
     if (label) label.textContent = String(jaar);
     if (!I || !$("#uc-tekst")) return;
 
-    const p = I.jaarPrognose(state.entries, jaar);
+    const p = I.jaarPrognose(analyseRows(), jaar);
     const DOEL = p.doelUren;
     const fill = $("#uc-fill");
     if (fill) {
@@ -1836,13 +2413,73 @@
   const zelfde = (r, datum, uren, nr) =>
     r.datum === datum && Math.abs(getal(r.uren) - uren) < 0.01 && (!r.nr || !nr || r.nr === nr);
 
+  const ttNr = (e) => (/^\s*(\d{4})\b/.exec(e.project || "") || [])[1] || null;
+  const ttNorm = (t) => String(t || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+  /**
+   * Koppel elke regel uit Timetick (ook zelf ingevoerd, buiten de assistent om) aan hooguit één urenregel.
+   * Volgorde: zelfde projectnummer, dan zelfde omschrijving, dan de rest op datum + uren.
+   * Zo kan één Timetick-regel van 0:30 niet twee regels van 0:30 op dezelfde dag afvinken.
+   */
+  // Timetick-regels die niet in de urenadministratie horen (verlof, feestdag, prive).
+  const ttNegeer = (r) => /^\s*_/.test(r.project || "") || /verlof|ziekte|feestdag/i.test(r.project || "");
+  let ttCache = { tt: null, entries: null, kaart: new Map(), mist: [] };
+  function ttKaart() {
+    if (ttCache.tt === state.tt && ttCache.entries === state.entries) return ttCache.kaart;
+    const kaart = new Map();
+    const kand = (state.entries || []).filter((e) => isR2R(e) && getal(e.tarief) > 0 && getal(e.uren) > 0);
+    // Regels met tarief 0 gaan normaal niet naar Timetick. Staat zo'n regel er toch in, dan is er iets mis:
+    // die krijgt geen vinkje maar een waarschuwing.
+    const kandNul = (state.entries || []).filter((e) => isR2R(e) && getal(e.tarief) <= 0 && getal(e.uren) > 0);
+    const regels = (state.tt?.stand?.regels || []).map((r) => ({ ...r, _nr: r.nr || null, _o: ttNorm(r.omschrijving) }));
+    const rondes = [
+      (r, e) => r._nr && r._nr === ttNr(e),
+      (r, e) => !r._nr && r._o && r._o === ttNorm(e.werkzaamheden),
+      (r, e) => !r._nr || !ttNr(e),
+    ];
+    const vrij = new Set(regels.map((_, i) => i));
+    for (const past of rondes) {
+      for (const i of [...vrij]) {
+        const r = regels[i];
+        const e = kand.find((x) => !kaart.has(x.row_index) && x.datumStr === r.datum &&
+          Math.abs(getal(r.uren) - getal(x.uren)) < 0.01 && past(r, x));
+        if (e) { kaart.set(e.row_index, "in"); vrij.delete(i); }
+      }
+    }
+    for (const i of [...vrij]) {
+      const r = regels[i];
+      const e = kandNul.find((x) => !kaart.has(x.row_index) && x.datumStr === r.datum &&
+        Math.abs(getal(r.uren) - getal(x.uren)) < 0.01 && (!r._nr || !ttNr(x) || r._nr === ttNr(x)));
+      if (e) { kaart.set(e.row_index, "tarief0"); vrij.delete(i); }
+    }
+    // Wat overblijft staat wel in Timetick, maar niet in de urenadministratie.
+    const grens = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+    const mist = [...vrij].map((i) => regels[i]).filter((r) => r.datum >= grens && !ttNegeer(r))
+      .sort((a, b) => (a.datum < b.datum ? 1 : -1));
+    ttCache = { tt: state.tt, entries: state.entries, kaart, mist };
+    return kaart;
+  }
+
+  /** Regels die in Timetick staan zonder tegenhanger in de urenadministratie (laatste 30 dagen). */
+  function ttOntbreektHier() {
+    ttKaart();
+    return ttCache.mist;
+  }
+
   function ttStatus(e) {
-    if (!state.tt || !isR2R(e) || getal(e.tarief) <= 0) return null;
-    const nr = (/^\s*(\d{4})\b/.exec(e.project || "") || [])[1] || null;
-    const uren = getal(e.uren);
-    if ((state.tt.stand?.regels || []).some((r) => zelfde(r, e.datumStr, uren, nr))) return "in";
-    const v = (state.tt.verstuurd || []).find((r) => zelfde(r, e.datumStr, uren, nr));
+    if (!state.tt || !isR2R(e)) return null;
+    const uit = ttKaart().get(e.row_index);
+    if (uit) return uit;
+    if (getal(e.tarief) <= 0) return null;
+    const v = (state.tt.verstuurd || []).find((r) => zelfde(r, e.datumStr, getal(e.uren), ttNr(e)));
     return v ? v.status : null;
+  }
+
+  /** Staat deze regel (datum + uren, en projectnummer als beide dat hebben) al in Timetick? */
+  function staatAlInTimetick(f) {
+    const nr = ttNr(f);
+    return (state.tt?.stand?.regels || []).some((r) => zelfde(r, f.datumStr || f.datum, getal(f.uren), nr)) ||
+      (state.tt?.verstuurd || []).some((r) => zelfde(r, f.datumStr || f.datum, getal(f.uren), nr));
   }
 
   function openVoorTimetick(datum) {
@@ -1852,6 +2489,7 @@
   }
 
   function renderTimetickBalk() {
+    renderTimetickMistBalk();
     const lijst = $("#history-list");
     if (!lijst) return;
     let balk = $("#tt-balk");
@@ -1868,6 +2506,31 @@
     const uren = open.reduce((t, e) => t + getal(e.uren), 0);
     balk.innerHTML = `<span>${open.length} R2R-${open.length === 1 ? "regel" : "regels"} van vandaag (${String(uren).replace(".", ",")} u) nog niet in Timetick</span><button type="button" class="tt-knop">Versturen</button>`;
     balk.querySelector("button").onclick = () => stuurNaarTimetick(open);
+  }
+
+  /** Staat er iets in Timetick wat hier niet staat, dan één regel erover; uitklappen laat zien wat. */
+  function renderTimetickMistBalk() {
+    const lijst = $("#history-list");
+    if (!lijst) return;
+    let balk = $("#tt-balk-mist");
+    if (!balk) {
+      balk = document.createElement("div");
+      balk.id = "tt-balk-mist";
+      balk.className = "tt-balk tt-balk-mist hidden";
+      lijst.parentNode.insertBefore(balk, lijst);
+    }
+    const mist = state.tt ? ttOntbreektHier() : [];
+    balk.classList.toggle("hidden", !mist.length);
+    if (!mist.length) return;
+    const uren = mist.reduce((t, r) => t + getal(r.uren), 0);
+    const open = balk.classList.contains("open");
+    balk.innerHTML = `<span>${mist.length} ${mist.length === 1 ? "regel staat" : "regels staan"} in Timetick (${String(uren).replace(".", ",")} u) maar niet hier</span>
+      <button type="button" class="tt-knop tt-knop-plat">${open ? "Verberg" : "Bekijk"}</button>
+      ${open ? `<ul class="tt-mist-lijst">${mist.map((r) => `<li><span>${esc(kortDatum(r.datum))}</span> ${esc(r.project || "")} · ${esc(r.omschrijving || "")} <b>${String(getal(r.uren)).replace(".", ",")} u</b></li>`).join("")}</ul>` : ""}`;
+    balk.querySelector("button").onclick = () => {
+      balk.classList.toggle("open");
+      renderTimetickMistBalk();
+    };
   }
 
   async function stuurNaarTimetick(entries) {
@@ -1943,7 +2606,16 @@
   }
 
   async function biedTimetickAan(f) {
-    if (!isR2R(f) || getal(f.uren) <= 0 || getal(f.tarief) <= 0) return;
+    if (!isR2R(f) || getal(f.uren) <= 0) return;
+    if (getal(f.tarief) <= 0) {
+      // Tarief 0 gaat niet naar Timetick, maar staat hij daar wel, dan klopt er iets niet.
+      if (staatAlInTimetick(f)) showToast("Let op: deze regel staat wel in Timetick, maar hier op tarief 0", true);
+      return;
+    }
+    if (staatAlInTimetick(f)) {
+      showToast("Opgeslagen. Stond al in Timetick, dus niets verstuurd");
+      return;
+    }
     const inst = await assistentInstellingen();
     if (!inst?.adres || !inst?.token) return;
     const regel = {
@@ -2119,6 +2791,7 @@
     $("#btn-project-add")?.addEventListener("click", () => openProjectModal(null));
     $("#btn-est-save")?.addEventListener("click", () => onEstimateSave());
     $("#btn-est-cancel")?.addEventListener("click", closeProjectModal);
+    bindOfferteModal();
     $("#btn-est-delete")?.addEventListener("click", () => onEstimateDelete());
     $("#projecten-search")?.addEventListener("input", (e) => {
       state.estimateFilters.search = e.target.value;

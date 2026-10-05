@@ -13,6 +13,7 @@
   --accent-hover: #1d4ed8;
   --accent-light: #eff4ff;
   --danger: #dc2626;
+  --danger-light: #fef2f2;
   --goed: #15803d;
   --goed-light: #f0fdf4;
   --let-op: #b45309;
@@ -42,6 +43,8 @@ html[data-theme="dark"] {
   --accent: #3b82f6;
   --accent-hover: #2563eb;
   --accent-light: #1e3a5f;
+  --danger: #f87171;
+  --danger-light: #3a1a1a;
   --goed: #4ade80;
   --goed-light: #16301f;
   --let-op: #fbbf24;
@@ -381,6 +384,7 @@ button {
 }
 .history-item.tt-in { border-left-color: var(--goed, #15803d); }
 .history-item.tt-verstuurd { border-left-color: var(--let-op, #b45309); }
+.history-item.tt-tarief0 { border-left-color: var(--danger); }
 
 .hi-head {
   display: flex;
@@ -419,12 +423,14 @@ button {
 .history-item.selected .hi-werk { -webkit-line-clamp: unset; display: block; color: var(--text-primary); }
 .hi-datum { margin-right: 6px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .hi-loc { font-size: 0.75rem; color: var(--text-tertiary); }
+.hi-tt-uitleg { font-size: 0.75rem; color: var(--danger); }
 
 .tt-badge { font-size: 0.6875rem; font-weight: 700; padding: 1px 6px; border-radius: 999px; line-height: 1.5; }
 .tt-badge.tt-in { color: var(--goed, #15803d); background: var(--goed-light, #f0fdf4); }
 .tt-badge.tt-verstuurd { color: var(--let-op, #b45309); background: var(--let-op-light, #fffbeb); }
+.tt-badge.tt-tarief0 { color: var(--danger); background: var(--danger-light); }
 
-.history-item.wbso:not(.tt-in):not(.tt-verstuurd) { border-left-color: var(--wbso); }
+.history-item.wbso:not(.tt-in):not(.tt-verstuurd):not(.tt-tarief0) { border-left-color: var(--wbso); }
 .wbso-badge { color: var(--wbso); background: var(--wbso-light); }
 
 /* Acties: alleen iconen, rechts uitgelijnd. */
@@ -449,6 +455,32 @@ button {
   border-radius: var(--radius-md);
 }
 .tt-balk span { flex: 1; min-width: 0; }
+
+/* Staat wel in Timetick, niet in de urenadministratie: zelfde balk, rood, uitklapbaar. */
+.tt-balk-mist {
+  flex-wrap: wrap;
+  background: var(--danger-light);
+  border-left-color: var(--danger);
+}
+.tt-balk-mist .tt-knop-plat {
+  color: var(--danger);
+  background: none;
+  border: 1px solid var(--danger);
+}
+.tt-mist-lijst {
+  flex: 0 0 100%;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.tt-mist-lijst li {
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+.tt-mist-lijst li span { color: var(--text-tertiary); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.tt-mist-lijst li b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .tt-knop {
   flex-shrink: 0;
   min-height: 34px;
@@ -1322,3 +1354,115 @@ body:has(.invoer-sticky-bar:not(.hidden)) .install-banner { bottom: calc(var(--n
 /* Echte schermhoogte (gemeten in melding.js), zodat de balk onderin na vernieuwen in beeld blijft. */
 html body { height: var(--app-h, 100dvh); }
 .hi-og { font-weight: 400; color: var(--text-tertiary); }
+
+/* === Vaste prijs: offerte in het projectblad === */
+.est-offerte {
+  margin: 12px 0 0;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+.est-offerte-kop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.est-offerte-kop .btn-compact { flex: 0 0 auto; }
+.est-offerte-tekst {
+  margin-top: 4px;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+.est-offerte-tarief { margin-top: 6px; font-size: 0.8125rem; }
+.est-offerte-tarief .sub { display: inline; margin: 0; }
+.vp-tarief {
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.est-offerte-tarief .vp-tarief { font-size: 1rem; }
+.est-tarief-zet { width: 100%; margin-top: 10px; }
+
+/* Offerte kiezen */
+#of-melding.error { color: var(--danger); }
+.of-lijst,
+.of-regels {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.of-lijst > li + li { margin-top: 6px; }
+.of-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.of-item.gekozen {
+  border-color: var(--accent);
+  background: var(--accent-light);
+}
+.of-vink {
+  flex: 0 0 22px;
+  height: 22px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #fff;
+}
+.of-item.gekozen .of-vink { background: var(--accent); border-color: var(--accent); }
+.of-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.of-kop { font-size: 0.9375rem; overflow-wrap: anywhere; }
+.of-meta { font-size: 0.8125rem; color: var(--text-secondary); }
+.of-tip {
+  align-self: flex-start;
+  margin-top: 2px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--goed);
+  background: var(--goed-light);
+}
+.of-regels-blok { margin-top: 12px; }
+.of-regels-blok .sub { margin: 0 0 4px; }
+.of-regel.check-row { margin: 0; border-bottom: 1px solid var(--border); }
+.of-regel-oms { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.of-regel-bedrag { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.of-regels-kop {
+  margin-top: 8px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.of-uitkomst { min-height: 1.2em; font-weight: 600; color: var(--text-primary); }
+.vp-auto {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-light);
+  vertical-align: 1px;
+}
+.est-offerte-tarief .vp-noot { display: block; margin-top: 2px; }
+.of-groep {
+  margin: 14px 0 4px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.of-tip.meerwerk { color: var(--let-op); background: var(--let-op-light); }

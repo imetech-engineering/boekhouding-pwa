@@ -513,6 +513,10 @@
         return global.BoekGraph.moveItem(d.itemId, d.destFolder, token, d.newName);
       case "file_rename":
         return global.BoekGraph.renameItem(d.itemId, d.newName, token);
+      case "file_archive":
+        // Nooit echt verwijderen: naar de map archief naast "nog te verwerken".
+        await global.BoekGraph.ensureFolder(d.destFolder, token);
+        return global.BoekGraph.moveItem(d.itemId, d.destFolder, token);
       default:
         throw new Error(`Onbekende mutatie: ${d.kind}`);
     }

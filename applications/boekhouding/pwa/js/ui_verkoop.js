@@ -31,10 +31,40 @@
       const li = document.createElement("li");
       li.className = "file-item" + (selectedFile?.id === item.id ? " selected" : "");
       const icon = item.folder ? "📁" : item.name.toLowerCase().endsWith(".pdf") ? "📄" : "🖼️";
-      li.innerHTML = `<span class="fi-icon">${icon}</span><span class="fi-name">${escapeHtml(item.name)}</span>`;
+      li.innerHTML = `<span class="fi-icon">${icon}</span><span class="fi-name">${escapeHtml(item.name)}</span>` +
+        `<button type="button" class="fi-del" aria-label="Naar archief" title="Naar archief"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/></svg></button>`;
       li.addEventListener("click", () => selectFile(item));
+      li.querySelector(".fi-del").addEventListener("click", (e) => {
+        e.stopPropagation();
+        archiveFile(item);
+      });
       list.appendChild(li);
     }
+  }
+
+  /** Uit "nog te verwerken" halen zonder te verwijderen: naar de map archief ernaast. */
+  async function archiveFile(item) {
+    const ok = await App().showConfirm(
+      `"${item.name}" naar het archief verplaatsen?\nHij verdwijnt uit deze lijst maar blijft bewaard.`,
+      "Naar archief",
+      "Annuleren"
+    );
+    if (!ok) return;
+    if (selectedFile?.id === item.id) {
+      clearForm();
+      deselectFile();
+    }
+    const st = App().state;
+    st.files.verkoop = st.files.verkoop.filter((f) => f.id !== item.id);
+    renderFiles();
+    await App().persistMutation(
+      {
+        kind: "file_archive",
+        itemId: item.id,
+        destFolder: global.BoekGraph.archiefPad(global.BOEK_CONFIG.graph.folders.verkoopNieuw),
+      },
+      { successMsg: "Naar archief verplaatst" }
+    );
   }
 
   async function selectFile(item) {

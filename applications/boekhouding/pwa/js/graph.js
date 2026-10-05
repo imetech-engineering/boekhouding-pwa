@@ -96,6 +96,29 @@
     return URL.createObjectURL(new Blob([bytes], mime ? { type: mime } : undefined));
   }
 
+  /** Map aanmaken als die nog niet bestaat (bestaat hij al, dan niets doen). */
+  async function ensureFolder(path, token) {
+    try {
+      return await getDriveItemMeta(path, token);
+    } catch (_) {
+      const delen = path.split("/");
+      const naam = delen.pop();
+      const ouder = delen.join("/");
+      try {
+        await graphFetch(`${itemUrl(ouder)}:/children`, token, {
+          method: "POST",
+          body: JSON.stringify({ name: naam, folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
+        });
+      } catch (_) { /* tegelijk aangemaakt: prima */ }
+      return getDriveItemMeta(path, token);
+    }
+  }
+
+  /** "…/Facturen inkoop nog te verwerken" -> "…/archief" (naast de map, niet erin: anders verschijnt hij in de lijst). */
+  function archiefPad(mapPad) {
+    return mapPad.replace(/\/[^/]+$/, "") + "/archief";
+  }
+
   /** Verplaats (en optioneel hernoem) een item naar een andere map. */
   async function moveItem(itemId, destFolderPath, token, newName) {
     const destMeta = await getDriveItemMeta(destFolderPath, token);
@@ -207,6 +230,8 @@
     downloadBytes,
     downloadObjectUrl,
     moveItem,
+    ensureFolder,
+    archiefPad,
     renameItem,
     uploadFile,
     createFolder,

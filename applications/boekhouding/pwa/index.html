@@ -87,9 +87,9 @@
           <label for="bank-opmerking">Opmerking</label>
           <input id="bank-opmerking" autocomplete="off" />
           <p id="bank-new-match" class="sub hidden"></p>
-          <div class="btn-row">
+          <div class="btn-row sticky-acties">
             <button type="button" id="btn-bank-save" class="btn-primary">Bankregel opslaan</button>
-            <button type="button" id="btn-bank-clear" class="btn-secondary">Wis</button>
+            <button type="button" id="btn-bank-clear" class="btn-secondary btn-ic" aria-label="Wis formulier" title="Wis formulier"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12"/><path d="M4.5 15.5 14 6l4.5 4.5L11 18H7z"/><path d="M10 10l4.5 4.5"/></svg></button>
           </div>
         </div>
 
@@ -230,14 +230,12 @@
             <input type="checkbox" id="inkoop-bank-check" />
             <span id="inkoop-bank-check-label">Bankregel(s) afvinken</span>
           </label>
-          <div class="btn-row">
+          <div class="btn-row sticky-acties">
             <button type="button" id="btn-inkoop-boek" class="btn-primary">Inboeken</button>
-            <button type="button" id="btn-inkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
-          </div>
-          <div class="btn-row">
-            <button type="button" id="btn-inkoop-cancel-edit" class="btn-secondary hidden">Bewerken annuleren</button>
-            <button type="button" id="btn-inkoop-rename" class="btn-secondary hidden">Hernoem bestand</button>
-            <button type="button" id="btn-inkoop-clear" class="btn-secondary">Wis</button>
+            <button type="button" id="btn-inkoop-boek-move" class="btn-primary hidden" title="Inboeken en factuur naar verwerkt verplaatsen">Boek + verplaats</button>
+            <button type="button" id="btn-inkoop-cancel-edit" class="btn-secondary btn-ic hidden" aria-label="Bewerken annuleren" title="Bewerken annuleren"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            <button type="button" id="btn-inkoop-rename" class="btn-secondary btn-ic hidden" aria-label="Hernoem bestand" title="Hernoem bestand"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg></button>
+            <button type="button" id="btn-inkoop-clear" class="btn-secondary btn-ic" aria-label="Wis formulier" title="Wis formulier"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12"/><path d="M4.5 15.5 14 6l4.5 4.5L11 18H7z"/><path d="M10 10l4.5 4.5"/></svg></button>
           </div>
         </div>
 
@@ -341,13 +339,11 @@
             <input type="checkbox" id="verkoop-bank-check" />
             <span id="verkoop-bank-check-label">Bankregel(s) afvinken</span>
           </label>
-          <div class="btn-row">
+          <div class="btn-row sticky-acties">
             <button type="button" id="btn-verkoop-boek" class="btn-primary">Inboeken</button>
-            <button type="button" id="btn-verkoop-boek-move" class="btn-primary hidden">Inboeken + verplaatsen</button>
-          </div>
-          <div class="btn-row">
-            <button type="button" id="btn-verkoop-cancel-edit" class="btn-secondary hidden">Bewerken annuleren</button>
-            <button type="button" id="btn-verkoop-clear" class="btn-secondary">Wis</button>
+            <button type="button" id="btn-verkoop-boek-move" class="btn-primary hidden" title="Inboeken en factuur naar verwerkt verplaatsen">Boek + verplaats</button>
+            <button type="button" id="btn-verkoop-cancel-edit" class="btn-secondary btn-ic hidden" aria-label="Bewerken annuleren" title="Bewerken annuleren"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            <button type="button" id="btn-verkoop-clear" class="btn-secondary btn-ic" aria-label="Wis formulier" title="Wis formulier"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12"/><path d="M4.5 15.5 14 6l4.5 4.5L11 18H7z"/><path d="M10 10l4.5 4.5"/></svg></button>
           </div>
         </div>
 
@@ -419,10 +415,10 @@
             <p id="reis-preview-oms" class="sub">—</p>
             <p id="reis-preview-bedrag" class="stat-value">—</p>
           </div>
-          <div class="btn-row">
+          <div class="btn-row sticky-acties">
             <button type="button" id="btn-reis-boek" class="btn-primary">Reiskosten inboeken</button>
-            <button type="button" id="btn-reis-cancel-edit" class="btn-secondary hidden">Annuleren</button>
-            <button type="button" id="btn-reis-clear" class="btn-secondary">Wis</button>
+            <button type="button" id="btn-reis-cancel-edit" class="btn-secondary btn-ic hidden" aria-label="Bewerken annuleren" title="Bewerken annuleren"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+            <button type="button" id="btn-reis-clear" class="btn-secondary btn-ic" aria-label="Wis formulier" title="Wis formulier"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 20h12"/><path d="M4.5 15.5 14 6l4.5 4.5L11 18H7z"/><path d="M10 10l4.5 4.5"/></svg></button>
           </div>
           <p class="sub">Na inboeken blijven de gegevens staan — pas alleen de datum aan om dezelfde rit nog een dag te boeken.</p>
         </div>

@@ -2054,3 +2054,46 @@ body:has(.invoer-sticky-bar:not(.hidden)) #toast, body:has(.install-banner:not(.
 
 /* Echte schermhoogte (gemeten in melding.js), zodat de balk onderin na vernieuwen in beeld blijft. */
 html body { height: var(--app-h, 100dvh); }
+
+/* ===== Vaste actiebalk onderin (zelfde idee als de uren-PWA): één regel, secundaire knoppen als icoon ===== */
+.sticky-acties {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--nav-h) + var(--safe-bottom));
+  z-index: 35;
+  max-width: 640px;
+  margin: 0 auto;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+.sticky-acties > button { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sticky-acties > .btn-primary { flex: 1 1 0; }
+.btn-ic { flex: 0 0 44px; width: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.ic { width: 20px; height: 20px; display: block; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+main:has(.tab-panel:not(.hidden) .sticky-acties) { padding-bottom: calc(24px + var(--sticky-h)); }
+body:has(.tab-panel:not(.hidden) .sticky-acties) #toast { bottom: calc(var(--nav-h) + var(--safe-bottom) + var(--sticky-h) + 12px); }
+body:has(.tab-panel:not(.hidden) .sticky-acties) .install-banner { bottom: calc(var(--nav-h) + var(--safe-bottom) + var(--sticky-h)); }
+
+/* Prullenbak (naar archief) rechts in de bestandenlijst */
+.file-item .fi-name { flex: 1; }
+.fi-del {
+  margin-left: auto;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fi-del:active { background: var(--bg-hover); color: var(--danger); }

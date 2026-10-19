@@ -18,6 +18,22 @@
   // Regels óp de spaarrekening zelf (rente, kosten). Die raken het lopende saldo
   // niet, alleen het spaarsaldo van de bijbehorende bank.
   const SPAAR_REKENINGEN = { "Rabo spaar": "Rabo", "Knab spaar": "Knab" };
+  const RENTE_RE = /\brente|spaarrente|creditrente/i; // niet "Parenteel" e.d.
+
+  /** Bijgeschreven rente komt altijd op de spaarrekening, nooit op de lopende. */
+  function isSpaarRente(f) {
+    return RENTE_RE.test(`${f.omschrijving || ""} ${f.opmerking || ""}`) && (f.in || 0) > 0 && !f.uit;
+  }
+
+  /**
+   * Welke rekening er in het Excel komt: bij bijgeschreven rente automatisch de
+   * spaarrekening van die bank ("Rabo" wordt "Rabo spaar"), anders de gekozen bank.
+   */
+  function rekeningVoorOpslag(gekozen, f) {
+    const bank = SPAAR_REKENINGEN[gekozen] || gekozen;
+    if (!bank) return bank;
+    return isSpaarRente(f) && SPAAR_REKENINGEN[`${bank} spaar`] ? `${bank} spaar` : bank;
+  }
   const INK = {
     DATUM: 0, PERIODE: 1, JAAR: 2, LEVERANCIER: 3, OMS: 4, FNR: 5, BEDRAG: 6,
     BEDRAG_ORIG: 7, VALUTA: 8, KOERS: 9, BTW: 10, VERLEGD: 11, VERLEGD_EUR: 12,
@@ -1432,7 +1448,8 @@
   // Het bankboek bevat vooral de lopende rekeningen. Wat er naar de spaarrekening
   // gaat staat er wél in, als gewone regel met "spaar" in de omschrijving of
   // opmerking: Uit = erheen, In = eraf. Rente die óp de spaarrekening binnenkomt
-  // staat erin met rekening "Rabo spaar" (In = erbij). Samen geeft dat het spaarsaldo.
+  // staat erin met rekening "Rabo spaar"/"Knab spaar" (In = erbij); de app zet
+  // die rekening automatisch zodra er "rente" in een bijschrijving staat. Samen geeft dat het spaarsaldo.
   const SPAAR_RE = /spaar/i;
 
   function isSpaarTransfer(r) {
@@ -1755,7 +1772,7 @@
   global.BoekModel = {
     SHEET_BANK, SHEET_VERKOOP, SHEET_INKOOP,
     TABLE_BANK, TABLE_VERKOOP, TABLE_INKOOP,
-    BANK, INK, VRK, MATCH_DAYS, REKENINGEN, SPAAR_REKENINGEN,
+    BANK, INK, VRK, MATCH_DAYS, REKENINGEN, SPAAR_REKENINGEN, isSpaarRente, rekeningVoorOpslag,
     serialToDate, dateToIso, isoToDate, formatDateNl, todayIso, daysBetween, isoToYymmdd,
     parseCellAmount, parseUserAmount, parseUserNumber, fmtEur, fmtEurKort, fmtKoers, fmtAmountInput, cellText, cellBool,
     parseBankRows, parseInkoopRows, parseVerkoopRows,

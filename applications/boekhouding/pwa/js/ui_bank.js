@@ -20,7 +20,7 @@
   function nieuweRekening() {
     try {
       const v = localStorage.getItem(REK_KEY);
-      if (v === "Rabo" || v === "Knab" || v === "Rabo spaar") return v;
+      if (v === "Rabo" || v === "Knab") return v;
     } catch (_) {}
     return "Knab";
   }
@@ -35,12 +35,30 @@
 
   /** Segmented switch: zet de actieve rekening en geef de huidige keuze terug. */
   function setSwitch(containerId, rekening) {
+    const bank = M().SPAAR_REKENINGEN[rekening] || rekening; // "Rabo spaar" toont als Rabo
     document.querySelectorAll(`#${containerId} .rek-opt`).forEach((b) => {
-      const actief = b.dataset.rek === rekening;
+      const actief = b.dataset.rek === bank;
       b.classList.toggle("active", actief);
       b.setAttribute("aria-checked", String(actief));
     });
-    document.getElementById(`${containerId}-uitleg`)?.classList.toggle("hidden", rekening !== "Rabo spaar");
+  }
+
+  /** Melding onder de rekeningkeuze zodra de regel als spaarrente wordt herkend. */
+  function updateSpaarHint(prefix) {
+    const el = document.getElementById(`${prefix}-rek-switch-uitleg`);
+    if (!el) return;
+    const bank = getSwitch(`${prefix}-rek-switch`);
+    const rek = M().rekeningVoorOpslag(bank, {
+      omschrijving: $(`#${prefix}-omschrijving`).value,
+      opmerking: $(`#${prefix}-opmerking`).value,
+      in: M().parseUserAmount($(`#${prefix}-in`).value),
+      uit: M().parseUserAmount($(`#${prefix}-uit`).value),
+    });
+    const opSpaar = !!M().SPAAR_REKENINGEN[rek];
+    el.classList.toggle("hidden", !opSpaar);
+    if (opSpaar) {
+      el.textContent = `Rente herkend: wordt geboekt op de ${bank}-spaarrekening. Telt mee in het spaarsaldo, niet in het lopende saldo.`;
+    }
   }
 
   function getSwitch(containerId) {
@@ -61,6 +79,7 @@
     if (rekening === "Rabo") return '<span class="rek-dot rek-dot-rabo" title="Rabobank"></span>';
     if (rekening === "Knab") return '<span class="rek-dot rek-dot-knab" title="Knab"></span>';
     if (rekening === "Rabo spaar") return '<span class="rek-dot rek-dot-spaar" title="Rabo spaarrekening"></span>';
+    if (rekening === "Knab spaar") return '<span class="rek-dot rek-dot-spaar-knab" title="Knab spaarrekening"></span>';
     return "";
   }
 
@@ -360,14 +379,15 @@
 
   // === Nieuwe bankregel ===
   function newRowFields() {
-    return {
+    const f = {
       datumIso: $("#bank-datum").value,
       omschrijving: $("#bank-omschrijving").value.trim(),
       in: M().parseUserAmount($("#bank-in").value),
       uit: M().parseUserAmount($("#bank-uit").value),
       opmerking: $("#bank-opmerking").value.trim(),
-      rekening: getSwitch("bank-rek-switch"),
     };
+    f.rekening = M().rekeningVoorOpslag(getSwitch("bank-rek-switch"), f);
+    return f;
   }
 
   function updateNewRowMatchHint() {
@@ -396,6 +416,7 @@
     $("#bank-uit").value = "";
     $("#bank-opmerking").value = "";
     updateNewRowMatchHint();
+    updateSpaarHint("bank");
   }
 
   async function saveNewRow() {
@@ -407,7 +428,7 @@
       return App().showToast("Vul In en/of Uit in.", true);
     }
     try {
-      localStorage.setItem(REK_KEY, f.rekening);
+      localStorage.setItem(REK_KEY, getSwitch("bank-rek-switch"));
     } catch (_) {}
     const matches = matchesVoorBankRow(
       { datum: M().isoToDate(f.datumIso), in: f.in, uit: f.uit },
@@ -484,6 +505,7 @@
       $("#bank-m-uit").value = r.uit != null ? M().fmtAmountInput(r.uit) : "";
       $("#bank-m-opmerking").value = r.opmerking;
       setSwitch("bank-m-rek-switch", r.rekening);
+      updateSpaarHint("bank-m");
     }
     $("#btn-bank-m-ingeboekt").textContent = r.ingeboekt ? "↩ Niet ingeboekt" : "✓ Ingeboekt";
 
@@ -525,11 +547,11 @@
     const fields = {
       omschrijving: $("#bank-m-omschrijving").value.trim(),
       opmerking: $("#bank-m-opmerking").value.trim(),
-      rekening: getSwitch("bank-m-rek-switch") || null,
       updateAmounts: inVal !== r.in || uitVal !== r.uit,
       in: inVal,
       uit: uitVal,
     };
+    fields.rekening = M().rekeningVoorOpslag(getSwitch("bank-m-rek-switch"), fields) || null;
     const row = r.excelRow;
     closeModal();
     await App().persistMutation(
@@ -581,8 +603,15 @@
   function init() {
     $("#bank-datum").value = M().todayIso();
     setSwitch("bank-rek-switch", nieuweRekening());
-    bindSwitch("bank-rek-switch");
-    bindSwitch("bank-m-rek-switch");
+    bindSwitch("bank-rek-switch", () => updateSpaarHint("bank"));
+    bindSwitch("bank-m-rek-switch", () => updateSpaarHint("bank-m"));
+    for (const prefix of ["bank", "bank-m"]) {
+      for (const veld of ["omschrijving", "opmerking", "in", "uit"]) {
+        const el = document.getElementById(`${prefix}-${veld}`);
+        el.addEventListener("input", () => updateSpaarHint(prefix));
+        el.addEventListener("change", () => updateSpaarHint(prefix));
+      }
+    }
     document.querySelectorAll("#bank-filter .chip:not(.chip-dagen)").forEach((c) => {
       c.addEventListener("click", () => {
         filter = c.dataset.f;

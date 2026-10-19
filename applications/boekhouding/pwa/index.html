@@ -65,7 +65,11 @@
             <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">
               <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Knab"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#2103F5"/><text x="12" y="15.8" text-anchor="middle" font-size="9.2" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
             </button>
+            <button type="button" data-rek="Rabo spaar" class="rek-opt rek-spaar" role="radio">
+              <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Rabo spaarrekening"><rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="#fff" stroke="#FF6600" stroke-width="2"/><text x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#FF6600">spaar</text></svg>
+            </button>
           </div>
+          <p id="bank-rek-switch-uitleg" class="sub hidden">Regel óp de spaarrekening zelf, zoals rente. Telt mee in het spaarsaldo, niet in het lopende Rabo-saldo.</p>
           <label for="bank-datum">Datum</label>
           <div class="date-row">
             <button type="button" id="btn-bank-date-prev" class="btn-secondary btn-compact" aria-label="Vorige dag">◀</button>
@@ -637,7 +641,11 @@
           <button type="button" data-rek="Knab" class="rek-opt rek-knab" role="radio">
             <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Knab"><rect x="0.5" y="0.5" width="23" height="23" rx="6" fill="#2103F5"/><text x="12" y="15.8" text-anchor="middle" font-size="9.2" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#fff">knab</text></svg>
           </button>
+          <button type="button" data-rek="Rabo spaar" class="rek-opt rek-spaar" role="radio">
+            <svg class="rek-logo" viewBox="0 0 24 24" aria-label="Rabo spaarrekening"><rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="#fff" stroke="#FF6600" stroke-width="2"/><text x="12" y="15.2" text-anchor="middle" font-size="7.2" font-weight="800" font-family="Segoe UI, system-ui, sans-serif" fill="#FF6600">spaar</text></svg>
+          </button>
         </div>
+        <p id="bank-m-rek-switch-uitleg" class="sub hidden">Regel óp de spaarrekening zelf, zoals rente. Telt mee in het spaarsaldo, niet in het lopende Rabo-saldo.</p>
         <label for="bank-m-omschrijving">Omschrijving</label>
         <input id="bank-m-omschrijving" autocomplete="off" />
         <div class="row-2">

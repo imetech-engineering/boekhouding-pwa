@@ -20,7 +20,7 @@
   function nieuweRekening() {
     try {
       const v = localStorage.getItem(REK_KEY);
-      if (v === "Rabo" || v === "Knab") return v;
+      if (v === "Rabo" || v === "Knab" || v === "Rabo spaar") return v;
     } catch (_) {}
     return "Knab";
   }
@@ -40,6 +40,7 @@
       b.classList.toggle("active", actief);
       b.setAttribute("aria-checked", String(actief));
     });
+    document.getElementById(`${containerId}-uitleg`)?.classList.toggle("hidden", rekening !== "Rabo spaar");
   }
 
   function getSwitch(containerId) {
@@ -59,6 +60,7 @@
   function rekDot(rekening) {
     if (rekening === "Rabo") return '<span class="rek-dot rek-dot-rabo" title="Rabobank"></span>';
     if (rekening === "Knab") return '<span class="rek-dot rek-dot-knab" title="Knab"></span>';
+    if (rekening === "Rabo spaar") return '<span class="rek-dot rek-dot-spaar" title="Rabo spaarrekening"></span>';
     return "";
   }
 
@@ -305,7 +307,7 @@
     zetTeller("alles", filled.length);
 
     const zoekterm = ($("#bank-zoek")?.value || "").trim().toLowerCase();
-    const zichtbaar = (r) => filter === "Alles" || r.rekening === filter;
+    const zichtbaar = (r) => filter === "Alles" || r.rekening === filter || r.rekening === `${filter} spaar`;
     const zoekt = (r) =>
       !zoekterm ||
       `${r.omschrijving} ${r.opmerking} ${r.koppelingRaw} ${r.datumStr} ${r.in ?? ""} ${r.uit ?? ""}`
@@ -398,7 +400,7 @@
 
   async function saveNewRow() {
     const f = newRowFields();
-    if (!f.rekening) return App().showToast("Kies een rekening (Rabo of Knab).", true);
+    if (!f.rekening) return App().showToast("Kies een rekening.", true);
     if (!f.datumIso) return App().showToast("Vul een datum in.", true);
     if (!f.omschrijving) return App().showToast("Vul een omschrijving in.", true);
     if (f.in == null && f.uit == null) {

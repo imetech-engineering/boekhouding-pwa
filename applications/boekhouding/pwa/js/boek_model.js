@@ -15,6 +15,9 @@
   // 0-based kolomindexen binnen de tabel-array (kolom A = 0)
   const BANK = { DATUM: 0, OMS: 1, IN: 2, UIT: 3, SALDO: 4, INGEBOEKT: 5, OPM: 6, REK: 7, KOP: 8 };
   const REKENINGEN = ["Rabo", "Knab"];
+  // Regels óp de spaarrekening zelf (rente, kosten). Die raken het lopende saldo
+  // niet, alleen het spaarsaldo van de bijbehorende bank.
+  const SPAAR_REKENINGEN = { "Rabo spaar": "Rabo", "Knab spaar": "Knab" };
   const INK = {
     DATUM: 0, PERIODE: 1, JAAR: 2, LEVERANCIER: 3, OMS: 4, FNR: 5, BEDRAG: 6,
     BEDRAG_ORIG: 7, VALUTA: 8, KOERS: 9, BTW: 10, VERLEGD: 11, VERLEGD_EUR: 12,
@@ -306,6 +309,7 @@
     let zonder = 0;
     for (const r of bankRows) {
       if (r.isEmpty) continue;
+      if (SPAAR_REKENINGEN[r.rekening]) continue; // op de spaarrekening zelf
       const net = (r.in || 0) - (r.uit || 0);
       if (saldi[r.rekening] !== undefined) {
         saldi[r.rekening] = Math.round((saldi[r.rekening] + net) * 100) / 100;
@@ -1425,12 +1429,14 @@
   }
 
   // === Spaarrekeningen en totaalvermogen ===
-  // Het bankboek bevat alleen de lopende rekeningen. Wat er naar de spaarrekening
+  // Het bankboek bevat vooral de lopende rekeningen. Wat er naar de spaarrekening
   // gaat staat er wél in, als gewone regel met "spaar" in de omschrijving of
-  // opmerking: Uit = erheen, In = eraf. Daaruit is het spaarsaldo af te leiden.
+  // opmerking: Uit = erheen, In = eraf. Rente die óp de spaarrekening binnenkomt
+  // staat erin met rekening "Rabo spaar" (In = erbij). Samen geeft dat het spaarsaldo.
   const SPAAR_RE = /spaar/i;
 
   function isSpaarTransfer(r) {
+    if (SPAAR_REKENINGEN[r.rekening]) return false; // regel óp de spaarrekening, geen overboeking
     return SPAAR_RE.test(`${r.omschrijving || ""} ${r.opmerking || ""}`);
   }
 
@@ -1444,10 +1450,16 @@
     const spaar = { Rabo: 0, Knab: 0 };
     const regels = [];
     for (const r of bankRows) {
-      if (r.isEmpty || !isSpaarTransfer(r)) continue;
+      if (r.isEmpty) continue;
+      const opSpaar = SPAAR_REKENINGEN[r.rekening] || null;
+      if (!opSpaar && !isSpaarTransfer(r)) continue;
       if (r.in == null && r.uit == null) continue;
-      const rek = spaar[r.rekening] !== undefined ? r.rekening : null;
-      const bedrag = Math.round(((r.uit || 0) - (r.in || 0)) * 100) / 100;
+      // Overboeking vanaf lopend: Uit = erheen, In = eraf.
+      // Regel óp de spaarrekening (rente): In = erbij, Uit = eraf.
+      const rek = opSpaar || (spaar[r.rekening] !== undefined ? r.rekening : null);
+      const bedrag = opSpaar
+        ? Math.round(((r.in || 0) - (r.uit || 0)) * 100) / 100
+        : Math.round(((r.uit || 0) - (r.in || 0)) * 100) / 100;
       if (rek) spaar[rek] = Math.round((spaar[rek] + bedrag) * 100) / 100;
       regels.push({
         excelRow: r.excelRow,
@@ -1455,6 +1467,7 @@
         omschrijving: r.omschrijving,
         rekening: r.rekening,
         bedrag,
+        opSpaar: !!opSpaar,
         teltMee: !!rek,
       });
     }
@@ -1742,7 +1755,7 @@
   global.BoekModel = {
     SHEET_BANK, SHEET_VERKOOP, SHEET_INKOOP,
     TABLE_BANK, TABLE_VERKOOP, TABLE_INKOOP,
-    BANK, INK, VRK, MATCH_DAYS, REKENINGEN,
+    BANK, INK, VRK, MATCH_DAYS, REKENINGEN, SPAAR_REKENINGEN,
     serialToDate, dateToIso, isoToDate, formatDateNl, todayIso, daysBetween, isoToYymmdd,
     parseCellAmount, parseUserAmount, parseUserNumber, fmtEur, fmtEurKort, fmtKoers, fmtAmountInput, cellText, cellBool,
     parseBankRows, parseInkoopRows, parseVerkoopRows,

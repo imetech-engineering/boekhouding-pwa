@@ -95,7 +95,7 @@
     const zonder = s.regels.filter((r) => !r.teltMee).length;
     $("#ovz-spaar-uitleg").innerHTML =
       s.regels.length
-        ? `Spaarsaldo is afgeleid uit ${s.regels.length} bankregel(s) met "spaar" erin ` +
+        ? `Spaarsaldo is afgeleid uit ${s.regels.length} spaarregel(s): overboekingen en rente ` +
           `(Rabo ${M().fmtEur(s.spaar.Rabo)}, Knab ${M().fmtEur(s.spaar.Knab)}).` +
           (zonder ? ` <strong>${zonder} regel(s) zonder rekening tellen niet mee.</strong>` : "")
         : 'Geen bankregels met "spaar" gevonden — het spaarsaldo is dan € 0,00.';
@@ -105,6 +105,7 @@
       .map(
         (r) =>
           `<div class="ovz-lijst-rij"><span>${escapeHtml(r.datumStr)} · ${escapeHtml(r.omschrijving)}` +
+          `${r.opSpaar ? " (op spaarrekening)" : ""}` +
           `${r.teltMee ? "" : " ⚠ geen rekening"}</span>` +
           `<span class="num ${r.bedrag >= 0 ? "pos" : "neg"}">${M().fmtEur(r.bedrag)}</span></div>`
       )
@@ -675,7 +676,9 @@
     const kia = M().kiaTotaal(st.inkoopRows, jaar);
     const activa = M().boekwaardeActiva(st.inkoopRows, jaar);
     const eind = new Date(Date.UTC(jaar, 11, 31, 23, 59));
-    const saldi = M().saldiPerRekening(st.bankRows.filter((r) => !r.isEmpty && r.datum && r.datum <= eind));
+    const totEind = st.bankRows.filter((r) => !r.isEmpty && r.datum && r.datum <= eind);
+    const saldi = M().saldiPerRekening(totEind);
+    const spaarEind = M().alleSaldi(totEind).spaarTotaal;
     const prive = M().priveOverzicht(st.bankRows, jaar);
     const pi = M().priveInkoop(st.inkoopRows, jaar);
     const reis = M().reisTotaal(st.inkoopRows, jaar);
@@ -711,7 +714,8 @@ ${rij("Resultaat", omzet - kosten, true)}
 ${rij("Bedrijfsmiddelen (boekwaarde)", activa)}
 ${rij("Rabo", saldi.Rabo)}
 ${rij("Knab", saldi.Knab)}
-${rij("Totaal", activa + saldi.Rabo + saldi.Knab, true)}
+${rij("Spaarrekening", spaarEind)}
+${rij("Totaal", activa + saldi.Rabo + saldi.Knab + spaarEind, true)}
 </table>
 <h2>Privé (IB)</h2>
 <table>

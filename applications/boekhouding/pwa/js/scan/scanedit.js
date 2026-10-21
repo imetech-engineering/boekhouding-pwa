@@ -11,6 +11,7 @@ import { loadCv, detectQuadBest, warp, dewarp, enhance, matToCanvas, fullQuad } 
 const MODES = [
   ["bw", "Zwart-wit"],
   ["gray", "Grijs"],
+  ["color", "Kleur"],
 ];
 const PREFS_KEY = "boek.scanPrefs";
 const DEFAULTS = { mode: "bw", level: 0, speck: true, curve: false };

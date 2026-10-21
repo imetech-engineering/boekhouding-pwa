@@ -514,12 +514,30 @@ function despeckle(cv, bw, max, keep) {
   }
 }
 
-// mode: "bw" (zwart-wit) of "gray". level -5..5: lager = schoner (lichter, minder
+// mode: "bw" (zwart-wit), "gray" of "color". level -5..5: lager = schoner (lichter, minder
 // spikkels), hoger = meer details (donkerder). speck: losse spikkels weghalen.
 // Geeft een nieuwe Mat (zelf .delete()!).
 export function enhance(cv, rgba, mode, { level = 0, speck = true } = {}) {
   const v = Math.max(-5, Math.min(5, +level || 0));
   return using((keep) => {
+    if (mode === "color") {
+      // Kleur (logo, stempel): per kleurkanaal het papier wit maken, dan contrast.
+      const rgb = keep(new cv.Mat());
+      cv.cvtColor(rgba, rgb, cv.COLOR_RGBA2RGB);
+      const chans = keep(new cv.MatVector());
+      cv.split(rgb, chans);
+      const outs = keep(new cv.MatVector());
+      const a = 1.15 + 0.05 * v;
+      for (let i = 0; i < 3; i++) {
+        const f = flatten(cv, keep(chans.get(i)), keep);
+        f.convertTo(f, -1, a, -(a - 1) * 255 - 4 * v);
+        outs.push_back(f);
+      }
+      const merged = keep(new cv.Mat());
+      cv.merge(outs, merged);
+      sharpen(cv, merged, 0.5, keep);
+      return merged.clone();
+    }
     const gray = keep(new cv.Mat());
     cv.cvtColor(rgba, gray, cv.COLOR_RGBA2GRAY);
     const flat = flatten(cv, gray, keep);

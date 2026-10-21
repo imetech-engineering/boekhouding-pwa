@@ -2,7 +2,7 @@
  * Service worker — network-first voor same-origin (updates komen direct door),
  * cache als offline-fallback. Verbetering t.o.v. uren-PWA (cache-first + handmatige bump).
  */
-const CACHE = "imtech-boekhouding-pwa-v58";
+const CACHE = "imtech-boekhouding-pwa-v59";
 const ASSETS = [
   "./",
   "./index.html",
@@ -27,6 +27,10 @@ const ASSETS = [
   "./js/doc_preview.js",
   "./js/preview_pane.js",
   "./js/scanner.js",
+  "./js/scan/dom.js",
+  "./js/scan/docscan.js",
+  "./js/scan/scancam.js",
+  "./js/scan/scanedit.js",
   "./js/reiskosten.js",
   "./js/combobox.js",
   "./js/data_cache.js",
@@ -70,7 +74,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((k) => k !== CACHE && !BEWAAR_CACHES.includes(k))
+            .filter((k) => k !== CACHE && !isBewaard(k))
             .map((k) => caches.delete(k))
         )
       )
@@ -85,6 +89,7 @@ self.addEventListener("activate", (event) => {
 const CDN_CACHE = "imtech-boekhouding-cdn-v1";
 const CDN_HOSTS = ["cdn.jsdelivr.net", "cdnjs.cloudflare.com"];
 const BEWAAR_CACHES = [CDN_CACHE, "share-inbox"];
+const isBewaard = (k) => BEWAAR_CACHES.includes(k) || k.startsWith("boek-opencv-");
 
 /**
  * Same-origin: direct uit de cache (de app start meteen) en op de achtergrond
@@ -184,6 +189,9 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (event.request.method !== "GET") return;
+  // OpenCV (11 MB) bewaart de scanner zelf in een eigen cache (js/scan/docscan.js);
+  // niet nog eens in de app-cache die bij elke versie opnieuw gevuld wordt.
+  if (url.pathname.includes("/vendor/opencv/")) return;
   if (url.origin === self.location.origin) {
     event.respondWith(uitCacheEnBijwerken(event.request));
     return;

@@ -1344,71 +1344,6 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   text-align: center;
 }
 
-/* Het kader valt precies om het canvas, zodat de handgrepen op dezelfde
-   nulpunt staan als de getekende hoeken. */
-.scan-crop-wrap {
-  position: relative;
-  display: block;
-  width: fit-content;
-  max-width: 100%;
-  margin: 8px auto;
-  touch-action: none;
-}
-
-.scan-crop-wrap canvas {
-  display: block;
-}
-
-#scan-crop-canvas {
-  border-radius: var(--radius-md);
-  background: var(--bg-tertiary);
-}
-
-#scan-crop-overlay {
-  position: absolute;
-  left: 0;
-  top: 0;
-  pointer-events: none;
-}
-
-.scan-handle {
-  position: absolute;
-  width: 40px;
-  height: 40px;
-  margin: -20px 0 0 -20px;
-  border-radius: 50%;
-  background: rgba(14, 138, 91, 0.22);
-  border: 2px solid #0e8a5b;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
-  touch-action: none;
-  cursor: grab;
-}
-
-.scan-handle::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  margin: -4px 0 0 -4px;
-  border-radius: 50%;
-  background: #0e8a5b;
-}
-
-.scan-loupe {
-  position: absolute;
-  top: 8px;
-  z-index: 4;
-  width: 104px;
-  height: 104px;
-  border-radius: 50%;
-  border: 2px solid var(--border-strong);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  background: #fff;
-  pointer-events: none;
-}
-
 .scan-pages {
   display: flex;
   gap: 10px;
@@ -2142,4 +2077,445 @@ body:has(.tab-panel:not(.hidden) .sticky-acties) .install-banner { bottom: calc(
   border: 1px solid var(--danger);
   color: var(--danger);
   font-size: 0.8125rem;
+}
+
+/* ===== Scanner (overgenomen uit MuzIVOtheek): camera, hoeken, filters ===== */
+.cam [hidden],
+.se [hidden] {
+  display: none !important;
+}
+.cam .ic,
+.se .ic {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.se .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.se .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.cam button,
+.se button {
+  cursor: pointer;
+  font-family: inherit;
+}
+/* Meldingen boven camera en scanner */
+body.cam-open #toast {
+  z-index: 140;
+}
+
+/* Camera in de pagina (js/scan/scancam.js) */
+body.cam-open {
+  overflow: hidden;
+}
+.cam {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: #000;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+}
+.cam-view {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.cam-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+.cam-quad {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.cam-msg {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 40%;
+  text-align: center;
+  font-weight: 600;
+}
+.cam-count {
+  position: absolute;
+  top: calc(var(--safe-top) + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 14px;
+  padding: 6px 12px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.cam-count:empty {
+  display: none;
+}
+.cam-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 18px 16px calc(18px + var(--safe-bottom));
+  background: #000;
+}
+.cam-shutter {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: 5px solid #fff;
+  background: rgba(255, 255, 255, 0.25);
+}
+.cam-shutter:active {
+  background: rgba(255, 255, 255, 0.7);
+}
+.cam-shutter:disabled {
+  opacity: 0.4;
+}
+.cam-side {
+  width: 54px;
+  height: 54px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cam-side[hidden] {
+  display: flex !important;
+  visibility: hidden;
+}
+.cam-side.on {
+  background: #ffd84d;
+  color: #000;
+}
+.cam-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+.cam-flash.go {
+  animation: cam-flash 0.35s ease-out;
+}
+@keyframes cam-flash {
+  0% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Bijsnijden en verbeteren (js/scan/scanedit.js) */
+.se {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: #101114;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  touch-action: none;
+}
+.se-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: calc(8px + var(--safe-top)) 8px 8px;
+}
+.se-title {
+  flex: 1;
+  text-align: center;
+  font-weight: 700;
+  font-size: 17px;
+}
+.se-x,
+.se-sp {
+  width: 48px;
+  height: 48px;
+  flex: none;
+}
+.se-x {
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.se-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.se-frame {
+  position: relative;
+}
+.se-img,
+.se-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.se-svg {
+  overflow: visible;
+  touch-action: none;
+}
+.se-poly {
+  fill: color-mix(in srgb, var(--accent) 16%, transparent);
+  stroke: var(--accent);
+  stroke-width: var(--sw, 2.5);
+  stroke-linejoin: round;
+}
+.se-handle {
+  fill: rgba(255, 255, 255, 0.9);
+  stroke: var(--accent);
+  stroke-width: var(--sw, 2.5);
+}
+.se-handle.on {
+  fill: var(--accent);
+}
+.se-handle.side {
+  fill: var(--accent);
+  stroke: #fff;
+}
+.se-handle.side.on {
+  fill: #fff;
+  stroke: var(--accent);
+}
+.se-result {
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - 32px);
+  background: #fff;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.5);
+  transform-origin: 0 0; /* inzoomen (zoomable in scanedit.js) */
+  will-change: transform;
+}
+.se-extra {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 8px 0;
+}
+.se-chip[hidden] {
+  display: none;
+}
+/* Schuifje schoner ⟷ meer details */
+.se-level {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+}
+.se-level[hidden] {
+  display: none;
+}
+.se-range {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  accent-color: var(--accent);
+  touch-action: pan-x;
+}
+.se-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 14px 0 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: none;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+}
+.se-chip i {
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.25);
+  position: relative;
+  transition: background 0.15s;
+}
+.se-chip i::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.se-chip.on i {
+  background: var(--accent);
+}
+.se-chip.on i::after {
+  transform: translateX(14px);
+}
+.se-loupe {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.se-loupe.right {
+  left: auto;
+  right: 12px;
+}
+.se-busy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(16, 17, 20, 0.6);
+  font-weight: 600;
+}
+.se-busy i {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: se-spin 0.8s linear infinite;
+}
+@keyframes se-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.se-modes {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px 0;
+  overflow-x: auto;
+}
+.se-mode {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 42px;
+  border-radius: 21px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: none;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+.se-mode.on {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+.se-rot {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.se-bar {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px calc(14px + var(--safe-bottom));
+}
+.se-bar .se-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 52px;
+  padding-left: 8px;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+.se .btn:not(.primary) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.se-btn .ic {
+  width: 20px;
+  height: 20px;
+}
+/* Laatste scan, linksonder in de camera */
+.cam-thumb {
+  position: absolute;
+  left: 16px;
+  bottom: calc(130px + var(--safe-bottom));
+  width: 64px;
+  height: 84px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #222;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+.cam-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }

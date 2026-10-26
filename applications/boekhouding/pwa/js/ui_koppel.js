@@ -349,7 +349,8 @@
           ? ` · deels betaald, nog ${M().fmtEur(k.rest)} van ${M().fmtEur(k.bedrag)}`
           : "";
         const termijn = !tegen && k.past === false ? " · termijn" : "";
-        sub = `${escapeHtml(k.boek)}${tegen ? " (verrekend)" : ""}${termijn}${deels} · ${escapeHtml((k.omschrijving || "").slice(0, 34))}`;
+        // Factuurdatum vooraan, zodat hij niet wegvalt als de omschrijving afloopt.
+        sub = `${k.datumStr ? k.datumStr + " · " : ""}${escapeHtml(k.boek)}${tegen ? " (verrekend)" : ""}${termijn}${deels} · ${escapeHtml((k.omschrijving || "").slice(0, 34))}`;
         bedrag = `<span class="bi-amount${tegen ? " uit" : ""}">${tegen ? "− " : ""}${M().fmtEur(k.rest != null ? k.rest : k.bedrag)}</span>`;
       } else {
         titel = escapeHtml(k.omschrijving || "(geen omschrijving)");

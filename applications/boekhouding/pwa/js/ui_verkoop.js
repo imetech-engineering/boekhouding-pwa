@@ -382,19 +382,23 @@
     clearForm();
     if (fileToMove) deselectFile();
 
-    const ok = await App().persistMutation(
+    const ingeboekt = App().persistMutation(
       { kind: "verkoop_add", fields: f, bankRows: afvinken },
       { successMsg: move ? "Ingeboekt + factuur verplaatst" : "Ingeboekt in verkoopboek" }
     );
-    if (!ok) return;
-    if (fileToMove) {
-      await App().persistMutation({
-        kind: "file_move",
-        itemId: fileToMove.id,
-        destFolder: global.BOEK_CONFIG.graph.folders.verkoopVerwerkt,
-      });
-      App().refreshQuiet();
-    }
+    // Bestand direct uit de lijst; echt verplaatsen alleen als inboeken lukt.
+    const verplaatst = fileToMove
+      ? App().persistMutation(
+          {
+            kind: "file_move",
+            itemId: fileToMove.id,
+            destFolder: global.BOEK_CONFIG.graph.folders.verkoopVerwerkt,
+          },
+          { alleenAls: ingeboekt }
+        )
+      : null;
+    await ingeboekt;
+    if (verplaatst) await verplaatst;
   }
 
   let kopIndex = new Map();

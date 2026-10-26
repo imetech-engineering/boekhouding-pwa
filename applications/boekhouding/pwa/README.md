@@ -28,6 +28,11 @@ Standalone Progressive Web App: leest en schrijft **Boekhouding_IMeTech.xlsx** d
 - **Overzicht** — kwartaaldashboard (omzet/kosten/resultaat/BTW-saldo) in inklapbare secties die
   onthouden of ze open stonden; "Nog te doen" bundelt koppelingen die niet kloppen, facturen
   zonder bankregel en bankregels zonder factuur. Verder instellingen en account.
+- **Sync** — elke wijziging staat meteen in beeld en gaat daarna via één schrijfrij naar
+  OneDrive (nooit twee Excel-sessies tegelijk). Een wijziging blijft lokaal vastgehouden tot
+  een verse leesronde laat zien dat hij echt in het werkboek of de map staat; loopt OneDrive
+  even achter, dan springt er niets terug. Ingeboekte facturen verdwijnen direct uit
+  "nog te verwerken" en worden pas verplaatst als het inboeken gelukt is.
 - Offline queue (IndexedDB), donkere modus, installeerbaar op het startscherm.
 
 ## Wat de app in Excel schrijft

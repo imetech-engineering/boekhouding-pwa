@@ -580,7 +580,7 @@
     if (fileToMove) deselectFile();
 
     const nJaar = f.afschrijving ? f.afschrijvingJaren : 0;
-    const ok = await App().persistMutation(
+    const ingeboekt = App().persistMutation(
       { kind: "inkoop_add", fields: f, bankRows: afvinken },
       {
         successMsg: nJaar
@@ -590,15 +590,20 @@
             : "Ingeboekt in inkoopboek",
       }
     );
-    if (!ok) return;
-    if (fileToMove) {
-      await App().persistMutation({
-        kind: "file_move",
-        itemId: fileToMove.id,
-        destFolder: global.BOEK_CONFIG.graph.folders.inkoopVerwerkt,
-      });
-      App().refreshQuiet();
-    }
+    // Verplaatsen staat meteen klaar: het bestand gaat direct uit de lijst,
+    // en wordt pas echt verplaatst als het inboeken gelukt is.
+    const verplaatst = fileToMove
+      ? App().persistMutation(
+          {
+            kind: "file_move",
+            itemId: fileToMove.id,
+            destFolder: global.BOEK_CONFIG.graph.folders.inkoopVerwerkt,
+          },
+          { alleenAls: ingeboekt }
+        )
+      : null;
+    await ingeboekt;
+    if (verplaatst) await verplaatst;
   }
 
   async function renameFile() {
@@ -622,7 +627,6 @@
       $("#inkoop-preview-name").textContent = newName;
       selectedFile = { ...item, name: newName };
       updateRenameButton();
-      App().refreshQuiet();
     }
   }
 

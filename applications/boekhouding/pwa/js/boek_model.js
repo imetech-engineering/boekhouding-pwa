@@ -613,6 +613,29 @@
   }
 
   /** Schrijfwaarde voor één koppeling. */
+  /**
+   * Koppelingen in kolom I samenvoegen, per token: wat er al staat blijft
+   * staan, alleen ontbrekende tokens komen er met een komma achter. Twee keer
+   * hetzelfde toevoegen verandert dus niets (nodig voor het opnieuw toepassen
+   * van nog niet bevestigde wijzigingen na een leesronde).
+   */
+  function voegKoppelingToe(huidig, waarde) {
+    const delen = String(huidig || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const laag = new Set(delen.map((s) => s.toLowerCase()));
+    for (const t of String(waarde || "").split(",").map((s) => s.trim()).filter(Boolean)) {
+      if (laag.has(t.toLowerCase())) continue;
+      delen.push(t);
+      laag.add(t.toLowerCase());
+    }
+    return delen.join(", ");
+  }
+
+  /** Staan alle tokens van waarde al in de koppelcel? */
+  function bevatKoppeling(huidig, waarde) {
+    const laag = new Set(String(huidig || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+    return String(waarde || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).every((t) => laag.has(t));
+  }
+
   function koppelWaarde(boekLetter, factuurRow, inkoopRows, verkoopRows) {
     const fnr = (factuurRow.factuurnummer || "").trim();
     if (fnr && (fnrTelling(inkoopRows, verkoopRows).get(fnr.toLowerCase()) || 0) <= 1) {
@@ -1782,6 +1805,7 @@
     btwBedragVanPercentage, btwPercentageVanBedrag, isHandmatigBtw, valutaAanvullen,
     bankMatchesForInvoice, invoiceMatchesForBankRow, factuurRichting,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
+    voegKoppelingToe, bevatKoppeling,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
     bankKoppelStatus, koppelStatusTekst, koppelStatusIcoon, factuurStatus, bankKoppelProblemen,
     factuurVerwachtBank,

@@ -208,12 +208,11 @@
       const rows = M().parseBankRows(bank.values, bank.headerRow);
       for (const item of items) {
         const huidig = rows.find((r) => r.excelRow === item.excelRow)?.koppelingRaw || "";
-        const al = huidig
-          .split(",")
-          .map((s) => s.trim().toLowerCase())
-          .includes(item.waarde.trim().toLowerCase());
-        const nieuw = al ? huidig : huidig ? `${huidig}, ${item.waarde}` : item.waarde;
-        await W().patchValues(path, token, sid, M().SHEET_BANK, `I${item.excelRow}`, [[nieuw]]);
+        // Per token samenvoegen: staat alles er al, dan niets schrijven.
+        if (!M().bevatKoppeling(huidig, item.waarde)) {
+          const nieuw = M().voegKoppelingToe(huidig, item.waarde);
+          await W().patchValues(path, token, sid, M().SHEET_BANK, `I${item.excelRow}`, [[nieuw]]);
+        }
         if (item.ingeboekt) {
           await W().patchValues(path, token, sid, M().SHEET_BANK, `F${item.excelRow}`, [[true]]);
         }

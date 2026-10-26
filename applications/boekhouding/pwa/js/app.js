@@ -10,7 +10,6 @@
     tab: "bank",
     loaded: false,
     loading: false,
-    quietRefresh: false,
     bankRows: [],
     bankEndRow: null,
     workbookEtag: null,
@@ -173,6 +172,11 @@
   }
 
   // === Data laden ===
+  /**
+   * Bestandenlijsten van "nog te verwerken". Een lijst die niet te lezen was
+   * komt terug als null: dan blijft de vorige lijst staan, in plaats van dat
+   * alles uit beeld verdwijnt (en verplaatsingen ten onrechte als gelukt tellen).
+   */
   async function loadFileLists(token) {
     const f = global.BOEK_CONFIG.graph.folders;
     const alw = [".pdf", ".jpg", ".jpeg", ".png"];
@@ -183,52 +187,164 @@
           alw.some((ext) => (it.name || "").toLowerCase().endsWith(ext))
       );
     const [ink, vrk] = await Promise.all([
-      global.BoekGraph.listFolder(f.inkoopNieuw, token).catch(() => []),
-      global.BoekGraph.listFolder(f.verkoopNieuw, token).catch(() => []),
+      global.BoekGraph.listFolder(f.inkoopNieuw, token).catch(() => null),
+      global.BoekGraph.listFolder(f.verkoopNieuw, token).catch(() => null),
     ]);
-    state.files.inkoop = keep(ink);
-    state.files.verkoop = keep(vrk);
+    return { inkoop: ink ? keep(ink) : null, verkoop: vrk ? keep(vrk) : null };
   }
 
-  async function refreshFromCloud(quiet = false) {
-    if (state.loading) return;
+  // === Sync-motor ===
+  //
+  // Waarom zo: het werkboek is traag (Graph + Excel-sessie, seconden per
+  // wijziging) en een leesronde direct na het schrijven geeft soms nog de oude
+  // stand terug. Daarom:
+  //  1. Elke wijziging staat meteen lokaal in beeld (applyLocal).
+  //  2. Schrijven gebeurt in één rij, nooit twee Excel-sessies tegelijk.
+  //  3. Elke wijziging blijft in het journaal tot een verse leesronde laat zien
+  //     dat hij echt in OneDrive staat. Tot die tijd wordt hij na elke
+  //     leesronde opnieuw toegepast, zodat er niets terugspringt.
+  //  4. Pas als de rij leeg is, wordt er (één keer) opnieuw gelezen.
+
+  const journaal = []; // { id, d, status: wacht|schrijft|klaar|offline, klaarOp, res, queueId }
+  let journaalTeller = 0;
+  let schrijfKetting = Promise.resolve();
+  let inDeRij = 0; // schrijfacties die wachten of bezig zijn
+  let offlineAantal = 0; // items in de offline-wachtrij (IndexedDB)
+  const BEVESTIG_TIMEOUT = 90000; // daarna geldt gewoon wat OneDrive zegt
+
+  /** Schrijfactie achter de vorige zetten; de rij loopt altijd door. */
+  function inRij(job) {
+    inDeRij++;
+    toonSchrijfStatus();
+    const p = schrijfKetting.then(() => job());
+    schrijfKetting = p
+      .then(() => {}, () => {})
+      .then(() => {
+        inDeRij--;
+        toonSchrijfStatus();
+        if (!inDeRij) planSync();
+      });
+    return p;
+  }
+
+  function toonSchrijfStatus() {
+    if (inDeRij > 1) setStatus(`Opslaan in OneDrive… (nog ${inDeRij})`);
+    else if (inDeRij === 1) setStatus("Opslaan in OneDrive…");
+  }
+
+  function uitJournaal(e) {
+    const i = journaal.indexOf(e);
+    if (i >= 0) journaal.splice(i, 1);
+  }
+
+  // --- Leesronde plannen: pas als er niets meer geschreven wordt ---
+  let syncTimer = null;
+  let syncWachters = [];
+
+  /** Leesronde inplannen; de promise is klaar na die leesronde. */
+  function planSync(ms = 600) {
+    return new Promise((resolve) => {
+      syncWachters.push(resolve);
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(voerSyncUit, ms);
+    });
+  }
+
+  async function voerSyncUit() {
+    syncTimer = null;
+    // Nog aan het schrijven: zodra de rij leeg is, wordt er opnieuw gepland.
+    if (inDeRij) return;
+    const wachters = syncWachters;
+    syncWachters = [];
+    try {
+      await refreshFromCloud(true);
+    } finally {
+      wachters.forEach((r) => r());
+    }
+  }
+
+  // --- Lezen ---
+  let laadPromise = null;
+  let nogEenRonde = false;
+
+  function refreshFromCloud(quiet = false) {
+    if (laadPromise) {
+      nogEenRonde = true;
+      return laadPromise;
+    }
+    // Opruimen via .finally op de promise zelf: een finally binnen de async
+    // functie kan al lopen vóór de toewijzing hieronder (bij direct klaar).
+    const p = (async () => {
+      let stil = quiet;
+      do {
+        nogEenRonde = false;
+        await laadRonde(stil);
+        stil = true;
+      } while (nogEenRonde && !inDeRij);
+    })();
+    const klaar = p.finally(() => {
+      if (laadPromise === klaar) laadPromise = null;
+    });
+    laadPromise = klaar;
+    return klaar;
+  }
+
+  async function laadRonde(quiet) {
     state.loading = true;
     if (!quiet) setStatus("Laden uit OneDrive…");
+    const start = Date.now();
     try {
       const token = await ensureLoggedIn();
       // Kleine bestand-info eerst: is het werkboek onveranderd en hebben we de
-      // regels al, dan slaan we het inlezen van de drie tabellen over.
+      // regels al, dan slaan we het inlezen van de drie tabellen over. Staan er
+      // nog wijzigingen op bevestiging te wachten, dan lezen we altijd.
       const meta = await global.BoekGraph.getDriveItemMeta(global.BoekIo.drivePath(), token);
       const kenmerk = meta?.cTag || meta?.eTag || null;
-      const onveranderd = kenmerk && kenmerk === state.workbookEtag && state.loaded;
-      const [data] = await Promise.all([
+      const onveranderd =
+        kenmerk && kenmerk === state.workbookEtag && state.loaded && !wachtOpWerkboek();
+      const [data, files] = await Promise.all([
         onveranderd ? Promise.resolve(null) : global.BoekIo.loadAll(token),
         loadFileLists(token),
         state.settingsLoaded ? Promise.resolve() : loadSettingsRemote(token),
       ]);
-      if (data) state.workbookEtag = kenmerk;
       if (data) {
+        state.workbookEtag = kenmerk;
         state.bankRows = data.bankRows;
         state.bankEndRow = data.bankEndRow || null;
         state.inkoopRows = data.inkoopRows;
         state.verkoopRows = data.verkoopRows;
         state.inkoopKeuzes = data.inkoopCategorieKeuzes;
         state.verkoopKeuzes = data.verkoopCategorieKeuzes;
-        state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
         state.loaded = true;
-        bewaarSnapshot();
       }
+      const lijstVers = { inkoop: !!files.inkoop, verkoop: !!files.verkoop };
+      if (files.inkoop) state.files.inkoop = files.inkoop;
+      if (files.verkoop) state.files.verkoop = files.verkoop;
+
+      // Wat nog niet (zichtbaar) in OneDrive staat er weer overheen leggen.
+      const open = await herspeelJournaal(start, !!data, lijstVers);
+      state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
+      if (open.werkboek) state.workbookEtag = null; // volgende ronde zeker opnieuw lezen
+      if (data) bewaarSnapshot();
+
       state.webUrl = meta?.webUrl || null;
       const t = meta?.lastModifiedDateTime
         ? new Date(meta.lastModifiedDateTime).toLocaleString("nl-NL", {
             day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
           })
         : "";
-      setStatus(
-        `Gesynchroniseerd${t ? " · werkboek gewijzigd " + t : ""}${onveranderd ? " (ongewijzigd)" : ""}`
-      );
+      if (inDeRij) toonSchrijfStatus();
+      else if (open.aantal) setStatus(`Bijwerken… (${open.aantal} wijziging${open.aantal === 1 ? "" : "en"} nog niet zichtbaar in OneDrive)`);
+      else setStatus(`Gesynchroniseerd${t ? " · werkboek gewijzigd " + t : ""}${onveranderd ? " (ongewijzigd)" : ""}`);
       renderAll();
-      await flushOfflineQueue();
+      // Nog niet bevestigd: zo nog eens kijken, steeds iets later.
+      if (open.aantal) {
+        herhaalPogingen++;
+        planSync(Math.min(2000 * herhaalPogingen, 10000));
+      } else {
+        herhaalPogingen = 0;
+      }
+      if (!inDeRij) await flushOfflineQueue();
     } catch (e) {
       if (e?.message?.includes("Niet ingelogd")) {
         setStatus("Niet ingelogd — ga naar Overzicht om in te loggen.", true);
@@ -238,6 +354,215 @@
       }
     } finally {
       state.loading = false;
+    }
+  }
+  let herhaalPogingen = 0;
+
+  /** Staan er wijzigingen in het werkboek die nog niet in een leesronde gezien zijn? */
+  function wachtOpWerkboek() {
+    return journaal.some((e) => e.status === "klaar" && !isBestand(e.d));
+  }
+
+  /**
+   * Na een leesronde: per journaal-item kijken of de verse data hem al bevat.
+   * Bevestigd → uit het journaal. Anders (nog bezig, of OneDrive loopt achter)
+   * → opnieuw toepassen op de verse data.
+   */
+  async function herspeelJournaal(start, versWerkboek, lijstVers) {
+    const nu = Date.now();
+    const weg = new Set();
+
+    // Laatste item per doel (bankregel, factuurregel, bestand): een eerdere
+    // wijziging op hetzelfde doel kan niet los bevestigd worden, want de
+    // latere heeft hem misschien alweer veranderd.
+    const laatstePerDoel = new Map();
+    journaal.forEach((e, i) => doelen(e).forEach((k) => laatstePerDoel.set(k, i)));
+
+    journaal.forEach((e, i) => {
+      if (e.status !== "klaar" || e.klaarOp > start) return; // nog niet te controleren
+      const bestand = isBestand(e.d);
+      const kanControleren = bestand
+        ? lijstVers.inkoop && lijstVers.verkoop
+        : versWerkboek;
+      const ingehaald = doelen(e).some((k) => laatstePerDoel.get(k) > i);
+      if (kanControleren && !ingehaald && isVerwerkt(e)) {
+        weg.add(e);
+        return;
+      }
+      if (nu - e.klaarOp > BEVESTIG_TIMEOUT) {
+        console.warn("Wijziging na 90 s nog niet zichtbaar in OneDrive; OneDrive is leidend.", e.d);
+        weg.add(e);
+      }
+    });
+    // Is een latere wijziging op hetzelfde doel bevestigd, dan zijn de eerdere
+    // (al geschreven) wijzigingen daarop ook verwerkt.
+    for (const w of [...weg]) {
+      const wDoelen = new Set(doelen(w));
+      for (const e of journaal) {
+        if (e === w) break;
+        if (e.status === "klaar" && e.klaarOp <= start && doelen(e).some((k) => wDoelen.has(k))) {
+          weg.add(e);
+        }
+      }
+    }
+    for (const e of weg) uitJournaal(e);
+
+    // Offline-wijzigingen uit een eerdere sessie (alleen nog in IndexedDB).
+    let wachtrij = [];
+    try {
+      wachtrij = await global.BoekOfflineQueue.getAll();
+    } catch (_) {}
+    const bekend = new Set(journaal.map((e) => e.queueId).filter((x) => x != null));
+    for (const item of wachtrij) if (!bekend.has(item.id)) applyLocal(item);
+
+    for (const e of journaal) pasToe(e);
+
+    const open = journaal.filter((e) => e.status === "klaar");
+    return { aantal: open.length, werkboek: open.some((e) => !isBestand(e.d)) };
+  }
+
+  function pasToe(e) {
+    applyLocal(e.d);
+    if (e.res) applyNaSchrijven(e);
+  }
+
+  // --- Wat raakt een wijziging, en staat hij al in de verse data? ---
+
+  function isBestand(d) {
+    return d.kind === "file_move" || d.kind === "file_archive" || d.kind === "file_rename";
+  }
+
+  /** Terugzetten in "nog te verwerken" (ongedaan maken van archiveren). */
+  function isTerugzetten(d) {
+    const f = global.BOEK_CONFIG.graph.folders;
+    return d.kind === "file_move" && (d.destFolder === f.inkoopNieuw || d.destFolder === f.verkoopNieuw);
+  }
+
+  function doelen(e) {
+    const d = e.d;
+    const uit = [];
+    switch (d.kind) {
+      case "bank_koppel":
+        for (const it of d.items || []) uit.push(`bank:${it.excelRow}`);
+        break;
+      case "bank_ingeboekt":
+        for (const r of d.rows || []) uit.push(`bank:${r}`);
+        break;
+      case "bank_ontkoppel":
+      case "bank_update":
+      case "bank_delete":
+        uit.push(`bank:${d.excelRow}`);
+        break;
+      case "bank_add":
+        if (e.res?.excelRow) uit.push(`bank:${e.res.excelRow}`);
+        break;
+      case "inkoop_add":
+      case "verkoop_add":
+        if (e.res?.excelRow) uit.push(`${d.kind.split("_")[0]}:${e.res.excelRow}`);
+        if (e.res?.koppelWaarde) for (const r of d.bankRows || []) uit.push(`bank:${r}`);
+        break;
+      case "inkoop_update":
+      case "inkoop_delete":
+        uit.push(`inkoop:${d.excelRow}`);
+        break;
+      case "verkoop_update":
+      case "verkoop_delete":
+        uit.push(`verkoop:${d.excelRow}`);
+        break;
+      default:
+        if (isBestand(d)) uit.push(`file:${d.itemId}`);
+    }
+    return uit;
+  }
+
+  const tekst = (v) => String(v ?? "").trim();
+  const zelfdeTekst = (a, b) => tekst(a) === tekst(b);
+  const zelfdeBedrag = (a, b) =>
+    a == null || a === "" ? b == null : b != null && Math.abs(Number(a) - b) < 0.005;
+
+  function factuurRegel(boek, excelRow) {
+    const rows = boek === "inkoop" ? state.inkoopRows : state.verkoopRows;
+    return rows.find((r) => r.excelRow === excelRow) || null;
+  }
+
+  function inLijst(itemId) {
+    return [...state.files.inkoop, ...state.files.verkoop].find((f) => f.id === itemId) || null;
+  }
+
+  /** Bevat de verse data deze (geschreven) wijziging al? */
+  function isVerwerkt(e) {
+    const { d, res } = e;
+    switch (d.kind) {
+      case "bank_koppel":
+        return (d.items || []).every((it) => {
+          const r = findBank(it.excelRow);
+          return r && M().bevatKoppeling(r.koppelingRaw, it.waarde) && (!it.ingeboekt || r.ingeboekt);
+        });
+      case "bank_ontkoppel": {
+        const r = findBank(d.excelRow);
+        const norm = (s) => String(s || "").split(",").map((t) => t.trim().toLowerCase()).filter(Boolean).join(",");
+        return !!r && norm(r.koppelingRaw) === norm(d.waarde);
+      }
+      case "bank_ingeboekt":
+        return (d.rows || []).every((row) => findBank(row)?.ingeboekt === (d.value !== false));
+      case "bank_update": {
+        const r = findBank(d.excelRow);
+        const f = d.fields || {};
+        if (!r) return false;
+        if (f.omschrijving != null && !zelfdeTekst(r.omschrijving, f.omschrijving)) return false;
+        if (f.opmerking != null && !zelfdeTekst(r.opmerking, f.opmerking)) return false;
+        if (f.rekening != null && !zelfdeTekst(r.rekening, f.rekening)) return false;
+        if (f.updateAmounts && !(zelfdeBedrag(f.in, r.in) && zelfdeBedrag(f.uit, r.uit))) return false;
+        return true;
+      }
+      case "bank_delete": {
+        const r = findBank(d.excelRow);
+        return !r || r.isEmptySlot;
+      }
+      case "bank_add": {
+        if (!res?.excelRow) return true; // tabel uitgebreid: niet na te gaan
+        const r = findBank(res.excelRow);
+        const f = d.fields || {};
+        return !!r && !r.isEmptySlot && zelfdeTekst(r.omschrijving, f.omschrijving) &&
+          zelfdeBedrag(f.in, r.in) && zelfdeBedrag(f.uit, r.uit);
+      }
+      case "inkoop_add":
+      case "verkoop_add": {
+        if (!res?.excelRow) return true;
+        const boek = d.kind.split("_")[0];
+        const r = factuurRegel(boek, res.excelRow);
+        const f = d.fields || {};
+        const partij = boek === "inkoop" ? f.leverancier : f.klant;
+        // Excel maakt van "00123" soms 123: bedrag mag het factuurnummer vervangen.
+        if (!r || r.isEmpty || !zelfdeTekst(r.partij, partij)) return false;
+        if (!zelfdeTekst(r.factuurnummer, f.factuurnummer) && !zelfdeBedrag(f.bedrag, r.bedrag)) return false;
+        if (!res.koppelWaarde) return true;
+        return (d.bankRows || []).every((row) => M().bevatKoppeling(findBank(row)?.koppelingRaw, res.koppelWaarde));
+      }
+      case "inkoop_update":
+      case "verkoop_update": {
+        const boek = d.kind.split("_")[0];
+        const r = factuurRegel(boek, d.excelRow);
+        const f = d.fields || {};
+        const partij = boek === "inkoop" ? f.leverancier : f.klant;
+        return !!r && (partij == null || zelfdeTekst(r.partij, partij)) &&
+          (f.factuurnummer == null || zelfdeTekst(r.factuurnummer, f.factuurnummer)) &&
+          (f.bedrag == null || zelfdeBedrag(f.bedrag, r.bedrag));
+      }
+      case "inkoop_delete":
+      case "verkoop_delete": {
+        const r = factuurRegel(d.kind.split("_")[0], d.excelRow);
+        return !r || r.isEmpty;
+      }
+      case "file_move":
+      case "file_archive":
+        return isTerugzetten(d) ? !!inLijst(d.itemId) : !inLijst(d.itemId);
+      case "file_rename": {
+        const f = inLijst(d.itemId);
+        return !f || f.name === d.newName;
+      }
+      default:
+        return true;
     }
   }
 
@@ -273,16 +598,12 @@
     return true;
   }
 
-  async function refreshQuiet() {
-    while (state.quietRefresh) {
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    state.quietRefresh = true;
-    try {
-      await refreshFromCloud(true);
-    } finally {
-      state.quietRefresh = false;
-    }
+  /**
+   * Stille leesronde aanvragen. Wordt er nog geschreven, dan volgt hij vanzelf
+   * zodra de rij leeg is; de promise is klaar na die leesronde.
+   */
+  function refreshQuiet() {
+    return planSync(0);
   }
 
   // === Gedeelde indexen (koppelingen en dekking per factuur) ===
@@ -344,23 +665,11 @@
   }
 
   // === Direct zichtbaar: mutatie eerst lokaal toepassen ===
-  // Het werkboek is traag (Graph + Excel-sessie). Elke mutatie wordt daarom
-  // meteen op de rijen in het geheugen toegepast en getekend; de sync erna
-  // (refreshQuiet) haalt de echte waarheid op en overschrijft dit weer.
+  // applyLocal moet idempotent zijn: na elke leesronde worden nog niet
+  // bevestigde wijzigingen opnieuw toegepast op de verse data.
 
   function findBank(excelRow) {
     return state.bankRows.find((r) => r.excelRow === excelRow) || null;
-  }
-
-  function voegKoppelToe(huidig, waarde) {
-    const nieuw = String(waarde || "").trim();
-    if (!nieuw) return huidig || "";
-    const al = String(huidig || "")
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .includes(nieuw.toLowerCase());
-    if (al) return huidig;
-    return huidig ? `${huidig}, ${nieuw}` : nieuw;
   }
 
   function applyLocal(d) {
@@ -370,7 +679,7 @@
           for (const it of d.items || []) {
             const r = findBank(it.excelRow);
             if (!r) continue;
-            r.koppelingRaw = voegKoppelToe(r.koppelingRaw, it.waarde);
+            r.koppelingRaw = M().voegKoppelingToe(r.koppelingRaw, it.waarde);
             if (it.ingeboekt) r.ingeboekt = true;
           }
           break;
@@ -436,6 +745,25 @@
           if (r) Object.assign(r, { isEmpty: true, partij: "", bedrag: null, datum: null, datumStr: "" });
           break;
         }
+        case "file_move":
+        case "file_archive":
+          // Meteen uit "nog te verwerken", zodat hij niet nog eens gekozen kan
+          // worden. Terugzetten kan pas getoond worden als OneDrive hem weer
+          // in de map laat zien.
+          if (isTerugzetten(d)) break;
+          state.files.inkoop = state.files.inkoop.filter((f) => f.id !== d.itemId);
+          state.files.verkoop = state.files.verkoop.filter((f) => f.id !== d.itemId);
+          break;
+        case "file_rename":
+          for (const k of ["inkoop", "verkoop"]) {
+            state.files[k] = state.files[k].map((f) => (f.id === d.itemId ? { ...f, name: d.newName } : f));
+          }
+          break;
+        case "bank_add":
+        case "inkoop_add":
+        case "verkoop_add":
+          // De rij is pas bekend na het schrijven: zie applyNaSchrijven.
+          break;
         default:
           return false;
       }
@@ -443,14 +771,103 @@
       console.error("applyLocal", e);
       return false;
     }
-    state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
     return true;
   }
 
-  /** Na inboeken de afgevinkte bankregels aan de nieuwe factuurregel koppelen. */
+  /** Nieuwe bankregel op zijn rij zetten zodra bekend is welke rij het werd. */
+  function plaatsBankRij(excelRow, f) {
+    let r = findBank(excelRow);
+    if (!r) {
+      r = { excelRow, saldo: null };
+      state.bankRows.push(r);
+      state.bankRows.sort((a, b) => a.excelRow - b.excelRow);
+    }
+    const datum = M().isoToDate(f.datumIso);
+    Object.assign(r, {
+      datum,
+      datumStr: M().formatDateNl(datum),
+      omschrijving: f.omschrijving || "",
+      in: f.in != null ? f.in : null,
+      uit: f.uit != null ? f.uit : null,
+      ingeboekt: !!f.ingeboekt,
+      opmerking: f.opmerking || "",
+      rekening: f.rekening || "",
+      koppelingRaw: M().voegKoppelingToe(r.isEmptySlot === false ? r.koppelingRaw : "", f.koppeling || ""),
+      isEmpty: false,
+      isEmptySlot: false,
+    });
+  }
+
+  /** Nieuwe inkoop- of verkoopregel lokaal invullen (berekende kolommen bij benadering). */
+  function plaatsFactuurRij(boek, excelRow, f) {
+    const rows = boek === "inkoop" ? state.inkoopRows : state.verkoopRows;
+    let r = rows.find((x) => x.excelRow === excelRow);
+    if (!r) {
+      r = { excelRow };
+      rows.push(r);
+      rows.sort((a, b) => a.excelRow - b.excelRow);
+    }
+    const datum = M().isoToDate(f.datumIso);
+    const btwBedrag = f.verlegd ? 0 : M().btwBedragVanPercentage(f.bedrag, f.btw);
+    Object.assign(r, {
+      datum,
+      datumStr: M().formatDateNl(datum),
+      partij: (boek === "inkoop" ? f.leverancier : f.klant) || "",
+      omschrijving: f.omschrijving || "",
+      factuurnummer: f.factuurnummer || "",
+      bedrag: f.bedrag != null ? f.bedrag : null,
+      bedragOrig: f.bedragOrig != null ? f.bedragOrig : null,
+      valuta: f.valuta || "",
+      wisselkoers: f.wisselkoers || "",
+      btw: f.btw != null ? f.btw : null,
+      btwBedrag,
+      netto: f.bedrag != null ? Math.round((f.bedrag - (btwBedrag || 0)) * 100) / 100 : null,
+      categorie: f.categorie || "",
+      opmerking: f.opmerking || "",
+      land: M().normalizeLand(f.land) || "",
+      isEmpty: false,
+    });
+    if (boek === "inkoop") {
+      Object.assign(r, {
+        verlegd: !!f.verlegd,
+        afschrijving: !!f.afschrijving,
+        project: f.project || "",
+      });
+    }
+  }
+
+  /** Effect dat pas na het schrijven bekend is (de rij waar een nieuwe regel landde). */
+  function applyNaSchrijven(e) {
+    const { d, res } = e;
+    if (!res) return;
+    try {
+      if (d.kind === "bank_add" && res.excelRow) plaatsBankRij(res.excelRow, d.fields || {});
+      if ((d.kind === "inkoop_add" || d.kind === "verkoop_add") && res.excelRow) {
+        const boek = d.kind.split("_")[0];
+        plaatsFactuurRij(boek, res.excelRow, d.fields || {});
+        for (const x of res.extraRijen || []) plaatsFactuurRij(boek, x.excelRow, x.fields);
+        if (res.koppelWaarde) {
+          for (const row of d.bankRows || []) {
+            const r = findBank(row);
+            if (!r) continue;
+            r.koppelingRaw = M().voegKoppelingToe(r.koppelingRaw, res.koppelWaarde);
+            r.ingeboekt = true;
+          }
+        }
+      }
+    } catch (err) {
+      console.error("applyNaSchrijven", err);
+    }
+  }
+
+  /**
+   * Na inboeken de afgevinkte bankregels aan de nieuwe factuurregel koppelen.
+   * De nieuwe regel staat dan al lokaal in de lijst, zodat koppelWaarde een
+   * dubbel factuurnummer herkent (en dan "(I12)" erbij zet).
+   */
   async function koppelNaInboeken(token, d, res, boekLetter) {
     const rows = d.bankRows || [];
-    if (!rows.length || !res?.excelRow) return;
+    if (!rows.length || !res?.excelRow) return null;
     const waarde = global.BoekModel.koppelWaarde(
       boekLetter,
       { excelRow: res.excelRow, factuurnummer: d.fields.factuurnummer || "" },
@@ -461,9 +878,10 @@
       token,
       rows.map((r) => ({ excelRow: r, waarde, ingeboekt: true }))
     );
+    return waarde;
   }
 
-  // === Mutaties (online direct, anders offline queue) ===
+  // === Mutaties uitvoeren (altijd via de schrijfrij) ===
   async function executeMutation(d) {
     const token = await ensureLoggedIn();
     switch (d.kind) {
@@ -485,13 +903,19 @@
       case "bank_ontkoppel":
         return global.BoekIo.ontkoppelBank(token, d.excelRow, d.waarde || "");
       case "inkoop_add": {
-        const res = await global.BoekIo.addInkoopRow(token, d.fields, state.inkoopRows);
-        await koppelNaInboeken(token, d, res, "I");
+        const res = (await global.BoekIo.addInkoopRow(token, d.fields, state.inkoopRows)) || {};
+        if (res.excelRow) plaatsFactuurRij("inkoop", res.excelRow, d.fields);
+        res.koppelWaarde = await koppelNaInboeken(token, d, res, "I");
         // Afschrijving aangevinkt → jaarregels automatisch mee-inboeken.
+        res.extraRijen = [];
         if (d.fields.afschrijving && d.fields.afschrijvingJaren) {
           const regels = global.BoekModel.afschrijvingsRegels(d.fields, d.fields.afschrijvingJaren);
           for (const regel of regels) {
-            await global.BoekIo.addInkoopRow(token, regel, state.inkoopRows);
+            const r2 = await global.BoekIo.addInkoopRow(token, regel, state.inkoopRows);
+            if (r2?.excelRow) {
+              plaatsFactuurRij("inkoop", r2.excelRow, regel);
+              res.extraRijen.push({ excelRow: r2.excelRow, fields: regel });
+            }
           }
         }
         return res;
@@ -501,8 +925,9 @@
       case "inkoop_delete":
         return global.BoekIo.deleteInkoopRow(token, d.excelRow);
       case "verkoop_add": {
-        const res = await global.BoekIo.addVerkoopRow(token, d.fields, state.verkoopRows);
-        await koppelNaInboeken(token, d, res, "V");
+        const res = (await global.BoekIo.addVerkoopRow(token, d.fields, state.verkoopRows)) || {};
+        if (res.excelRow) plaatsFactuurRij("verkoop", res.excelRow, d.fields);
+        res.koppelWaarde = await koppelNaInboeken(token, d, res, "V");
         return res;
       }
       case "verkoop_update":
@@ -522,72 +947,166 @@
     }
   }
 
-  async function queueOffline(descriptor) {
-    await global.BoekOfflineQueue.add(descriptor);
+  /** Alleen bewaren wat later nodig is (Graph-antwoorden horen niet in het journaal). */
+  function bewaarResultaat(d, res) {
+    if (!res || isBestand(d)) return null;
+    return {
+      excelRow: res.excelRow ?? null,
+      koppelWaarde: res.koppelWaarde || null,
+      extraRijen: res.extraRijen || [],
+    };
+  }
+
+  async function zetOffline(e) {
+    e.queueId = await global.BoekOfflineQueue.add(e.d);
+    e.status = "offline";
     await updateQueueBadge();
     showToast("Offline — wijziging wordt gesynchroniseerd zodra er verbinding is.");
     meldSyncAan();
+    planFlush();
+  }
+
+  /** Mislukt: lokale stand niet meer vertrouwen, de volgende leesronde leest alles opnieuw. */
+  function herstelNaFout(e) {
+    uitJournaal(e);
+    state.workbookEtag = null;
   }
 
   /**
-   * Voert een mutatie uit; retourneert true als (direct) gelukt.
-   * De wijziging staat meteen in beeld (applyLocal); mislukt het schrijven,
-   * dan haalt een verse leesronde de echte stand terug.
+   * Voert een mutatie uit; retourneert true als het gelukt is (of offline
+   * klaarstaat). De wijziging staat meteen in beeld; het schrijven gebeurt
+   * in de rij, één tegelijk.
+   *
+   * alleenAls: promise van een eerdere persistMutation; is die mislukt, dan
+   * wordt deze overgeslagen (bijv. bestand pas verplaatsen als het inboeken lukte).
    */
-  async function persistMutation(descriptor, { successMsg } = {}) {
-    const lokaal = applyLocal(descriptor);
-    if (lokaal) renderAll();
-    if (!global.BoekOfflineQueue.isOnline()) {
-      await queueOffline(descriptor);
-      return true;
+  function persistMutation(descriptor, { successMsg, alleenAls } = {}) {
+    const e = { id: ++journaalTeller, d: descriptor, status: "wacht", klaarOp: 0, res: null };
+    journaal.push(e);
+    if (applyLocal(descriptor)) {
+      state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
+      renderAll();
     }
-    setStatus("Opslaan in OneDrive…");
-    try {
-      await executeMutation(descriptor);
-    } catch (e) {
-      if (e?.name === "GraphLockError") {
-        showToast(e.message, true);
-        setStatus("Werkboek vergrendeld", true);
-        if (lokaal) refreshQuiet();
+    return inRij(async () => {
+      if (alleenAls && !(await alleenAls.catch(() => false))) {
+        herstelNaFout(e);
         return false;
       }
-      if (isNetworkError(e)) {
-        await queueOffline(descriptor);
+      // Staat er al iets offline klaar, dan hier ook achteraan aansluiten,
+      // anders loopt de volgorde in het werkboek door elkaar.
+      if (!global.BoekOfflineQueue.isOnline() || offlineAantal > 0) {
+        await zetOffline(e);
         return true;
       }
-      showToast(e.message || String(e), true);
-      setStatus("Opslaan mislukt", true);
-      if (lokaal) refreshQuiet();
-      return false;
-    }
-    if (successMsg) showToast(successMsg);
-    refreshQuiet();
-    return true;
+      e.status = "schrijft";
+      let res;
+      try {
+        res = await executeMutation(descriptor);
+      } catch (err) {
+        if (isNetworkError(err)) {
+          await zetOffline(e);
+          return true;
+        }
+        herstelNaFout(e);
+        if (err?.name === "GraphLockError") {
+          showToast(err.message, true);
+          setStatus("Werkboek vergrendeld", true);
+        } else {
+          showToast(err.message || String(err), true);
+          setStatus("Opslaan mislukt", true);
+        }
+        renderAll();
+        return false;
+      }
+      e.status = "klaar";
+      e.klaarOp = Date.now();
+      e.res = bewaarResultaat(descriptor, res);
+      applyNaSchrijven(e);
+      state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
+      renderAll();
+      if (successMsg) showToast(successMsg);
+      return true;
+    });
   }
 
-  async function flushOfflineQueue() {
-    const items = await global.BoekOfflineQueue.getAll();
-    if (!items.length) {
-      await updateQueueBadge();
-      return;
-    }
-    for (const item of items) {
-      try {
-        await executeMutation(item);
-        await global.BoekOfflineQueue.remove(item.id);
-      } catch (e) {
-        if (e?.name === "GraphLockError" || isNetworkError(e)) break;
-        await global.BoekOfflineQueue.remove(item.id);
-        showToast(`Wachtrij-item mislukt: ${e.message || e}`, true);
+  // === Offline-wachtrij wegwerken (ook via de schrijfrij) ===
+  let flushPromise = null;
+  let flushTimer = null;
+
+  function planFlush(ms = 15000) {
+    clearTimeout(flushTimer);
+    flushTimer = setTimeout(() => {
+      if (global.BoekOfflineQueue.isOnline()) flushOfflineQueue().catch(() => {});
+    }, ms);
+  }
+
+  function flushOfflineQueue() {
+    if (flushPromise) return flushPromise;
+    const p = (async () => {
+      if (!global.BoekOfflineQueue.isOnline()) return;
+      {
+        let gestopt = false;
+        // Opnieuw ophalen tot hij leeg is: tijdens het wegwerken kunnen er
+        // nieuwe wijzigingen achteraan zijn aangesloten.
+        for (let ronde = 0; ronde < 5 && !gestopt; ronde++) {
+          const items = await global.BoekOfflineQueue.getAll();
+          if (!items.length) break;
+          for (const item of items) {
+            const uitkomst = await inRij(async () => {
+              try {
+                const res = await executeMutation(item);
+                await global.BoekOfflineQueue.remove(item.id);
+                return { ok: true, res };
+              } catch (err) {
+                if (err?.name === "GraphLockError" || isNetworkError(err)) return { stop: true };
+                await global.BoekOfflineQueue.remove(item.id);
+                showToast(`Wachtrij-item mislukt: ${err.message || err}`, true);
+                return { ok: false };
+              }
+            });
+            let e = journaal.find((x) => x.queueId === item.id);
+            if (uitkomst.stop) {
+              gestopt = true;
+              planFlush(30000);
+              break;
+            }
+            if (uitkomst.ok) {
+              if (!e) {
+                e = { id: ++journaalTeller, d: item, queueId: item.id };
+                journaal.push(e);
+              }
+              e.status = "klaar";
+              e.klaarOp = Date.now();
+              e.res = bewaarResultaat(item, uitkomst.res);
+              applyNaSchrijven(e);
+            } else {
+              if (e) uitJournaal(e);
+              state.workbookEtag = null;
+            }
+            await updateQueueBadge();
+          }
+        }
+        await updateQueueBadge();
+        if (offlineAantal > 0 && !gestopt) planFlush(2000);
       }
-    }
-    await updateQueueBadge();
+    })();
+    // Zie refreshFromCloud: opruimen via de promise, niet binnen de functie.
+    const klaar = p.finally(() => {
+      if (flushPromise === klaar) flushPromise = null;
+    });
+    flushPromise = klaar;
+    return flushPromise;
   }
 
   async function updateQueueBadge() {
+    try {
+      offlineAantal = await global.BoekOfflineQueue.count();
+    } catch (_) {
+      offlineAantal = 0;
+    }
     const el = $("#queue-status");
     if (!el) return;
-    const n = await global.BoekOfflineQueue.count();
+    const n = offlineAantal;
     el.classList.toggle("hidden", n === 0);
     if (n > 0) el.textContent = `${n} wijziging${n === 1 ? "" : "en"} wacht op sync`;
   }

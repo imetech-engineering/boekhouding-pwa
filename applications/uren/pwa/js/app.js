@@ -2130,6 +2130,20 @@
   }
 
   async function neemVoorstellenOver() {
+    if (inzicht.bezig) return; // al bezig: niet nog een keer (anders dubbele rijen)
+    inzicht.bezig = true;
+    try {
+      await neemVoorstellenOverIntern();
+    } finally {
+      inzicht.bezig = false;
+    }
+  }
+
+  async function neemVoorstellenOverIntern() {
+    // Eerst de actuele stand uit OneDrive, zodat wat al (op een ander apparaat) is overgenomen niet nog eens gaat.
+    try {
+      if (UrenAuth.isLoggedIn()) await refreshFromCloudQuiet();
+    } catch (_) {}
     const lijst = openVoorstellen().filter((v) => inzicht.gekozen?.has(v.id));
     if (!lijst.length) {
       showToast("Niets aangevinkt: open 'Voorstellen bekijken' en vink aan wat je wilt overnemen.", true);
@@ -2153,6 +2167,9 @@
         zet(`Bezig… ${gelukt + 1} van ${lijst.length}`);
         setStatus(`Register aanvullen: ${gelukt + 1} van ${lijst.length}…`);
         const fields = voorstelVelden(v);
+        if (v.soort === "nieuw" && (state.estimates || []).some((e) => e.row_index > 0 && String(e.project).trim().toLowerCase() === String(fields.project).trim().toLowerCase())) {
+          continue; // staat er inmiddels al
+        }
         const descriptor =
           v.soort === "nieuw"
             ? { kind: "estimate_add", fields, rowIndex: null }

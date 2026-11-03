@@ -63,5 +63,26 @@
       nieuw: { datumStr: "2026-10-24", opdrachtgever: "BearInMind", project: "5014 BearInMind productieversie", status: "Wachten op akkoord", offerte: "mail", bron: B, opmerking: "Kosteninschatting productieversie per mail; kostprijs viel hoger uit dan verwacht" },
       uitleg: "Alleen kosteninschatting per mail",
     },
+
+    // Bron per kans, door Ivo opgegeven (3-11-2026)
+    { wijzig: "1001 N-Emis", velden: { bron: "Bestaande klant" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5003 SLVN Events", velden: { bron: "Fiverr / platform" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5006 LED ring", velden: { bron: "Fiverr / platform" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5007 uMotion besturing", velden: { bron: "Website (formulier)" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5009 Plantcam", velden: { bron: "Fiverr / platform" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5013 Archisign LED maquette", velden: { bron: "Website (formulier)" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "xxxx Custom PCB", velden: { bron: "Fiverr / platform" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5008 Vlakkelichtkoepel besturing", velden: { bron: "Website (formulier)" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5010 Envidro", velden: { bron: "Website (formulier)" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "xxxx Vision pilot", velden: { bron: "Fiverr / platform" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "xxxx Sturing DR SW 90", velden: { bron: "Website (formulier)" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5016 Custom PCB PRM-lift", velden: { bron: "Netwerk / doorverwijzing" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "xxxx Telefoonteller PoC", velden: { bron: "Fiverr / platform" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "xxxx Spinder Design", velden: { bron: "Website (formulier)" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5014 BearInMind", velden: { bron: "Fiverr / platform" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "xxxx Magic Box", velden: { bron: "Fiverr / platform" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5011 Escape Deventer", velden: { bron: "LinkedIn" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "5017 Bloppo", velden: { bron: "Website (formulier)" }, uitleg: "Bron door jou opgegeven" },
+    { wijzig: "xxxx LINQ01 PCB Arclinq", velden: { bron: "Onbekend" }, uitleg: "Bron door jou opgegeven" },
   ];
 })(typeof window !== "undefined" ? window : globalThis);

@@ -27,7 +27,7 @@
     "Wachten op akkoord": "open",
   };
 
-  const BRONNEN = ["Website (formulier)", "Fiverr / platform", "Netwerk / doorverwijzing", "Bestaande klant", "Onbekend"];
+  const BRONNEN = ["Website (formulier)", "Fiverr / platform", "LinkedIn", "Netwerk / doorverwijzing", "Bestaande klant", "Onbekend"];
   const REDENEN = ["Prijs", "Concurrent", "Zelf doen", "Klant stopt", "Geen reactie", "On hold (klant)", "Anders"];
 
   const rond = (x, n = 0) => {

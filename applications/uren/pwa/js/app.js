@@ -2064,7 +2064,7 @@
   }
 
   // === Inzicht: offertes, inschatting en tarief (rekenwerk in uren_offertes.js) ===
-  const inzicht = { groep: "bedrag", lijst: "alles", gekozen: null };
+  const inzicht = { groep: "bedrag", lijst: "alles", gekozen: null, gezien: null };
   const pct = (v) => (v == null ? "—" : `${v}%`);
   const ICOON = {
     do: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>',
@@ -2132,31 +2132,60 @@
   async function neemVoorstellenOver() {
     const lijst = openVoorstellen().filter((v) => inzicht.gekozen?.has(v.id));
     if (!lijst.length) {
-      showToast("Niets geselecteerd.");
+      showToast("Niets aangevinkt: open 'Voorstellen bekijken' en vink aan wat je wilt overnemen.", true);
+      return;
+    }
+    if (!UrenOfflineQueue.isOnline()) {
+      showToast("Geen verbinding: overnemen kan alleen online.", true);
       return;
     }
     const knop = $("#btn-ink-overnemen");
+    const zet = (t) => {
+      if (knop) knop.textContent = t;
+    };
     if (knop) knop.disabled = true;
     let gelukt = 0;
-    for (const v of lijst) {
-      const fields = voorstelVelden(v);
-      try {
-        if (v.soort === "nieuw") {
-          await persistMutation({ kind: "estimate_add", fields, rowIndex: null }, () => optimisticEstimateAdd(fields));
-        } else {
-          const rij = v.est.row_index;
-          await persistMutation({ kind: "estimate_update", fields, rowIndex: rij }, () => optimisticEstimateUpdate(rij, fields));
+    let fout = null;
+    try {
+      await ensureLoggedIn();
+      // Na elkaar wegschrijven en pas aan het eind één keer verversen (anders duurt het minuten).
+      for (const v of lijst) {
+        zet(`Bezig… ${gelukt + 1} van ${lijst.length}`);
+        setStatus(`Register aanvullen: ${gelukt + 1} van ${lijst.length}…`);
+        const fields = voorstelVelden(v);
+        const descriptor =
+          v.soort === "nieuw"
+            ? { kind: "estimate_add", fields, rowIndex: null }
+            : { kind: "estimate_update", fields, rowIndex: v.est.row_index };
+        const rollback = applyOptimistic(() =>
+          v.soort === "nieuw" ? optimisticEstimateAdd(fields) : optimisticEstimateUpdate(v.est.row_index, fields)
+        );
+        try {
+          await executeMutation(descriptor);
+          gelukt += 1;
+        } catch (e) {
+          if (rollback) rollback();
+          throw e;
         }
-        gelukt += 1;
-      } catch (_) {
-        break; // persistMutation meldt de fout al; de rest blijft staan voor een volgende keer
       }
+    } catch (e) {
+      fout = e;
     }
+    try {
+      await refreshFromCloudQuiet();
+    } catch (_) {}
     if (knop) knop.disabled = false;
+    zet("Geselecteerde overnemen");
     inzicht.gekozen = null;
-    showToast(`${gelukt} van ${lijst.length} voorstel${lijst.length === 1 ? "" : "len"} overgenomen.`);
+    inzicht.gezien = null;
     vuil.projecten = true;
-    renderInzicht();
+    renderAll(false);
+    if (fout) {
+      if (fout.name === "GraphConflictError") showConflictModal(fout.message);
+      showToast(`${gelukt} van ${lijst.length} overgenomen. Gestopt: ${fout.message || fout}`, true);
+    } else {
+      showToast(`${gelukt} voorstel${gelukt === 1 ? "" : "len"} overgenomen in Ureninschattingen.`);
+    }
   }
 
   function kansRij(k, extra = "") {
@@ -2181,7 +2210,15 @@
 
     // Voorstellen
     const vs = openVoorstellen();
-    if (!inzicht.gekozen) inzicht.gekozen = new Set(vs.map((v) => v.id));
+    // Nieuwe voorstellen (ook als de gegevens later binnenkomen) staan standaard aangevinkt.
+    if (!inzicht.gekozen) inzicht.gekozen = new Set();
+    if (!inzicht.gezien) inzicht.gezien = new Set();
+    for (const v of vs) {
+      if (!inzicht.gezien.has(v.id)) {
+        inzicht.gezien.add(v.id);
+        inzicht.gekozen.add(v.id);
+      }
+    }
     $("#ink-voorstellen-card").classList.toggle("hidden", !vs.length);
     $("#ink-vs-aantal").textContent = vs.length ? `${vs.length} open` : "";
     $("#ink-voorstellen").innerHTML = vs

@@ -270,6 +270,12 @@
           <input id="est-planned" type="number" step="0.5" min="0" inputmode="decimal" />
           <label for="est-status">Status</label>
           <select id="est-status"></select>
+          <label for="est-bron">Bron</label>
+          <select id="est-bron"></select>
+          <div id="est-reden-wrap" class="hidden">
+            <label for="est-reden">Reden (als het niet doorgaat)</label>
+            <select id="est-reden"></select>
+          </div>
           <label for="est-opmerking">Opmerking</label>
           <textarea id="est-opmerking" rows="2"></textarea>
           <div id="est-offerte" class="est-offerte">
@@ -360,6 +366,108 @@
         </div>
       </section>
 
+      <section id="panel-inzicht" class="tab-panel hidden">
+        <!-- Voorstellen om het offerteregister compleet te maken (verdwijnen zodra ze in Excel staan) -->
+        <div id="ink-voorstellen-card" class="card hidden">
+          <h2>Register aanvullen <span id="ink-vs-aantal" class="inz-periode"></span></h2>
+          <p class="ink-tekst">Uitgezocht in offertes, facturen en mail: offertenummers, uitkomst, reden en bron. Vink uit wat niet klopt; de rest komt in Ureninschattingen.</p>
+          <details id="ink-vs-details" class="ink-meer">
+            <summary>Voorstellen bekijken</summary>
+            <div id="ink-voorstellen" class="ink-vs-lijst"></div>
+          </details>
+          <div class="btn-row">
+            <button type="button" id="btn-ink-overnemen" class="btn-primary">Geselecteerde overnemen</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Wat valt op</h2>
+          <ul id="ink-opvallend" class="ink-punten"></ul>
+          <p id="ink-geen-geld" class="ink-tekst hidden">Offertebedragen komen via de projectdoc-bridge. <button type="button" id="btn-ink-ververs" class="btn-secondary btn-compact">Offertes ophalen</button></p>
+        </div>
+
+        <div class="card">
+          <h2>Offertes</h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Conversie</span><span id="ink-conversie" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Op waarde</span><span id="ink-waarde" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Open (excl. stil)</span><span id="ink-pijplijn" class="kpi-value">—</span></div>
+          </div>
+          <p id="ink-telling" class="ink-tekst">—</p>
+          <h3 class="inz-kop">Gewonnen per</h3>
+          <div class="chips" id="ink-groep-toggle">
+            <button type="button" class="chip active" data-groep="bedrag">Bedrag</button>
+            <button type="button" class="chip" data-groep="bron">Bron</button>
+            <button type="button" class="chip" data-groep="periode">Halfjaar</button>
+          </div>
+          <div id="ink-groep" class="rank-list"></div>
+          <h3 class="inz-kop">Waarom verloren</h3>
+          <div id="ink-redenen" class="rank-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>Open offertes</h2>
+          <p class="ink-tekst">Langst wachtend bovenaan. Tik om status, bron of reden aan te passen.</p>
+          <div id="ink-open" class="rank-list"></div>
+        </div>
+
+        <div class="card">
+          <h2>Inschatting vs. werkelijk</h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Samen</span><span id="ink-insch-totaal" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Mediaan</span><span id="ink-insch-mediaan" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Uitgelopen / mee</span><span id="ink-insch-telling" class="kpi-value">—</span></div>
+          </div>
+          <p id="ink-insch-uitleg" class="ink-tekst">—</p>
+          <div id="ink-insch-grootte" class="rank-list"></div>
+          <details class="ink-meer">
+            <summary>Per project</summary>
+            <div id="ink-insch-lijst" class="rank-list"></div>
+          </details>
+        </div>
+
+        <div class="card">
+          <h2>Gerealiseerd tarief</h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Gerealiseerd</span><span id="ink-tarief-gem" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Geoffreerd</span><span id="ink-tarief-onder" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Misgelopen</span><span id="ink-tarief-mis" class="kpi-value">—</span></div>
+          </div>
+          <p id="ink-tarief-uitleg" class="ink-tekst">—</p>
+          <details class="ink-meer">
+            <summary>Per project</summary>
+            <div id="ink-tarief-lijst" class="rank-list"></div>
+          </details>
+        </div>
+
+        <div class="card">
+          <h2>Tijd en rendement <span id="ink-jaar" class="inz-periode"></span></h2>
+          <div class="kpi-row">
+            <div class="kpi"><span class="kpi-label">Declarabel</span><span id="ink-decl" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Effectief €/uur</span><span id="ink-eff" class="kpi-value">—</span></div>
+            <div class="kpi"><span class="kpi-label">Gem. tarief</span><span id="ink-gem" class="kpi-value">—</span></div>
+          </div>
+          <p class="ink-tekst">Zelfde cijfers als Analyse. <button type="button" id="btn-ink-analyse" class="btn-secondary btn-compact">Naar Analyse</button></p>
+        </div>
+
+        <div class="card">
+          <h2>Alle offertes</h2>
+          <div class="chips" id="ink-lijst-toggle">
+            <button type="button" class="chip active" data-lijst="alles">Alles</button>
+            <button type="button" class="chip" data-lijst="gewonnen">Gewonnen</button>
+            <button type="button" class="chip" data-lijst="verloren">Verloren</button>
+            <button type="button" class="chip" data-lijst="open">Open</button>
+          </div>
+          <div id="ink-alle" class="rank-list"></div>
+        </div>
+
+        <div id="ink-los-card" class="card hidden">
+          <h2>Nog niet in je register</h2>
+          <p class="ink-tekst">Offertes uit 03 Offertes die in geen enkele rij van Ureninschattingen staan.</p>
+          <div id="ink-los" class="rank-list"></div>
+        </div>
+      </section>
+
       <section id="panel-instellingen" class="tab-panel hidden">
         <h2 class="inst-kop">Account</h2>
         <div class="inst-kaart">
@@ -416,6 +524,7 @@
       <button type="button" data-tab="projecten"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projecten</button>
       <button type="button" data-tab="analyse"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V11M10 20V5M16 20v-6M21 20H3"/></svg>Analyse</button>
       <button type="button" data-tab="grafieken"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>Grafieken</button>
+      <button type="button" data-tab="inzicht"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5M8.5 12.5l2-2 1.5 1.5 2.5-3"/></svg>Inzicht</button>
       <button type="button" data-tab="instellingen"><svg class="nav-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Instellingen</button>
     </nav>
 
@@ -436,6 +545,8 @@
     <script src="js/uren_vasteprijs.js"></script>
     <script src="js/uren_analyse.js"></script>
     <script src="js/uren_inzichten.js"></script>
+    <script src="js/uren_offertes.js"></script>
+    <script src="js/inzicht_voorstellen.js"></script>
     <script src="js/uren_invoer.js"></script>
     <script src="js/combobox.js"></script>
     <script src="js/data_cache.js"></script>

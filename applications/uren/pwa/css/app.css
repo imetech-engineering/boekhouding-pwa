@@ -1466,3 +1466,30 @@ html body { height: var(--app-h, 100dvh); }
   color: var(--text-secondary);
 }
 .of-tip.meerwerk { color: var(--let-op); background: var(--let-op-light); }
+
+/* ===== Inzicht: offertes, inschatting, tarief ===== */
+.bottom-nav button { font-size: 0.6875rem; }
+.ink-punten { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ink-punt { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start; font-size: 0.8125rem; line-height: 1.4; }
+.ink-punt svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; margin-top: 1px; }
+.ink-do svg { color: var(--goed); }
+.ink-dont svg { color: var(--danger); }
+.ink-actie svg { color: var(--let-op); }
+.ink-info svg { color: var(--accent); }
+.rank-bar i.ink-win { background: var(--goed); }
+.ink-weinig { opacity: 0.6; }
+.ink-rood { color: var(--danger); }
+.ink-oranje { color: var(--let-op); }
+.ink-groen { color: var(--goed); }
+.ink-proj { color: var(--text-tertiary); font-weight: 400; font-size: 0.75rem; }
+button.rank-row.ink-kans { width: 100%; background: transparent; color: inherit; text-align: left; border-radius: 0; padding: 8px 0; min-height: 0; font: inherit; font-size: 0.8125rem; cursor: pointer; }
+button.rank-row.ink-kans:hover { background: var(--bg-hover); }
+.ink-kans .status-badge { margin-right: 4px; }
+.ink-vs-lijst { display: flex; flex-direction: column; }
+.ink-vs { display: grid; grid-template-columns: 24px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.8125rem; cursor: pointer; }
+.ink-vs:last-child { border-bottom: 0; }
+.ink-vs input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); }
+.ink-vs-wat { display: block; color: var(--text-secondary); margin-top: 2px; overflow-wrap: anywhere; }
+.ink-meer { margin-top: 8px; }
+.ink-meer > summary { cursor: pointer; font-size: 0.8125rem; font-weight: 600; color: var(--accent); padding: 6px 0; }
+.ink-tekst { font-size: 0.8125rem; color: var(--text-secondary); margin: 0 0 6px; line-height: 1.45; }

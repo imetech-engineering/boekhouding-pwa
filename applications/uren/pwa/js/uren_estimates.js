@@ -55,6 +55,9 @@
   // Kolommen die de app zelf achter de tabel zet (vaste prijs); positie volgt uit de kopregel.
   const KOP_OFFERTE = "Offerte";
   const KOP_OFFERTE_UREN = "Offerte uren (€)";
+  // Voor de Inzicht-tab: waar kwam de klant vandaan, en waarom ging het niet door.
+  const KOP_BRON = "Bron";
+  const KOP_REDEN = "Reden";
 
   /** extra: { offerte, offerteUren } = kolomindex (0-based) of null als de kolom er nog niet is. */
   function parseEstimateRow(values, excelRow, extra = null) {
@@ -81,6 +84,8 @@
       opmerking: String(values[COL.OPMERKING] || "").trim(),
       offerte: extra?.offerte != null ? String(values[extra.offerte] || "").trim() : "",
       offerteUren: extra?.offerteUren != null ? floatOrNull(values[extra.offerteUren]) : null,
+      bron: extra?.bron != null ? String(values[extra.bron] || "").trim() : "",
+      reden: extra?.reden != null ? String(values[extra.reden] || "").trim() : "",
       row_index: excelRow,
     };
   }
@@ -190,6 +195,8 @@
     ACTIVE_STATUSES,
     KOP_OFFERTE,
     KOP_OFFERTE_UREN,
+    KOP_BRON,
+    KOP_REDEN,
     parseEstimateRow,
     sortEstimates,
     filterEstimates,

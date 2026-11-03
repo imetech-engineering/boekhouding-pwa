@@ -10,6 +10,7 @@ Standalone Progressive Web App: leest en schrijft hetzelfde Excel-bestand als de
   - **Heel jaar** — urencriterium (één plek) plus de jaarprognose voor uren en omzet.
   - **Regels** — alle regels van de periode; extra filters (zoekwoord, groeperen, opdrachtgever/project/tarief, losse week) zitten achter "Meer filters".
 - **Projecten** — ureninschatting per project met status en verschil t.o.v. de gemaakte uren.
+- **Inzicht** — offertes als kansen: conversie (op aantal en waarde, per bedrag, bron en halfjaar), waarom verloren, open offertes met ouderdom (opvolgen na 14 dagen, stil na 90), inschatting vs. werkelijk, gerealiseerd vs. geoffreerd tarief en een korte "wat valt op". Het register is Ureninschattingen: kolom Offerte (nummer(s) of `mail`), Status (uitkomst), en de kolommen **Bron** en **Reden** die de app zelf achter de tabel zet. Offertebedragen komen uit de projectdoc-bridge (zelfde cache als de vaste prijs); offertes die nog in geen rij staan worden gemeld. Rekenwerk in `js/uren_offertes.js`, eenmalige voorstellen in `js/inzicht_voorstellen.js`.
   - **Vaste prijs** — gaat automatisch: de app haalt via de projectdoc-bridge (`/api/offertes`, adres en token uit de projectdoc-app op hetzelfde domein) de offertes op die projectdoc aan het projectnummer koppelt, plus **meerwerk** (facturen van het project die niet bij een offerte horen; termijnfacturen tellen niet dubbel). Regels die duidelijk materiaal zijn tellen niet mee. De laatste stand wordt bewaard, dus het werkt ook als de pc uit staat.
   - **Aanpassen** in het projectblad: stukken kiezen of weglaten, regels aan- en afvinken (onthouden per offerte/factuur), bedrag zelf invullen, of *Geen vaste prijs*.
   - Tarief: lopend = bedrag ÷ max(ureninschatting, gemaakte uren) (≈ op de projectkaart), afgerond = bedrag ÷ gemaakte uren. Regie houdt het tarief uit de regels.
@@ -32,6 +33,8 @@ pwa/
 │   ├── uren_excel.js   SheetJS (zelfde regels als uren_excel_service.py)
 │   ├── uren_analyse.js
 │   ├── uren_inzichten.js  declarabiliteit, tarieven, ranglijst, jaarbeeld
+│   ├── uren_offertes.js   Inzicht-tab: kansen, conversie, inschatting, gerealiseerd tarief
+│   ├── inzicht_voorstellen.js  eenmalige voorstellen voor het offerteregister
 │   ├── uren_vasteprijs.js tarief uit de offerte bij vaste prijs
 │   ├── uren_invoer.js
 │   └── app.js

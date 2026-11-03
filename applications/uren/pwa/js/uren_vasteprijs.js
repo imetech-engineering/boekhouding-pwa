@@ -11,7 +11,7 @@
  *   - lopend project:  bedrag ÷ max(ureninschatting, gemaakte uren)
  *     (omzet naar voortgang; loop je uit, dan zakt het tarief mee)
  *   - afgerond:        bedrag ÷ gemaakte uren
- * Regie-projecten houden altijd het tarief uit de regels.
+ * Regie-projecten en geannuleerde offertes houden altijd het tarief uit de regels.
  *
  * De analyse rekent live met dit tarief; de regels in Excel krijgen het pas als je
  * het bij afronden vastzet.
@@ -122,7 +122,8 @@
    * → { bron: "excel"|"auto", bedrag, offerte } of null.
    */
   function effectief(est, auto) {
-    if (!est || est.status === "Regie") return null;
+    // Regie heeft geen vaste prijs; een geannuleerde offerte ook niet (anders krijgen acquisitie-uren een tarief).
+    if (!est || est.status === "Regie" || est.status === "Geannuleerd") return null;
     if (String(est.offerte || "").trim() === UIT) return null;
     if ((Number(est.offerteUren) || 0) > 0) {
       return { bron: "excel", bedrag: Number(est.offerteUren), offerte: est.offerte || "" };

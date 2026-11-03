@@ -103,7 +103,32 @@
       aantal: namen.length,
       offerte: zoek(UrenEstimates.KOP_OFFERTE),
       offerteUren: zoek(UrenEstimates.KOP_OFFERTE_UREN),
+      bron: zoek(UrenEstimates.KOP_BRON),
+      reden: zoek(UrenEstimates.KOP_REDEN),
     };
+  }
+
+  /** Zet Bron en Reden achter de tabel als ze er nog niet zijn (zelfde manier als de offertekolommen). */
+  async function zorgVoorInzichtKolommen(drivePath, token, sessionId) {
+    let kop = await leesKop(drivePath, token, sessionId);
+    const ontbreekt = [];
+    if (kop.bron == null) ontbreekt.push(UrenEstimates.KOP_BRON);
+    if (kop.reden == null) ontbreekt.push(UrenEstimates.KOP_REDEN);
+    if (!ontbreekt.length) return kop;
+    for (const name of ontbreekt) {
+      await excelFetch(
+        drivePath,
+        token,
+        `/tables('${encodeSheet(TABLE)}')/columns/add`,
+        { method: "POST", body: JSON.stringify({ name }) },
+        sessionId
+      );
+    }
+    kop = await leesKop(drivePath, token, sessionId);
+    if (kop.bron == null || kop.reden == null) {
+      throw new Error("Kon de kolommen Bron en Reden niet aan Ureninschattingen toevoegen.");
+    }
+    return kop;
   }
 
   /** Zet de twee offertekolommen achter de tabel als ze er nog niet zijn. */
@@ -324,7 +349,18 @@
       metOfferte: "offerteUren" in fields,
       offerte: String(fields.offerte || "").trim(),
       offerteUren: Number(fields.offerteUren) > 0 ? Math.round(Number(fields.offerteUren) * 100) / 100 : "",
+      // Bron en reden alleen als ze meekomen; anders blijven die kolommen zoals ze zijn.
+      metInzicht: "bron" in fields || "reden" in fields,
+      bron: String(fields.bron || "").trim(),
+      reden: String(fields.reden || "").trim(),
     };
+  }
+
+  async function patchInzicht(drivePath, token, sessionId, excelRow, f) {
+    if (!f.metInzicht) return;
+    const kop = await zorgVoorInzichtKolommen(drivePath, token, sessionId);
+    await patchRange(drivePath, token, sessionId, `${kolomLetter(kop.bron)}${excelRow}`, [[f.bron]]);
+    await patchRange(drivePath, token, sessionId, `${kolomLetter(kop.reden)}${excelRow}`, [[f.reden]]);
   }
 
   async function patchOfferte(drivePath, token, sessionId, excelRow, f) {
@@ -343,6 +379,7 @@
     await patchRange(drivePath, token, sessionId, `J${excelRow}`, [[f.status]]);
     await patchRange(drivePath, token, sessionId, `K${excelRow}`, [[f.opmerking]]);
     await patchOfferte(drivePath, token, sessionId, excelRow, f);
+    await patchInzicht(drivePath, token, sessionId, excelRow, f);
     await herstelFormules(drivePath, token, sessionId, excelRow);
   }
 
@@ -358,8 +395,9 @@
 
     if (needInsert) {
       // rows/add wil precies zoveel waarden als de tabel kolommen heeft (ook de offertekolommen).
-      const kop = f.metOfferte
-        ? await zorgVoorOfferteKolommen(drivePath, token, sessionId)
+      if (f.metOfferte) await zorgVoorOfferteKolommen(drivePath, token, sessionId);
+      const kop = f.metInzicht
+        ? await zorgVoorInzichtKolommen(drivePath, token, sessionId)
         : await leesKop(drivePath, token, sessionId);
       const rij = [
         f.datumStr,
@@ -378,6 +416,10 @@
       if (f.metOfferte) {
         rij[kop.offerte] = f.offerte;
         rij[kop.offerteUren] = f.offerteUren;
+      }
+      if (f.metInzicht) {
+        rij[kop.bron] = f.bron;
+        rij[kop.reden] = f.reden;
       }
       const payload = { values: [rij] };
       if (insertAtIndex != null) payload.index = insertAtIndex;
@@ -412,7 +454,7 @@
       throw new Error("Projectrij niet meer gevonden (ververs lijst).");
     }
     const kop = await leesKop(drivePath, token, sessionId);
-    const extra = [kop.offerte, kop.offerteUren].filter((i) => i != null).map(kolomLetter);
+    const extra = [kop.offerte, kop.offerteUren, kop.bron, kop.reden].filter((i) => i != null).map(kolomLetter);
     for (const kol of ["A", "C", "D", "E", "I", "J", "K", ...extra]) {
       await patchRange(drivePath, token, sessionId, `${kol}${rowIndex}`, [[""]]);
     }

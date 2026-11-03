@@ -214,7 +214,7 @@
       // Wat er nu uit het percentage rolt als startpunt, zodat je ziet wat je aanpast.
       const nu = M().btwBedragVanPercentage(
         M().parseUserAmount($("#inkoop-bedrag").value),
-        M().parseUserAmount($("#inkoop-btw").value.replace("%", ""))
+        M().parseUserNumber($("#inkoop-btw").value.replace("%", ""))
       );
       if (nu != null) $("#inkoop-btw-bedrag").value = M().fmtAmountInput(nu);
     }
@@ -401,7 +401,7 @@
       if (perc != null) return perc;
     }
     const ruw = $("#inkoop-btw").value.trim();
-    return ruw === "" ? null : M().parseUserAmount(ruw.replace("%", ""));
+    return ruw === "" ? null : M().parseUserNumber(ruw.replace("%", ""));
   }
 
   /** Alleen de velden leegmaken (gebruikt bij het selecteren van een nieuwe factuur). */

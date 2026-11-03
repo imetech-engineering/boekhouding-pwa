@@ -14,7 +14,7 @@ Standalone Progressive Web App: leest en schrijft **Boekhouding_IMeTech.xlsx** d
 - **Afwijkende BTW en vreemde valuta** — bij inkoop klap je "BTW-bedrag invullen" uit als een factuur geen vast percentage heeft (invoerkosten van een koerier, deels belast): je vult het BTW-bedrag in en de app zet dat om naar het percentage dat er precies bij hoort, zodat de formules in het werkboek intact blijven. Bij vreemde valuta vult de app het derde veld aan zodra er twee bekend zijn (bedrag origineel × koers = bedrag in €), in beide richtingen.
 - **Bestand toevoegen** — plus-knop → Bestand: PDF's en foto's krijgen meteen een voorbeeld (eerste pagina als miniatuur, tik erop voor groot). Datum, leverancier en factuurnummer worden automatisch herkend — eerst uit de bestandsnaam (`yymmdd bedrijf factuurnummer`), dan uit de PDF-tekst, en bij een foto via OCR. In het grote voorbeeld kun je bladeren, zoomen, tekst **selecteren en kopiëren** (uit de PDF zelf, of uit een foto via OCR). Dezelfde knop "Groot + tekst" zit ook bij het voorbeeld in inkoop en verkoop, waar de PDF-tekst nu ook direct in het voorbeeld te selecteren is.
 - **Bon fotograferen** — plus-knop bij inkoop → Camera opent de camera in de app zelf, met een live kader om de bon (lamp aan/uit kan). Na elke foto zoekt de app de rand, trekt hem recht en maakt het papier wit en scherp; je ziet meteen het resultaat en kunt inzoomen, de hoeken of een hele zijkant verschuiven (met loep), draaien, kiezen tussen *Zwart-wit*, *Grijs* en *Kleur* (logo, stempel), met een schuifje *Schoner ⟷ Meer details* bijstellen en losse *spikkels weg*halen. *Klaar* = pagina erbij, de camera blijft open voor de volgende; je laatste keuzes gelden voor de volgende foto. Linksonder in de camera staat de laatste scan. Later aanpassen kan met ✎ bij de pagina. Meerdere pagina's worden een map met dezelfde naam. Foto's uit de galerij gaan door hetzelfde aanpasscherm. De scanner (`js/scan/`, OpenCV.js 4.12 in `vendor/opencv`, Apache-2.0) is overgenomen uit MuzIVOtheek en wordt pas bij de eerste foto geladen (± 3,5 MB, daarna uit een eigen cache).
-- **Reiskosten** — vaste bestemmingen, adres zoeken (Photon), automatische km via route (OSRM), boekt als inkoopregel (€/km instelbaar, standaard € 0,23).
+- **Reiskosten** — vaste bestemmingen, adres zoeken (Photon), automatische km via route (OSRM), boekt als inkoopregel (€/km instelbaar; 2026: € 0,25).
 - **Koppelen** — overal hetzelfde scherm, overal hetzelfde ketting-icoon 🔗: op een
   bankregel kies je de facturen die erbij horen, op een factuur de bankregels waarmee die
   betaald is. Meerdere tegelijk kan beide kanten op (termijnen, verzamelbetaling). Een
@@ -34,6 +34,15 @@ Standalone Progressive Web App: leest en schrijft **Boekhouding_IMeTech.xlsx** d
   even achter, dan springt er niets terug. Ingeboekte facturen verdwijnen direct uit
   "nog te verwerken" en worden pas verplaatst als het inboeken gelukt is.
 - Offline queue (IndexedDB), donkere modus, installeerbaar op het startscherm.
+- **Veilig schrijven** — de app schrijft op rijnummer, dus vóór elke bewerking, verwijdering
+  of koppeling controleert hij of op die rij nog dezelfde regel staat (datum + bedrag
+  (+ factuurnummer)). Is er in Excel gesorteerd of een rij ingevoegd, dan wordt er níets
+  geschreven en leest de app opnieuw in. Een nieuwe regel die opnieuw verstuurd wordt
+  (offline-wachtrij of netwerkfout halverwege) wordt eerst opgezocht, zodat hij nooit dubbel
+  in het boek komt. Bij een verlopen inlog blijven wijzigingen in de wachtrij staan, een
+  bestand gaat alleen naar "verwerkt" als de boeking ervoor gelukt is, en bij het verwijderen
+  van een factuur gaan de koppelingen ernaar in het bankboek mee weg.
+- **Bedragen** — "1.250" is € 1.250 (punt met drie cijfers = duizendtal), "1,25" en "12.50" blijven € 1,25 en € 12,50.
 
 ## Wat de app in Excel schrijft
 
@@ -73,7 +82,9 @@ zelfde registratie, dus login werkt direct).
 - **Photon** (photon.komoot.io) — adres-autocomplete, gratis, geen key.
 - **OSRM demo** (router.project-osrm.org) — route-km, gratis, geen uptime-garantie;
   km-veld blijft altijd handmatig aanpasbaar.
-- **CDN**: MSAL (login) en pdf.js (PDF-preview/extractie) via jsDelivr.
+- **Lokaal meegeleverd** (`vendor/`): MSAL 3.28.0 (login) en pdf.js 3.11.174 (PDF-preview/extractie),
+  zodat de site niet afhangt van een CDN. pdf.js draait met `isEvalSupported: false` (CVE-2024-4367).
+- **CDN**: alleen tesseract.js 5.1.1 (OCR op foto's), op een vaste versie en pas geladen bij de eerste foto.
 
 De documentscanner draait volledig lokaal in de browser (`js/scanner.js`): Otsu-drempel,
 grootste aaneengesloten vlak, convexe omhulling en de grootste vierhoek daarbinnen,

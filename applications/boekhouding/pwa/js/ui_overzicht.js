@@ -770,7 +770,7 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     const s = App().state.settings;
     const tariefEl = $("#set-km-tarief");
     if (document.activeElement !== tariefEl) {
-      tariefEl.value = String(s.kmTarief ?? 0.23).replace(".", ",");
+      tariefEl.value = String(s.kmTarief ?? 0.25).replace(".", ",");
     }
     $("#set-thuis-label").textContent = s.thuisAdres?.label
       ? `✓ ${s.thuisAdres.label}`

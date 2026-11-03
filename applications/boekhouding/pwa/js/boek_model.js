@@ -137,8 +137,20 @@
     return Number.isFinite(f) ? f : null;
   }
 
-  /** Bedrag uit gebruikersinvoer: op hele centen. */
+  /**
+   * Bedrag uit gebruikersinvoer: op hele centen. Een punt met precies drie
+   * cijfers erachter ("1.250", "12.500", "1.250.000") is bij bedragen altijd
+   * een duizendtal: centen hebben er twee. Zonder deze regel werd "1.250"
+   * stil € 1,25.
+   */
   function parseUserAmount(s) {
+    if (s != null) {
+      const t = String(s).trim().replace(/[€\s]/g, "").replace(/[−–—]/g, "-");
+      if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) {
+        const f = parseFloat(t.replace(/\./g, ""));
+        return Number.isFinite(f) ? f : null;
+      }
+    }
     const f = parseUserNumber(s);
     return f == null ? null : Math.round(f * 100) / 100;
   }
@@ -284,6 +296,59 @@
       });
     }
     return rows;
+  }
+
+  // === Vingerafdrukken: staat er nog wat we denken dat er staat? ===
+  // De app schrijft op rijnummer. Sorteert of voegt iemand in Excel desktop een
+  // rij in, dan staat er op dat nummer iets anders. Vóór elke wijziging vergelijkt
+  // de app daarom de rij in het werkboek met de rij zoals de app hem kent.
+
+  const sleutelTekst = (s) => String(s ?? "").toLowerCase().replace(/[\s\-_/.]/g, "");
+  // Excel maakt van "00123" het getal 123: voorloopnullen tellen niet mee.
+  const sleutelNummer = (s) => sleutelTekst(s).replace(/^0+(?=\d)/, "");
+  const sleutelCent = (v) => (v == null || v === "" || !Number.isFinite(+v) ? "" : String(Math.round(+v * 100)));
+  const sleutelDatum = (d) => (d instanceof Date && !isNaN(d) ? dateToIso(d) : "");
+
+  /**
+   * Identiteit van een bestaande rij (niet te streng: een omschrijving of
+   * opmerking die in Excel is aangepast, maakt het nog steeds dezelfde regel).
+   * soort: "bank" | "inkoop" | "verkoop"
+   */
+  function rijIdentiteit(soort, r) {
+    if (!r || r.isEmpty) return "leeg";
+    if (soort === "bank") return `${sleutelDatum(r.datum)}|${sleutelCent(r.in)}|${sleutelCent(r.uit)}`;
+    return `${sleutelDatum(r.datum)}|${sleutelCent(r.bedrag)}|${sleutelNummer(r.factuurnummer)}`;
+  }
+
+  /**
+   * Volledige sleutel van een nieuwe regel, om bij het opnieuw afspelen te zien
+   * of hij al in het werkboek staat. Werkt op invoervelden én op gelezen rijen.
+   */
+  function regelSleutel(soort, x) {
+    if (!x) return "";
+    const datum = x.datumIso || sleutelDatum(x.datum);
+    if (soort === "bank") {
+      return `${datum}|${sleutelCent(x.in)}|${sleutelCent(x.uit)}|${sleutelTekst(x.omschrijving)}`;
+    }
+    const partij = x.partij ?? (soort === "inkoop" ? x.leverancier : x.klant);
+    return [
+      datum, sleutelTekst(partij), sleutelCent(x.bedrag),
+      sleutelNummer(x.factuurnummer), sleutelTekst(x.omschrijving),
+    ].join("|");
+  }
+
+  /** Hoeveel bestaande (niet-lege) rijen dezelfde sleutel hebben. */
+  function telRegelSleutel(soort, rows, sleutel) {
+    let n = 0;
+    for (const r of rows || []) if (!r.isEmpty && regelSleutel(soort, r) === sleutel) n++;
+    return n;
+  }
+
+  /** Eén rij uit de werkboekwaarden (A..laatste kolom) parsen, met het juiste rijnummer. */
+  function parseEnkeleRij(soort, rijWaarden, excelRow) {
+    const values = [[], rijWaarden || []];
+    const fn = soort === "bank" ? parseBankRows : soort === "inkoop" ? parseInkoopRows : parseVerkoopRows;
+    return fn(values, excelRow - 1)[0] || null;
   }
 
   // === Lege-rij-detectie ===
@@ -682,6 +747,35 @@
       } else {
         uit.push({ boek: null, row: null, token }); // hoort bij geen enkele factuur
       }
+    }
+    return uit;
+  }
+
+  /**
+   * Koppelingen die naar één factuur wijzen, om op te ruimen als die factuur
+   * verwijderd wordt. Anders blijft er "(I155)" in het bankboek staan, en
+   * hergebruikt een volgende boeking die lege rij: dan hangt de bankregel stil
+   * aan een andere factuur. Een nummer dat ook nog bij andere regels hoort
+   * (gesplitste factuur) blijft staan.
+   * Geeft [{excelRow, waarde, oud}] terug: de nieuwe celwaarde per bankregel.
+   */
+  function koppelingenZonderFactuur(bankRows, inkoopRows, verkoopRows, boek, factuurRow) {
+    const uit = [];
+    for (const b of bankRows || []) {
+      if (b.isEmpty || !b.koppelingRaw) continue;
+      const tokens = parseKoppelingen(b.koppelingRaw, inkoopRows, verkoopRows);
+      const weg = new Set();
+      for (const k of tokens) {
+        if (!k.row || k.boek !== boek || k.row.excelRow !== factuurRow) continue;
+        if (k.groep && k.groep.some((g) => !(g.boek === boek && g.row.excelRow === factuurRow))) continue;
+        weg.add(k.token.toLowerCase());
+      }
+      if (!weg.size) continue;
+      const rest = String(b.koppelingRaw)
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s && !weg.has(s.toLowerCase()));
+      uit.push({ excelRow: b.excelRow, waarde: rest.join(", "), oud: b.koppelingRaw });
     }
     return uit;
   }
@@ -1805,7 +1899,8 @@
     btwBedragVanPercentage, btwPercentageVanBedrag, isHandmatigBtw, valutaAanvullen,
     bankMatchesForInvoice, invoiceMatchesForBankRow, factuurRichting,
     koppelWaarde, parseKoppelingen, koppelingIndex, facturenZonderBank, bankZonderKoppeling,
-    voegKoppelingToe, bevatKoppeling,
+    voegKoppelingToe, bevatKoppeling, koppelingenZonderFactuur,
+    rijIdentiteit, regelSleutel, telRegelSleutel, parseEnkeleRij,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
     bankKoppelStatus, koppelStatusTekst, koppelStatusIcoon, factuurStatus, bankKoppelProblemen,
     factuurVerwachtBank,

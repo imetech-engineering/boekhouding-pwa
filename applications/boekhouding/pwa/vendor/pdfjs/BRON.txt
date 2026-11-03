@@ -1,0 +1,2 @@
+pdfjs-dist 3.11.174 (npm), build/pdf.min.js + build/pdf.worker.min.js, Apache-2.0.
+Lokaal i.p.v. CDN: geen afhankelijkheid van jsDelivr. Laden met isEvalSupported:false (CVE-2024-4367).

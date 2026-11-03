@@ -20,7 +20,7 @@
     intel: { inkoop: { history: [], partijen: [], categorieen: [], projecten: [] },
              verkoop: { history: [], partijen: [], categorieen: [], projecten: [] } },
     files: { inkoop: [], verkoop: [] },
-    settings: { kmTarief: 0.23, thuisAdres: null, favorieten: [] },
+    settings: { kmTarief: 0.25, thuisAdres: null, favorieten: [] },
     settingsLoaded: false,
     webUrl: null,
     matchDagen: (() => {
@@ -113,6 +113,16 @@
   // === Auth / token ===
   async function ensureLoggedIn() {
     return global.BoekAuth.acquireToken();
+  }
+
+  /** Inloggen verlopen of popup geblokkeerd: de wijziging moet blijven wachten. */
+  function isAuthError(e) {
+    return e?.name === "AuthError";
+  }
+
+  function meldInloggenNodig() {
+    setStatus("Opnieuw inloggen nodig — wijzigingen wachten veilig in de wachtrij.", true);
+    showToast("Opnieuw inloggen nodig. Je wijzigingen wachten in de wachtrij (Overzicht → Microsoft-account).", true);
   }
 
   function isNetworkError(e) {
@@ -414,6 +424,7 @@
     } catch (_) {}
     const bekend = new Set(journaal.map((e) => e.queueId).filter((x) => x != null));
     for (const item of wachtrij) if (!bekend.has(item.id)) applyLocal(item);
+    wachtrijCache = wachtrij;
 
     for (const e of journaal) pasToe(e);
 
@@ -743,6 +754,15 @@
           const boek = d.kind === "inkoop_delete" ? state.inkoopRows : state.verkoopRows;
           const r = boek.find((x) => x.excelRow === d.excelRow);
           if (r) Object.assign(r, { isEmpty: true, partij: "", bedrag: null, datum: null, datumStr: "" });
+          for (const o of d.ontkoppel || []) {
+            const b = findBank(o.excelRow);
+            if (!b) continue;
+            // Alleen de tokens die weg moesten; wat er sindsdien bij kwam blijft.
+            const delen = (s) => String(s || "").split(",").map((x) => x.trim()).filter(Boolean);
+            const blijft = new Set(delen(o.waarde).map((t) => t.toLowerCase()));
+            const weg = new Set(delen(o.oud).map((t) => t.toLowerCase()).filter((t) => !blijft.has(t)));
+            b.koppelingRaw = delen(b.koppelingRaw).filter((t) => !weg.has(t.toLowerCase())).join(", ");
+          }
           break;
         }
         case "file_move":
@@ -876,64 +896,187 @@
     );
     await global.BoekIo.koppelBank(
       token,
-      rows.map((r) => ({ excelRow: r, waarde, ingeboekt: true }))
+      rows.map((r) => ({ excelRow: r, waarde, ingeboekt: true })),
+      d.verwacht
     );
     return waarde;
   }
 
+  function meldAlGeboekt(d) {
+    const f = d.fields || {};
+    const wie = f.leverancier || f.klant || f.omschrijving || "";
+    showToast(`Stond al in het werkboek (eerdere poging kwam toch aan): ${wie} niet nog eens geboekt.`);
+  }
+
+  // === Voorbereiden: wat verwacht deze wijziging aan te treffen? ===
+  let uidTeller = 0;
+  let wachtrijCache = []; // offline-wachtrij zoals bij de laatste leesronde gezien
+  function nieuweUid() {
+    try {
+      if (global.crypto?.randomUUID) return global.crypto.randomUUID();
+    } catch (_) {}
+    return `${Date.now().toString(36)}-${(++uidTeller).toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  /**
+   * Legt vast wat de wijziging verwacht aan te treffen, vóórdat hij lokaal
+   * wordt toegepast. Gaat mee in de offline-wachtrij, zodat ook een wijziging
+   * die uren later wordt verstuurd nooit op een verkeerde rij terechtkomt.
+   *  - verwacht: per geraakte rij de identiteit (datum + bedrag (+ nummer))
+   *  - telVooraf: hoeveel gelijke regels er al waren (bij nieuwe regels)
+   *  - ontkoppel: koppelingen in het bankboek die met een factuur mee weg moeten
+   *  - naUid: alleen uitvoeren als die eerdere wijziging gelukt is
+   */
+  function bereidVoor(d, alleenAls) {
+    if (!d.uid) d.uid = nieuweUid();
+    if (alleenAls?.uid && !d.naUid) d.naUid = alleenAls.uid;
+    if (isBestand(d) || d.verwacht) return;
+    const rijenVan = (soort) =>
+      soort === "bank" ? state.bankRows : soort === "inkoop" ? state.inkoopRows : state.verkoopRows;
+    const verwacht = {};
+    const zet = (soort, excelRow) => {
+      if (excelRow == null) return;
+      const r = rijenVan(soort).find((x) => x.excelRow === excelRow);
+      if (r && !r.isEmpty) verwacht[`${soort}|${excelRow}`] = M().rijIdentiteit(soort, r);
+    };
+    switch (d.kind) {
+      case "bank_update":
+      case "bank_delete":
+      case "bank_ontkoppel":
+        zet("bank", d.excelRow);
+        break;
+      case "bank_ingeboekt":
+        (d.rows || []).forEach((r) => zet("bank", r));
+        break;
+      case "bank_koppel":
+        (d.items || []).forEach((it) => zet("bank", it.excelRow));
+        break;
+      case "inkoop_update":
+      case "inkoop_delete":
+        zet("inkoop", d.excelRow);
+        break;
+      case "verkoop_update":
+      case "verkoop_delete":
+        zet("verkoop", d.excelRow);
+        break;
+      case "inkoop_add":
+      case "verkoop_add":
+        (d.bankRows || []).forEach((r) => zet("bank", r));
+        break;
+      default:
+        break;
+    }
+    // Bij een bewerking is ook de stand ná de bewerking goed: dan was een
+    // eerdere poging al gelukt en verandert opnieuw schrijven niets.
+    const soortVan = { bank_update: "bank", inkoop_update: "inkoop", verkoop_update: "verkoop" }[d.kind];
+    const sleutel = soortVan && `${soortVan}|${d.excelRow}`;
+    if (sleutel && verwacht[sleutel] != null) {
+      const f = d.fields || {};
+      const oud = rijenVan(soortVan).find((x) => x.excelRow === d.excelRow);
+      const na =
+        soortVan === "bank"
+          ? f.updateAmounts
+            ? M().rijIdentiteit("bank", { ...oud, in: f.in, uit: f.uit })
+            : verwacht[sleutel]
+          : // Precies wat writeInkoopRow/writeVerkoopRow wegschrijven.
+            M().rijIdentiteit(soortVan, {
+              isEmpty: false,
+              datum: M().isoToDate(f.datumIso),
+              bedrag: f.bedrag ?? null,
+              factuurnummer: f.factuurnummer || "",
+            });
+      if (na !== verwacht[sleutel]) verwacht[sleutel] = [verwacht[sleutel], na];
+    }
+    d.verwacht = verwacht;
+    if (d.kind === "bank_add" || d.kind === "inkoop_add" || d.kind === "verkoop_add") {
+      const soort = d.kind.split("_")[0];
+      const sleutel = M().regelSleutel(soort, d.fields || {});
+      // Gelijke regels die nog geschreven moeten worden, tellen ook mee.
+      const bekend = new Set(journaal.map((e) => e.queueId).filter((x) => x != null));
+      const wachtend =
+        journaal.filter(
+          (e) => e.d.kind === d.kind && e.status !== "klaar" && M().regelSleutel(soort, e.d.fields || {}) === sleutel
+        ).length +
+        // Uit een eerdere sessie, nog alleen in de offline-wachtrij.
+        wachtrijCache.filter(
+          (it) => !bekend.has(it.id) && it.kind === d.kind && M().regelSleutel(soort, it.fields || {}) === sleutel
+        ).length;
+      d.telVooraf = M().telRegelSleutel(soort, rijenVan(soort), sleutel) + wachtend;
+    }
+    if (d.kind === "inkoop_delete" || d.kind === "verkoop_delete") {
+      d.ontkoppel = M().koppelingenZonderFactuur(
+        state.bankRows, state.inkoopRows, state.verkoopRows, d.kind.split("_")[0], d.excelRow
+      );
+    }
+  }
+
   // === Mutaties uitvoeren (altijd via de schrijfrij) ===
-  async function executeMutation(d) {
+  /**
+   * herhaling: deze wijziging is al eens geprobeerd (offline-wachtrij, of een
+   * netwerkfout halverwege). Nieuwe regels worden dan eerst opgezocht in het
+   * werkboek, zodat een eerdere poging die wél aankwam niet dubbel wordt geboekt.
+   */
+  async function executeMutation(d, { herhaling = false } = {}) {
     const token = await ensureLoggedIn();
+    const IO = global.BoekIo;
+    const nieuw = { herhaling, telVooraf: d.telVooraf };
     switch (d.kind) {
       case "bank_add":
         // Hint: de rijen die de app al heeft, zodat de tabel niet opnieuw
         // gelezen hoeft te worden (alleen de gekozen rij wordt gecontroleerd).
-        return global.BoekIo.addBankRow(token, d.fields, {
-          rows: state.bankRows,
-          endRow: state.bankEndRow,
-        });
+        return IO.addBankRow(token, d.fields, { rows: state.bankRows, endRow: state.bankEndRow }, nieuw);
       case "bank_update":
-        return global.BoekIo.updateBankRow(token, d.excelRow, d.fields);
+        return IO.updateBankRow(token, d.excelRow, d.fields, d.verwacht);
       case "bank_delete":
-        return global.BoekIo.deleteBankRow(token, d.excelRow);
+        return IO.deleteBankRow(token, d.excelRow, d.verwacht);
       case "bank_ingeboekt":
-        return global.BoekIo.setBankIngeboekt(token, d.rows, d.value !== false);
+        return IO.setBankIngeboekt(token, d.rows, d.value !== false, d.verwacht);
       case "bank_koppel":
-        return global.BoekIo.koppelBank(token, d.items);
+        return IO.koppelBank(token, d.items, d.verwacht);
       case "bank_ontkoppel":
-        return global.BoekIo.ontkoppelBank(token, d.excelRow, d.waarde || "");
+        return IO.ontkoppelBank(token, d.excelRow, d.waarde || "", d.verwacht);
       case "inkoop_add": {
-        const res = (await global.BoekIo.addInkoopRow(token, d.fields, state.inkoopRows)) || {};
+        // Eerst de af te vinken bankregels controleren: klopt er één niet, dan
+        // ook de factuur niet boeken (anders een factuur zonder koppeling).
+        await IO.controleerBankRijen(token, d.bankRows, d.verwacht);
+        const res = (await IO.addInkoopRow(token, d.fields, state.inkoopRows, nieuw)) || {};
         if (res.excelRow) plaatsFactuurRij("inkoop", res.excelRow, d.fields);
         res.koppelWaarde = await koppelNaInboeken(token, d, res, "I");
         // Afschrijving aangevinkt → jaarregels automatisch mee-inboeken.
+        // Stond de aankoop er al (eerdere poging), dan ook per jaarregel kijken.
         res.extraRijen = [];
         if (d.fields.afschrijving && d.fields.afschrijvingJaren) {
           const regels = global.BoekModel.afschrijvingsRegels(d.fields, d.fields.afschrijvingJaren);
+          const regelOpties = res.alBestaand ? { herhaling: true, telVooraf: 0 } : {};
           for (const regel of regels) {
-            const r2 = await global.BoekIo.addInkoopRow(token, regel, state.inkoopRows);
+            const r2 = await IO.addInkoopRow(token, regel, state.inkoopRows, regelOpties);
             if (r2?.excelRow) {
               plaatsFactuurRij("inkoop", r2.excelRow, regel);
               res.extraRijen.push({ excelRow: r2.excelRow, fields: regel });
             }
           }
         }
+        if (res.alBestaand) meldAlGeboekt(d);
         return res;
       }
       case "inkoop_update":
-        return global.BoekIo.updateInkoopRow(token, d.excelRow, d.fields);
+        return IO.updateInkoopRow(token, d.excelRow, d.fields, d.verwacht);
       case "inkoop_delete":
-        return global.BoekIo.deleteInkoopRow(token, d.excelRow);
+        await IO.deleteInkoopRow(token, d.excelRow, d.verwacht);
+        return IO.ruimKoppelingenOp(token, d.ontkoppel);
       case "verkoop_add": {
-        const res = (await global.BoekIo.addVerkoopRow(token, d.fields, state.verkoopRows)) || {};
+        await IO.controleerBankRijen(token, d.bankRows, d.verwacht);
+        const res = (await IO.addVerkoopRow(token, d.fields, state.verkoopRows, nieuw)) || {};
         if (res.excelRow) plaatsFactuurRij("verkoop", res.excelRow, d.fields);
         res.koppelWaarde = await koppelNaInboeken(token, d, res, "V");
+        if (res.alBestaand) meldAlGeboekt(d);
         return res;
       }
       case "verkoop_update":
-        return global.BoekIo.updateVerkoopRow(token, d.excelRow, d.fields);
+        return IO.updateVerkoopRow(token, d.excelRow, d.fields, d.verwacht);
       case "verkoop_delete":
-        return global.BoekIo.deleteVerkoopRow(token, d.excelRow);
+        await IO.deleteVerkoopRow(token, d.excelRow, d.verwacht);
+        return IO.ruimKoppelingenOp(token, d.ontkoppel);
       case "file_move":
         return global.BoekGraph.moveItem(d.itemId, d.destFolder, token, d.newName);
       case "file_rename":
@@ -981,13 +1124,14 @@
    * wordt deze overgeslagen (bijv. bestand pas verplaatsen als het inboeken lukte).
    */
   function persistMutation(descriptor, { successMsg, alleenAls } = {}) {
+    bereidVoor(descriptor, alleenAls);
     const e = { id: ++journaalTeller, d: descriptor, status: "wacht", klaarOp: 0, res: null };
     journaal.push(e);
     if (applyLocal(descriptor)) {
       state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
       renderAll();
     }
-    return inRij(async () => {
+    const p = inRij(async () => {
       if (alleenAls && !(await alleenAls.catch(() => false))) {
         herstelNaFout(e);
         return false;
@@ -1005,6 +1149,12 @@
       } catch (err) {
         if (isNetworkError(err)) {
           await zetOffline(e);
+          return true;
+        }
+        if (isAuthError(err)) {
+          // Niet weggooien: bewaren tot er weer ingelogd is.
+          await zetOffline(e);
+          meldInloggenNodig();
           return true;
         }
         herstelNaFout(e);
@@ -1027,6 +1177,9 @@
       if (successMsg) showToast(successMsg);
       return true;
     });
+    // Zodat een volgende wijziging kan zeggen: "alleen als deze gelukt is".
+    p.uid = descriptor.uid;
+    return p;
   }
 
   // === Offline-wachtrij wegwerken (ook via de schrijfrij) ===
@@ -1046,6 +1199,9 @@
       if (!global.BoekOfflineQueue.isOnline()) return;
       {
         let gestopt = false;
+        // Wijzigingen die mislukten: wat daarvan afhangt (bestand verplaatsen
+        // na inboeken) gaat dan ook niet door.
+        const mislukt = new Set();
         // Opnieuw ophalen tot hij leeg is: tijdens het wegwerken kunnen er
         // nieuwe wijzigingen achteraan zijn aangesloten.
         for (let ronde = 0; ronde < 5 && !gestopt; ronde++) {
@@ -1053,13 +1209,25 @@
           if (!items.length) break;
           for (const item of items) {
             const uitkomst = await inRij(async () => {
+              if (item.naUid && mislukt.has(item.naUid)) {
+                await global.BoekOfflineQueue.remove(item.id);
+                if (item.uid) mislukt.add(item.uid);
+                showToast("Bestand niet verplaatst: de boeking ervoor is mislukt. Het blijft in \"nog te verwerken\".", true);
+                return { ok: false };
+              }
               try {
-                const res = await executeMutation(item);
+                // herhaling: nieuwe regels eerst opzoeken, nooit dubbel boeken.
+                const res = await executeMutation(item, { herhaling: true });
                 await global.BoekOfflineQueue.remove(item.id);
                 return { ok: true, res };
               } catch (err) {
                 if (err?.name === "GraphLockError" || isNetworkError(err)) return { stop: true };
+                if (isAuthError(err)) {
+                  meldInloggenNodig();
+                  return { stop: true, inloggen: true };
+                }
                 await global.BoekOfflineQueue.remove(item.id);
+                if (item.uid) mislukt.add(item.uid);
                 showToast(`Wachtrij-item mislukt: ${err.message || err}`, true);
                 return { ok: false };
               }
@@ -1067,7 +1235,9 @@
             let e = journaal.find((x) => x.queueId === item.id);
             if (uitkomst.stop) {
               gestopt = true;
-              planFlush(30000);
+              // Bij inloggen niet steeds opnieuw een popup proberen: dat
+              // gebeurt bij de volgende leesronde of na het inloggen.
+              if (!uitkomst.inloggen) planFlush(30000);
               break;
             }
             if (uitkomst.ok) {

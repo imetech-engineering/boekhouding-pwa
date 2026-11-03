@@ -10,6 +10,100 @@
     return global.BOEK_CONFIG.graph.workbookPath;
   }
 
+  // === Rijcontrole: alleen schrijven als er nog staat wat we verwachten ===
+
+  /** Rij staat niet meer waar de app hem verwacht (gesorteerd, ingevoegd, ander apparaat). */
+  class RijVerschovenError extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "RijVerschovenError";
+    }
+  }
+
+  const BOEKNAAM = { bank: "bankboek", inkoop: "inkoopboek", verkoop: "verkoopboek" };
+  const LAATSTE_KOLOM = { bank: "I", inkoop: "V", verkoop: "Q" };
+
+  function sheetVan(soort) {
+    return soort === "bank" ? M().SHEET_BANK : soort === "inkoop" ? M().SHEET_INKOOP : M().SHEET_VERKOOP;
+  }
+
+  function tabelVan(soort) {
+    return soort === "bank" ? M().TABLE_BANK : soort === "inkoop" ? M().TABLE_INKOOP : M().TABLE_VERKOOP;
+  }
+
+  function parseVan(soort, values, headerRow) {
+    if (soort === "bank") return M().parseBankRows(values, headerRow);
+    if (soort === "inkoop") return M().parseInkoopRows(values, headerRow);
+    return M().parseVerkoopRows(values, headerRow);
+  }
+
+  function verschovenMelding(soort, excelRow) {
+    return (
+      `Regel ${excelRow} in het ${BOEKNAAM[soort]} is in het werkboek veranderd ` +
+      `(gesorteerd, rij ingevoegd of op een ander apparaat aangepast). ` +
+      `Er is niets geschreven. De lijst wordt opnieuw ingelezen; probeer het daarna nog eens.`
+    );
+  }
+
+  /**
+   * Gooit RijVerschovenError als de rij in het werkboek niet meer de regel is
+   * die de app verwacht. Zonder verwachting (oude wachtrij-items) gebeurt er niets.
+   */
+  async function controleerRij(path, token, sid, soort, excelRow, verwacht, { leegIsKlaar = false } = {}) {
+    const v = verwacht?.[`${soort}|${excelRow}`];
+    if (v == null) return "onbekend";
+    const vals = await W().readValues(
+      path, token, sid, sheetVan(soort), `A${excelRow}:${LAATSTE_KOLOM[soort]}${excelRow}`
+    );
+    const nu = M().rijIdentiteit(soort, M().parseEnkeleRij(soort, vals[0], excelRow));
+    // Verwijderen dat al gelukt is (eerdere poging, antwoord kwam niet aan): klaar.
+    if (leegIsKlaar && nu === "leeg") return "leeg";
+    if (!klopt(v, nu)) throw new RijVerschovenError(verschovenMelding(soort, excelRow));
+    return "ok";
+  }
+
+  /** Bankregels controleren zonder te schrijven (vóór inboeken + koppelen). */
+  async function controleerBankRijen(token, excelRows, verwacht) {
+    const rijen = (excelRows || []).filter((r) => verwacht?.[`bank|${r}`] != null);
+    if (!rijen.length) return;
+    const path = drivePath();
+    return W().withSession(path, token, async (sid) => {
+      for (const r of rijen) await controleerRij(path, token, sid, "bank", r, verwacht);
+    });
+  }
+
+  /** Zelfde controle, maar op rijen die in deze sessie al gelezen zijn. */
+  function controleerGelezen(soort, rows, excelRow, verwacht) {
+    const v = verwacht?.[`${soort}|${excelRow}`];
+    if (v == null) return;
+    const nu = M().rijIdentiteit(soort, rows.find((r) => r.excelRow === excelRow));
+    if (!klopt(v, nu)) throw new RijVerschovenError(verschovenMelding(soort, excelRow));
+  }
+
+  /**
+   * Een verwachting is één identiteit, of een lijst: [vóór, na] bij een
+   * bewerking, zodat het opnieuw versturen van een bewerking die al gelukt
+   * was gewoon doorgaat.
+   */
+  function klopt(verwacht, nu) {
+    return Array.isArray(verwacht) ? verwacht.includes(nu) : verwacht === nu;
+  }
+
+  /**
+   * Bij het opnieuw afspelen van een nieuwe regel (na een netwerkfout of uit de
+   * offline-wachtrij): staat hij er al? Dan is een eerdere poging gelukt en
+   * mag hij er niet nog eens bij. telVooraf = hoeveel gelijke regels er al
+   * waren toen de wijziging gemaakt werd (twee echt gelijke regels kan dus).
+   * Geeft het rijnummer van de al geboekte regel terug, of null.
+   */
+  async function alGeboekt(path, token, sid, soort, fields, telVooraf) {
+    const t = await W().readTableRange(path, token, tabelVan(soort), sid);
+    const rows = parseVan(soort, t.values, t.headerRow);
+    const sleutel = M().regelSleutel(soort, fields);
+    const treffers = rows.filter((r) => !r.isEmpty && M().regelSleutel(soort, r) === sleutel);
+    return treffers.length > (telVooraf || 0) ? treffers[treffers.length - 1].excelRow : null;
+  }
+
   /** Lees alle drie de boeken in één keer (zonder sessie; values = berekende waarden). */
   async function loadAll(token) {
     const path = drivePath();
@@ -82,10 +176,14 @@
    * Nieuwe bankregel: eerste lege slot binnen Tabel1, saldo als formule per rekening.
    * fields: {datumIso, omschrijving, in, uit, opmerking, rekening, ingeboekt}
    */
-  async function addBankRow(token, fields, hint) {
+  async function addBankRow(token, fields, hint, opties = {}) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
       const sheet = M().SHEET_BANK;
+      if (opties.herhaling) {
+        const al = await alGeboekt(path, token, sid, "bank", fields, opties.telVooraf);
+        if (al != null) return { excelRow: al, alBestaand: true };
+      }
       // Eerst de rijen die de app al heeft: alleen de gekozen rij controleren.
       // Zit hij binnen de tabel en is hij leeg, dan hoeft de tabel niet opnieuw.
       let targetRow = await vrijeRijUitGeheugen(
@@ -149,10 +247,11 @@
    * Bestaande bankregel bijwerken.
    * fields: {omschrijving?, opmerking?, rekening?, in?, uit?, updateAmounts:boolean}
    */
-  async function updateBankRow(token, excelRow, fields) {
+  async function updateBankRow(token, excelRow, fields, verwacht) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
       const sheet = M().SHEET_BANK;
+      await controleerRij(path, token, sid, "bank", excelRow, verwacht);
       if (fields.omschrijving != null) {
         await W().patchValues(path, token, sid, sheet, `B${excelRow}`, [[fields.omschrijving]]);
       }
@@ -175,9 +274,10 @@
   }
 
   /** Bankregels als (niet) ingeboekt markeren. */
-  async function setBankIngeboekt(token, excelRows, value = true) {
+  async function setBankIngeboekt(token, excelRows, value = true, verwacht) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
+      for (const row of excelRows) await controleerRij(path, token, sid, "bank", row, verwacht);
       for (const row of excelRows) {
         await W().patchValues(path, token, sid, M().SHEET_BANK, `F${row}`, [[!!value]]);
       }
@@ -188,9 +288,10 @@
    * Bankregel leegmaken. De saldo-formules zijn per rekening opgeteld en
    * verwijzen niet naar elkaar, dus andere rijen hebben hier geen last van.
    */
-  async function deleteBankRow(token, excelRow) {
+  async function deleteBankRow(token, excelRow, verwacht) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
+      if ((await controleerRij(path, token, sid, "bank", excelRow, verwacht, { leegIsKlaar: true })) === "leeg") return;
       await W().patchValues(path, token, sid, M().SHEET_BANK, `A${excelRow}:I${excelRow}`, [
         ["", "", "", "", null, false, "", "", ""],
       ]);
@@ -201,11 +302,13 @@
    * Factuurkoppeling schrijven op bankregels (kolom I), plus ingeboekt-vinkje.
    * Bestaande koppelingen blijven staan; de nieuwe komt er met een komma achter.
    */
-  async function koppelBank(token, items) {
+  async function koppelBank(token, items, verwacht) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
       const bank = await W().readTableRange(path, token, M().TABLE_BANK, sid);
       const rows = M().parseBankRows(bank.values, bank.headerRow);
+      // Eerst alles controleren, dan pas schrijven: nooit een halve koppeling.
+      for (const item of items) controleerGelezen("bank", rows, item.excelRow, verwacht);
       for (const item of items) {
         const huidig = rows.find((r) => r.excelRow === item.excelRow)?.koppelingRaw || "";
         // Per token samenvoegen: staat alles er al, dan niets schrijven.
@@ -222,11 +325,37 @@
 
   /** Koppeling van een bankregel weghalen. */
   /** Kolom I van een bankregel exact zetten; lege waarde = volledig ontkoppelen. */
-  async function ontkoppelBank(token, excelRow, waarde = "") {
+  async function ontkoppelBank(token, excelRow, waarde = "", verwacht) {
     const path = drivePath();
-    return W().withSession(path, token, (sid) =>
-      W().patchValues(path, token, sid, M().SHEET_BANK, `I${excelRow}`, [[waarde || ""]])
-    );
+    return W().withSession(path, token, async (sid) => {
+      await controleerRij(path, token, sid, "bank", excelRow, verwacht);
+      return W().patchValues(path, token, sid, M().SHEET_BANK, `I${excelRow}`, [[waarde || ""]]);
+    });
+  }
+
+  /**
+   * Koppelingen naar een verwijderde factuur uit kolom I halen. items:
+   * [{excelRow, waarde, oud}] uit BoekModel.koppelingenZonderFactuur. Alleen de
+   * tokens die toen weg moesten, gaan eruit; wat er sindsdien bij kwam blijft.
+   */
+  async function ruimKoppelingenOp(token, items) {
+    if (!items?.length) return;
+    const path = drivePath();
+    const delen = (s) => String(s || "").split(",").map((x) => x.trim()).filter(Boolean);
+    return W().withSession(path, token, async (sid) => {
+      const bank = await W().readTableRange(path, token, M().TABLE_BANK, sid);
+      const rows = M().parseBankRows(bank.values, bank.headerRow);
+      for (const item of items) {
+        const blijft = new Set(delen(item.waarde).map((t) => t.toLowerCase()));
+        const weg = new Set(delen(item.oud).map((t) => t.toLowerCase()).filter((t) => !blijft.has(t)));
+        if (!weg.size) continue;
+        const huidig = rows.find((r) => r.excelRow === item.excelRow)?.koppelingRaw || "";
+        const nieuw = delen(huidig).filter((t) => !weg.has(t.toLowerCase())).join(", ");
+        if (nieuw !== huidig) {
+          await W().patchValues(path, token, sid, M().SHEET_BANK, `I${item.excelRow}`, [[nieuw]]);
+        }
+      }
+    });
   }
 
   // === Inkoopboek ===
@@ -254,33 +383,35 @@
     ];
   }
 
+  /**
+   * Eén PATCH over A..V (B en C zijn formules: null = onaangeroerd). Zo kan een
+   * netwerkfout nooit een half geschreven rij achterlaten.
+   */
   async function writeInkoopRow(path, token, sid, excelRow, fields) {
-    const sheet = M().SHEET_INKOOP;
-    await W().patchValues(path, token, sid, sheet, `A${excelRow}`, [[fields.datumIso]]);
-    await W().patchValues(path, token, sid, sheet, `D${excelRow}:V${excelRow}`, [
-      inkoopRowValues(fields),
+    await W().patchValues(path, token, sid, M().SHEET_INKOOP, `A${excelRow}:V${excelRow}`, [
+      [fields.datumIso, null, null, ...inkoopRowValues(fields)],
     ]);
   }
 
   /** Bestaande inkooprij overschrijven (bewerken). */
-  async function updateInkoopRow(token, excelRow, fields) {
+  async function updateInkoopRow(token, excelRow, fields, verwacht) {
     const path = drivePath();
-    return W().withSession(path, token, (sid) =>
-      writeInkoopRow(path, token, sid, excelRow, fields)
-    );
+    return W().withSession(path, token, async (sid) => {
+      await controleerRij(path, token, sid, "inkoop", excelRow, verwacht);
+      return writeInkoopRow(path, token, sid, excelRow, fields);
+    });
   }
 
   /** Rij leegmaken i.p.v. verwijderen — zo blijven formules en rij-indexen intact. */
-  async function deleteInkoopRow(token, excelRow) {
+  async function deleteInkoopRow(token, excelRow, verwacht) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
       const sheet = M().SHEET_INKOOP;
-      await W().patchValues(path, token, sid, sheet, `A${excelRow}`, [[""]]);
-      await W().patchValues(path, token, sid, sheet, `D${excelRow}:L${excelRow}`, [
-        ["", "", "", "", "", "", "", "", ""],
-      ]);
-      await W().patchValues(path, token, sid, sheet, `R${excelRow}:V${excelRow}`, [
-        ["", "", "", "", ""],
+      if ((await controleerRij(path, token, sid, "inkoop", excelRow, verwacht, { leegIsKlaar: true })) === "leeg") return;
+      // Eén PATCH: A leeg, B/C formules, D..L leeg, M..Q formules/keuzelijst, R..V leeg.
+      const leeg = (n) => Array(n).fill("");
+      await W().patchValues(path, token, sid, sheet, `A${excelRow}:V${excelRow}`, [
+        ["", null, null, ...leeg(9), null, null, null, null, null, ...leeg(5)],
       ]);
     });
   }
@@ -289,9 +420,13 @@
    * fields: {datumIso, leverancier, omschrijving, factuurnummer, bedrag, btw, verlegd,
    *          categorie, afschrijving, opmerking, land, project, bedragOrig, valuta, wisselkoers}
    */
-  async function addInkoopRow(token, fields, hintRows) {
+  async function addInkoopRow(token, fields, hintRows, opties = {}) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
+      if (opties.herhaling) {
+        const al = await alGeboekt(path, token, sid, "inkoop", fields, opties.telVooraf);
+        if (al != null) return { excelRow: al, alBestaand: true };
+      }
       let targetRow = await vrijeRijUitGeheugen(
         path, token, sid, M().SHEET_INKOOP, hintRows, M().firstEmptyBoekSlot, "G"
       );
@@ -345,30 +480,31 @@
     ];
   }
 
+  /** Eén PATCH over A..Q (B en C zijn formules: null = onaangeroerd). */
   async function writeVerkoopRow(path, token, sid, excelRow, fields) {
-    const sheet = M().SHEET_VERKOOP;
-    await W().patchValues(path, token, sid, sheet, `A${excelRow}`, [[fields.datumIso]]);
-    await W().patchValues(path, token, sid, sheet, `D${excelRow}:Q${excelRow}`, [
-      verkoopRowValues(fields),
+    await W().patchValues(path, token, sid, M().SHEET_VERKOOP, `A${excelRow}:Q${excelRow}`, [
+      [fields.datumIso, null, null, ...verkoopRowValues(fields)],
     ]);
   }
 
-  async function updateVerkoopRow(token, excelRow, fields) {
+  async function updateVerkoopRow(token, excelRow, fields, verwacht) {
     const path = drivePath();
-    return W().withSession(path, token, (sid) =>
-      writeVerkoopRow(path, token, sid, excelRow, fields)
-    );
+    return W().withSession(path, token, async (sid) => {
+      await controleerRij(path, token, sid, "verkoop", excelRow, verwacht);
+      return writeVerkoopRow(path, token, sid, excelRow, fields);
+    });
   }
 
-  async function deleteVerkoopRow(token, excelRow) {
+  async function deleteVerkoopRow(token, excelRow, verwacht) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
       const sheet = M().SHEET_VERKOOP;
-      await W().patchValues(path, token, sid, sheet, `A${excelRow}`, [[""]]);
-      await W().patchValues(path, token, sid, sheet, `D${excelRow}:L${excelRow}`, [
-        ["", "", "", "", "", "", "", "", ""],
+      if ((await controleerRij(path, token, sid, "verkoop", excelRow, verwacht, { leegIsKlaar: true })) === "leeg") return;
+      // Eén PATCH: A leeg, B/C formules, D..L leeg, M/N formules, O keuzelijst, P/Q leeg.
+      const leeg = (n) => Array(n).fill("");
+      await W().patchValues(path, token, sid, sheet, `A${excelRow}:Q${excelRow}`, [
+        ["", null, null, ...leeg(9), null, null, null, "", ""],
       ]);
-      await W().patchValues(path, token, sid, sheet, `P${excelRow}:Q${excelRow}`, [["", ""]]);
     });
   }
 
@@ -376,9 +512,13 @@
    * fields: {datumIso, klant, omschrijving, factuurnummer, bedrag, land, btw,
    *          categorie, opmerking, bedragOrig, valuta, wisselkoers}
    */
-  async function addVerkoopRow(token, fields, hintRows) {
+  async function addVerkoopRow(token, fields, hintRows, opties = {}) {
     const path = drivePath();
     return W().withSession(path, token, async (sid) => {
+      if (opties.herhaling) {
+        const al = await alGeboekt(path, token, sid, "verkoop", fields, opties.telVooraf);
+        if (al != null) return { excelRow: al, alBestaand: true };
+      }
       let targetRow = await vrijeRijUitGeheugen(
         path, token, sid, M().SHEET_VERKOOP, hintRows, M().firstEmptyBoekSlot, "G"
       );
@@ -428,6 +568,9 @@
     setBankIngeboekt,
     koppelBank,
     ontkoppelBank,
+    ruimKoppelingenOp,
+    controleerBankRijen,
+    RijVerschovenError,
     addInkoopRow,
     updateInkoopRow,
     deleteInkoopRow,

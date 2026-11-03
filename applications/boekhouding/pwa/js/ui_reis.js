@@ -174,6 +174,13 @@
     updatePreview();
   }
 
+  /** Km-tarief voor de ritdatum: 2025 en eerder € 0,23, daarna de instelling (2026: € 0,25). */
+  function tariefVoor(iso) {
+    const jaar = parseInt(String(iso || "").slice(0, 4), 10);
+    if (jaar && jaar <= 2025) return 0.23;
+    return settings().kmTarief || 0.25;
+  }
+
   function huidigeKm() {
     return M().parseUserAmount($("#reis-km").value);
   }
@@ -182,7 +189,7 @@
     const naam = $("#reis-naam").value.trim();
     const bestemming = $("#reis-bestemming").value.trim();
     const km = huidigeKm();
-    const tarief = settings().kmTarief || 0.23;
+    const tarief = tariefVoor($("#reis-datum").value);
     const omsEl = $("#reis-preview-oms");
     const bedragEl = $("#reis-preview-bedrag");
     if (!naam || !bestemming || km == null) {
@@ -214,7 +221,7 @@
     const naam = $("#reis-naam").value.trim();
     const bestemming = $("#reis-bestemming").value.trim();
     const km = huidigeKm();
-    const tarief = settings().kmTarief || 0.23;
+    const tarief = tariefVoor($("#reis-datum").value);
     const thuisPlaats = settings().thuisAdres?.plaats || "Aalten";
     return {
       datumIso: $("#reis-datum").value,

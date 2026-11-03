@@ -12,14 +12,17 @@
     const lib = global.pdfjsLib;
     if (!lib) throw new Error("pdf.js kon niet laden. Controleer je internetverbinding.");
     if (!lib.GlobalWorkerOptions.workerSrc) {
-      lib.GlobalWorkerOptions.workerSrc =
-        "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+      // Lokaal meegeleverd (vendor/pdfjs), niet meer van de CDN.
+      lib.GlobalWorkerOptions.workerSrc = new URL("vendor/pdfjs/pdf.worker.min.js", document.baseURI).href;
     }
     return lib;
   }
 
   async function loadPdf(arrayBuffer) {
-    return pdfjs().getDocument({ data: arrayBuffer }).promise;
+    // isEvalSupported:false dicht CVE-2024-4367: een kwaadaardige PDF (bijv. een
+    // binnengekomen "factuur") kan anders via een lettertype JavaScript uitvoeren,
+    // met toegang tot het inlogtoken. Kost alleen wat snelheid bij lettertypes.
+    return pdfjs().getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
   }
 
   /**

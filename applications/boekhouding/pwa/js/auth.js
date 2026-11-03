@@ -91,19 +91,40 @@
     instance.setActiveAccount(null);
   }
 
+  /**
+   * Inlogfout als eigen soort, zodat de app een wijziging dan bewaart in de
+   * wachtrij in plaats van hem weg te gooien (bijv. verlopen sessie na een dag
+   * offline, of een geblokkeerde popup tijdens het wegwerken op de achtergrond).
+   */
+  function authFout(message, cause) {
+    const e = new Error(message);
+    e.name = "AuthError";
+    e.cause = cause;
+    return e;
+  }
+
   async function acquireToken() {
     const instance = await getMsal();
     const scopes = getConfig().graph.scopes;
     const account = ensureActiveAccount(instance);
     if (!account) {
-      throw new Error("Niet ingelogd. Log in via Overzicht → Microsoft-account.");
+      throw authFout("Niet ingelogd. Log in via Overzicht → Microsoft-account.");
     }
     try {
       const silent = await instance.acquireTokenSilent({ scopes, account });
       return silent.accessToken;
     } catch (e) {
-      const interactive = await instance.acquireTokenPopup({ scopes, account });
-      return interactive.accessToken;
+      // Zonder netwerk is het geen inlogprobleem: dan gewoon offline wachten.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) throw e;
+      try {
+        const interactive = await instance.acquireTokenPopup({ scopes, account });
+        return interactive.accessToken;
+      } catch (e2) {
+        throw authFout(
+          `Opnieuw inloggen nodig (${e2?.errorCode || e2?.message || "inloggen mislukt"}).`,
+          e2
+        );
+      }
     }
   }
 

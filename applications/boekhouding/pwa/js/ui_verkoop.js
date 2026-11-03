@@ -237,7 +237,7 @@
       omschrijving: $("#verkoop-omschrijving").value.trim(),
       factuurnummer: $("#verkoop-fnr").value.trim(),
       bedrag: M().parseUserAmount($("#verkoop-bedrag").value),
-      btw: $("#verkoop-btw").value.trim() === "" ? null : M().parseUserAmount($("#verkoop-btw").value.replace("%", "")),
+      btw: $("#verkoop-btw").value.trim() === "" ? null : M().parseUserNumber($("#verkoop-btw").value.replace("%", "")),
       land: $("#verkoop-land").value,
       categorie: $("#verkoop-categorie").value.trim(),
       opmerking: $("#verkoop-opmerking").value.trim(),

@@ -431,6 +431,7 @@
 
   async function refreshFromCloudQuiet() {
     if (state.loading) return;
+    if (wachtend > 0) return; // na de laatste wijziging in de rij wordt toch ververst
     while (state.quietRefresh) {
       await new Promise((r) => setTimeout(r, 40));
     }
@@ -467,17 +468,37 @@
    * meteen in de lijst, daarna gaat hij naar OneDrive. Mislukt dat, dan draaien
    * we hem terug. De verversing achteraf raakt het invulformulier niet aan.
    */
+  // Schrijfrij: wijzigingen gaan één voor één naar Excel, in de volgorde waarin je ze doet.
+  // Zolang er nog iets in de rij staat wordt er niet ververst, zodat een tussentijdse (oude)
+  // stand uit OneDrive je nog niet opgeslagen wijzigingen niet van het scherm haalt.
+  let schrijfRij = Promise.resolve();
+  let wachtend = 0;
+  function meldWachtend() {
+    if (wachtend > 0) setStatus(`Opslaan in OneDrive… (nog ${wachtend})`);
+  }
+  /** Wacht tot alles wat nu in de rij staat is opgeslagen. */
+  function rijLeeg() {
+    return schrijfRij;
+  }
+
   async function persistMutation(descriptor, optimisticRollback, klopt = null) {
     const rollback = applyOptimistic(optimisticRollback);
     if (!UrenOfflineQueue.isOnline()) {
       await queueOfflineMutation(descriptor);
       return;
     }
+    wachtend += 1;
+    meldWachtend();
+    const taak = schrijfRij.then(() => schrijfEen(descriptor, rollback, optimisticRollback, klopt));
+    schrijfRij = taak.catch(() => {});
+    return taak;
+  }
 
-    setStatus("Opslaan in OneDrive…");
+  async function schrijfEen(descriptor, rollback, optimisticRollback, klopt) {
     try {
       await executeMutation(descriptor);
     } catch (e) {
+      wachtend -= 1;
       if (e.name === "GraphConflictError") {
         showConflictModal(e.message);
         throw e;
@@ -491,12 +512,14 @@
         rollback();
         renderAll();
       }
-      if (e.name === "GraphLockError") {
-        showToast(e.message, true);
-      } else {
-        showToast(e.message || String(e), true);
-      }
+      showToast(e.message || String(e), true);
       throw e;
+    }
+    wachtend -= 1;
+    if (wachtend > 0) {
+      // Er komt nog meer: pas verversen als de rij leeg is.
+      meldWachtend();
+      return true;
     }
     try {
       await refreshFromCloudQuiet();
@@ -517,6 +540,7 @@
       throw e;
     }
   }
+
 
   function updateGrafiekControlsVisibility() {
     const mode = state.chartFilters.chartMode;
@@ -701,6 +725,10 @@
   }
 
   async function refreshFromCloud() {
+    if (wachtend > 0) {
+      setStatus("Eerst de lopende wijzigingen opslaan…");
+      await rijLeeg();
+    }
     laadTimetick();
     laadWbso();
     laadGeld();
@@ -2074,6 +2102,15 @@
   };
   const UITKOMST_KLASSE = { gewonnen: "status-afgerond", verloren: "status-geannuleerd", open: "status-wacht" };
 
+  // Voorstellen die je hebt overgenomen of weggezet komen niet terug (per apparaat onthouden;
+  // daarnaast komt een voorstel sowieso niet terug zodra het veld in Excel gevuld is).
+  const VS_KLAAR = "imtech-uren-voorstellen-klaar";
+  const afgehandeld = new Set(leesLokaal(VS_KLAAR, []));
+  function markeerAfgehandeld(ids) {
+    for (const id of ids) afgehandeld.add(id);
+    schrijfLokaal(VS_KLAAR, [...afgehandeld]);
+  }
+
   /** Voorstellen die nog niet in Excel staan: per voorstel de rij en wat er verandert. */
   function openVoorstellen() {
     const vs = window.UrenInzichtVoorstellen || [];
@@ -2081,10 +2118,17 @@
     const perProject = new Map((state.estimates || []).map((e) => [sleutel(e.project), e]));
     const uit = [];
     vs.forEach((v, i) => {
+      if (afgehandeld.has(i)) return;
       if (v.wijzig) {
         const est = perProject.get(sleutel(v.wijzig));
         if (!est) return; // rij bestaat (nog) niet: niets te doen
-        const anders = Object.entries(v.velden).filter(([k, w]) => String(est[k] || "").trim() !== String(w).trim());
+        // Alleen lege velden aanvullen; wat jij al hebt ingevuld blijft staan. Status alleen
+        // als die nog op de oude waarde staat (zoals toen het voorstel gemaakt is).
+        const anders = Object.entries(v.velden).filter(([k, w]) => {
+          const nu = String(est[k] || "").trim();
+          if (k === "status") return v.statusVan ? nu === v.statusVan : false;
+          return !nu && nu !== String(w).trim();
+        });
         if (!anders.length) return;
         uit.push({ id: i, soort: "wijzig", est, velden: Object.fromEntries(anders), uitleg: v.uitleg, titel: est.project });
       } else if (v.nieuw) {
@@ -2140,6 +2184,7 @@
   }
 
   async function neemVoorstellenOverIntern() {
+    await rijLeeg();
     // Eerst de actuele stand uit OneDrive, zodat wat al (op een ander apparaat) is overgenomen niet nog eens gaat.
     try {
       if (UrenAuth.isLoggedIn()) await refreshFromCloudQuiet();
@@ -2168,6 +2213,7 @@
         setStatus(`Register aanvullen: ${gelukt + 1} van ${lijst.length}…`);
         const fields = voorstelVelden(v);
         if (v.soort === "nieuw" && (state.estimates || []).some((e) => e.row_index > 0 && String(e.project).trim().toLowerCase() === String(fields.project).trim().toLowerCase())) {
+          markeerAfgehandeld([v.id]);
           continue; // staat er inmiddels al
         }
         const descriptor =
@@ -2179,6 +2225,7 @@
         );
         try {
           await executeMutation(descriptor);
+          markeerAfgehandeld([v.id]);
           gelukt += 1;
         } catch (e) {
           if (rollback) rollback();

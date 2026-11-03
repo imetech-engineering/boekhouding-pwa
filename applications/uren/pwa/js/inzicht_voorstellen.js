@@ -11,12 +11,12 @@
   global.UrenInzichtVoorstellen = [
     // Offertenummers koppelen en reden van verlies
     { wijzig: "xxxx Custom PCB", velden: { offerte: "OF251003", reden: "Zelf doen" }, uitleg: "Luminote: besloot het zelf te doen" },
-    { wijzig: "xxxx Vision pilot", velden: { status: "Geannuleerd", offerte: "OF251004, OF251102, OF251106, OF260101", reden: "Klant stopt" }, uitleg: "Daniëll van Enk: kan door privéomstandigheden niet verder (mail 13-02-2026); vier versies" },
+    { wijzig: "xxxx Vision pilot", statusVan: "On hold", velden: { status: "Geannuleerd", offerte: "OF251004, OF251102, OF251106, OF260101", reden: "Klant stopt" }, uitleg: "Daniëll van Enk: kan door privéomstandigheden niet verder (mail 13-02-2026); vier versies" },
     { wijzig: "xxxx Sturing DR SW 90", velden: { offerte: "OF260102", reden: "Concurrent" }, uitleg: "DR Reinigingstechniek: door iemand anders gedaan" },
     { wijzig: "xxxx Telefoonteller PoC", velden: { offerte: "OF260302", reden: "Klant stopt" }, uitleg: "Dominic Noest: intern afgewogen, niet doorgegaan" },
     { wijzig: "xxxx Spinder Design", velden: { offerte: "OF260304, OF260401", reden: "Prijs" }, uitleg: "Hoger dan verwacht, ook de afgeslankte versie niet (mail 07-04-2026)" },
     { wijzig: "xxxx Magic Box", velden: { offerte: "OF260601", reden: "Prijs" }, uitleg: "Vroeg serieprijzen, daarna geannuleerd" },
-    { wijzig: "xxxx TDR-potten", velden: { status: "On hold", reden: "On hold (klant)", bron: B }, uitleg: "ESTEDE: on hold, nog afwachten" },
+    { wijzig: "xxxx TDR-potten", statusVan: "Wachten op akkoord", velden: { status: "On hold", reden: "On hold (klant)", bron: B }, uitleg: "ESTEDE: on hold, nog afwachten" },
     { wijzig: "1004 Dräger implementatie", velden: { reden: "On hold (klant)", bron: B }, uitleg: "ESTEDE: on hold sinds okt 2025" },
     { wijzig: "xxxx LampCam Tester", velden: { reden: "On hold (klant)" }, uitleg: "Gearbox: geen reactie op herinnering" },
     { wijzig: "xxxx PC Auto-Start", velden: { reden: "On hold (klant)" }, uitleg: "Gearbox: geen reactie op herinnering" },

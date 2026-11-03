@@ -851,26 +851,42 @@
   /**
    * Afschrijvingsschema in de stijl van het werkboek: netto (excl. BTW) lineair
    * over N jaar, jaarregels op 31-12 met BTW 0%, categorie "Afschrijving" en
-   * een aflopende boekwaarde in de opmerking (laatste jaar €0). Het laatste
-   * jaar vangt afrondingsverschillen op.
+   * een aflopende boekwaarde in de opmerking (laatste jaar €0).
+   *
+   * Naar rato: in het aanschafjaar alleen de maanden in gebruik (de
+   * aanschafmaand telt mee). Gekocht in september = 4/12 van een jaarschijf;
+   * de resterende 8/12 komt dan in een extra laatste jaar. Het laatste jaar
+   * vangt ook afrondingsverschillen op. Minimaal 5 jaar: fiscaal mag er per
+   * jaar hooguit 20% van de aanschafkosten af.
    */
+  const AFSCHRIJF_MIN_JAREN = 5;
   function afschrijvingsRegels(fields, jaren = 5) {
     const bedrag = fields.bedrag;
     const datum = isoToDate(fields.datumIso);
-    jaren = Math.min(10, Math.max(2, Math.round(jaren || 5)));
+    jaren = Math.min(10, Math.max(AFSCHRIJF_MIN_JAREN, Math.round(jaren || 5)));
     if (bedrag == null || bedrag <= 0 || !datum) return [];
     const btw = fields.btw != null ? fields.btw : 21;
     const netto = Math.round((bedrag / (1 + btw / 100)) * 100) / 100;
-    const perJaar = Math.round((netto / jaren) * 100) / 100;
+    const perJaar = netto / jaren;
+    const eersteMaanden = 12 - datum.getUTCMonth(); // incl. de aanschafmaand
+    const aantal = eersteMaanden < 12 ? jaren + 1 : jaren;
     const oms = (fields.omschrijving || fields.leverancier || "").trim();
     const uit = [];
     let boekwaarde = netto;
-    for (let n = 1; n <= jaren; n++) {
-      const bedragJaar = n === jaren ? Math.round(boekwaarde * 100) / 100 : perJaar;
+    for (let n = 1; n <= aantal; n++) {
+      const deel = n === 1 ? eersteMaanden / 12 : 1;
+      const bedragJaar =
+        n === aantal ? Math.round(boekwaarde * 100) / 100 : Math.round(perJaar * deel * 100) / 100;
       boekwaarde = Math.round((boekwaarde - bedragJaar) * 100) / 100;
       const bw = boekwaarde === 0 ? "€0" : `€${boekwaarde.toFixed(2).replace(".", ",")}`;
+      const rato =
+        n === 1 && eersteMaanden < 12
+          ? ` (${eersteMaanden}/12 jaar)`
+          : n === aantal && eersteMaanden < 12
+            ? ` (rest ${12 - eersteMaanden}/12 jaar)`
+            : "";
       uit.push({
-        datumIso: `${datum.getFullYear() + n - 1}-12-31`,
+        datumIso: `${datum.getUTCFullYear() + n - 1}-12-31`,
         leverancier: fields.leverancier,
         omschrijving: `${oms} afschrijving ${n}e jaar`,
         factuurnummer: "",
@@ -879,12 +895,105 @@
         verlegd: false,
         afschrijving: false,
         categorie: "Afschrijving",
-        opmerking: `Boekwaarde ${bw}`,
+        opmerking: `Boekwaarde ${bw}${rato}`,
         land: fields.land || "",
         project: fields.project || "",
       });
     }
     return uit;
+  }
+
+  /** Bestaande jaarregels van een investering (zelfde leverancier, omschrijving "… afschrijving"). */
+  function bestaandeAfschrijvingen(inkoopRows, leverancier, omschrijving) {
+    const oms = String(omschrijving || leverancier || "").trim().toLowerCase();
+    if (!oms) return [];
+    const prefix = `${oms} afschrijving `;
+    return (inkoopRows || [])
+      .filter(
+        (r) =>
+          !r.isEmpty &&
+          r.categorie === "Afschrijving" &&
+          normalizeParty(r.partij) === normalizeParty(leverancier) &&
+          String(r.omschrijving || "").toLowerCase().startsWith(prefix)
+      )
+      .sort((a, b) => (a.datum?.getTime() || 0) - (b.datum?.getTime() || 0));
+  }
+
+  /**
+   * Wat er moet gebeuren om de jaarregels van een investering gelijk te
+   * trekken met het schema naar rato. oud = de investeringsregel zoals hij nu
+   * in het boek staat (om de bestaande jaarregels te vinden), fields = de
+   * (eventueel bewerkte) velden. Regels t/m afgeslotenTot blijven ongemoeid.
+   * Geeft {bijwerken:[{excelRow, fields}], erbij:[fields], weg:[excelRow], vast:[row]}.
+   */
+  function afschrijvingsPlan(inkoopRows, oud, fields, jaren, afgeslotenTot) {
+    const bestaand = bestaandeAfschrijvingen(
+      inkoopRows, oud?.partij ?? fields.leverancier, oud?.omschrijving ?? fields.omschrijving
+    );
+    const doel = fields.afschrijving ? afschrijvingsRegels(fields, jaren || 5) : [];
+    const dicht = (iso) => !!afgeslotenTot && !!iso && iso <= afgeslotenTot;
+    const plan = { bijwerken: [], erbij: [], weg: [], vast: [] };
+    const perJaar = new Map(bestaand.map((r) => [r.datum ? r.datum.getUTCFullYear() : null, r]));
+    const open = []; // [{regel, r}] nog te boeken of bij te werken
+    for (const regel of doel) {
+      const jaar = +regel.datumIso.slice(0, 4);
+      const r = perJaar.get(jaar) || null;
+      perJaar.delete(jaar);
+      if (dicht(regel.datumIso)) {
+        if (r) plan.vast.push(r);
+        continue;
+      }
+      open.push({ regel, r });
+    }
+    for (const r of perJaar.values()) {
+      if (dicht(r.datum ? dateToIso(r.datum) : "")) plan.vast.push(r);
+      else plan.weg.push(r.excelRow);
+    }
+    // Blijven er regels in een afgesloten periode staan, dan moet de rest
+    // precies aanvullen tot de aanschafwaarde: nooit meer afschrijven dan netto.
+    if (plan.vast.length && open.length) {
+      const btw = fields.btw != null ? fields.btw : 21;
+      const netto = Math.round((fields.bedrag / (1 + btw / 100)) * 100) / 100;
+      const vastSom = plan.vast.reduce((s, r) => s + (r.bedrag || 0), 0);
+      let teVeel = Math.round((vastSom + open.reduce((s, o) => s + o.regel.bedrag, 0) - netto) * 100) / 100;
+      for (let i = open.length - 1; i >= 0 && Math.abs(teVeel) >= 0.01; i--) {
+        const nieuw = Math.round((open[i].regel.bedrag - teVeel) * 100) / 100;
+        if (nieuw >= 0) {
+          open[i].regel.bedrag = nieuw;
+          teVeel = 0;
+        } else {
+          teVeel = Math.round((teVeel - open[i].regel.bedrag) * 100) / 100;
+          open[i].regel.bedrag = 0;
+        }
+      }
+      // Boekwaarde-teksten opnieuw doorrekenen, met de vaste regels erbij.
+      let bw = netto;
+      const alle = [
+        ...plan.vast.map((r) => ({ iso: dateToIso(r.datum), bedrag: r.bedrag || 0, regel: null })),
+        ...open.map((o) => ({ iso: o.regel.datumIso, bedrag: o.regel.bedrag, regel: o.regel })),
+      ].sort((a, b) => a.iso.localeCompare(b.iso));
+      for (const x of alle) {
+        bw = Math.round((bw - x.bedrag) * 100) / 100;
+        if (x.regel) x.regel.opmerking = `Boekwaarde ${bw <= 0 ? "€0" : `€${bw.toFixed(2).replace(".", ",")}`}`;
+      }
+    }
+    for (const { regel, r } of open) {
+      if (regel.bedrag <= 0) {
+        if (r) plan.weg.push(r.excelRow); // jaarregel van € 0 vervalt
+        continue;
+      }
+      if (!r) {
+        plan.erbij.push(regel);
+        continue;
+      }
+      const gelijk =
+        Math.round((r.bedrag || 0) * 100) === Math.round(regel.bedrag * 100) &&
+        r.omschrijving === regel.omschrijving &&
+        r.opmerking === regel.opmerking &&
+        normalizeParty(r.partij) === normalizeParty(regel.leverancier);
+      if (!gelijk) plan.bijwerken.push({ excelRow: r.excelRow, fields: regel });
+    }
+    return plan;
   }
 
   /** Ingeboekte bankregels zonder gekoppelde factuur — de "bijzondere gevallen". */
@@ -1529,7 +1638,8 @@
           slot.omzet += r.netto || 0;
           slot.btwOntvangen += r.btwBedrag || 0;
         } else {
-          slot.kosten += r.netto || 0;
+          // Investering: geen kosten (de jaarlast zit in de afschrijvingsregels), btw wel.
+          if (!r.afschrijving) slot.kosten += r.netto || 0;
           slot.btwBetaald += r.btwBedrag || 0;
           slot.btwVerlegd += r.btwTeBetalen || 0;
         }
@@ -1780,7 +1890,7 @@
       if (inJaar(r, jaar)) maanden[r.datum.getUTCMonth()].omzet += r.netto || 0;
     }
     for (const r of inkoopRows) {
-      if (inJaar(r, jaar)) maanden[r.datum.getUTCMonth()].kosten += r.netto || 0;
+      if (inJaar(r, jaar) && !r.afschrijving) maanden[r.datum.getUTCMonth()].kosten += r.netto || 0;
     }
     const omzet = maanden.reduce((s, m) => s + m.omzet, 0);
     const kosten = maanden.reduce((s, m) => s + m.kosten, 0);
@@ -1854,6 +1964,223 @@
     return Math.round((invest - afgeschreven) * 100) / 100;
   }
 
+  // === Jaarcijfers: W&V, balans, privé en de sluitcontrole ===
+  //
+  // Geen aparte dubbele boekhouding: alles volgt uit bankboek, inkoop- en
+  // verkoopboek. De controle is de vermogensvergelijking: eigen vermogen eind
+  // − begin + onttrekkingen − stortingen moet gelijk zijn aan de winst uit de
+  // W&V. Een verschil wijst iets aan dat niet (goed) geboekt is.
+
+  /** IB-rubrieken van het jaaroverzicht, met de categorieën die erin vallen. */
+  const WV_RUBRIEKEN = [
+    { key: "inkoop", label: "Inkoopkosten / uitbesteed werk", cats: ["Projectbenodigdheden", "Importkosten", "Inkoop", "Uitbesteed werk", "Inhuur"] },
+    { key: "auto", label: "Auto- en transportkosten", cats: ["Reiskosten", "Autokosten", "Transportkosten", "Verzendkosten"] },
+    { key: "huisvesting", label: "Huisvestingskosten", cats: ["Huisvesting", "Huur", "Huisvestingskosten"] },
+    { key: "marketing", label: "Marketing & sales", cats: ["Marketing/advertenties", "Marketing", "Advertenties"] },
+    { key: "kantoor", label: "Kantoorkosten / software / tools", cats: ["Kantoorbenodigdheden", "Gereedschap", "Software/abonnementen"] },
+    { key: "afschrijvingen", label: "Afschrijvingen", cats: ["Afschrijving"] },
+    { key: "overig", label: "Overige bedrijfskosten", cats: [] }, // al het andere
+  ];
+
+  function wvRubriek(categorie) {
+    const c = String(categorie || "").trim().toLowerCase();
+    for (const r of WV_RUBRIEKEN) if (r.cats.some((x) => x.toLowerCase() === c)) return r.key;
+    return "overig";
+  }
+
+  const rond = (v) => Math.round((v || 0) * 100) / 100;
+  const BTW_WOORD_RE = /\bbtw\b|btw-|omzetbelasting/i;
+  const BTW_BETALING_RE = /belastingdienst|aangifte|teruggaaf|suppletie/i;
+
+  /** Btw-betaling of -teruggaaf aan/van de Belastingdienst ("BTW aangifte Q3-2026", "Teruggaaf btw Q2"). */
+  function isBtwBetaling(r) {
+    const t = `${r.omschrijving || ""} ${r.opmerking || ""}`;
+    return BTW_WOORD_RE.test(t) && BTW_BETALING_RE.test(t);
+  }
+
+  /**
+   * Openstaande posten per einddatum: wat een factuur kost of oplevert min wat
+   * er tot en met die datum via gekoppelde bankregels betaald is.
+   */
+  function openPosten(bankRows, inkoopRows, verkoopRows, eind) {
+    const tot = (r) => !r.isEmpty && r.datum && r.datum <= eind;
+    const dekking = factuurDekking(bankRows.filter(tot), inkoopRows, verkoopRows);
+    const open = (boek, r) => {
+      const d = dekking.get(`${boek}|${r.excelRow}`) || 0;
+      if (d === Infinity) return 0;
+      return rond((r.bedrag || 0) - d);
+    };
+    const debiteuren = [];
+    for (const r of verkoopRows) {
+      if (!tot(r)) continue;
+      const o = open("verkoop", r);
+      if (Math.abs(o) >= 0.01) debiteuren.push({ ...r, open: o });
+    }
+    const crediteuren = [];
+    for (const r of inkoopRows) {
+      if (!tot(r)) continue;
+      // Geen betaling te verwachten: afschrijvingen, km-vergoeding, van privé betaald.
+      if (r.categorie === "Afschrijving" || parseReisOmschrijving(r.omschrijving) || isPriveBetaald(r)) continue;
+      const o = open("inkoop", r);
+      if (Math.abs(o) >= 0.01) crediteuren.push({ ...r, open: o });
+    }
+    // Factuur + creditnota van dezelfde klant die elkaar opheffen: niets open.
+    const zonderNul = (lijst) => {
+      const som = new Map();
+      for (const r of lijst) som.set(normalizeParty(r.partij), (som.get(normalizeParty(r.partij)) || 0) + r.open);
+      return lijst.filter((r) => Math.abs(som.get(normalizeParty(r.partij))) >= 0.01);
+    };
+    debiteuren.splice(0, debiteuren.length, ...zonderNul(debiteuren));
+    crediteuren.splice(0, crediteuren.length, ...zonderNul(crediteuren));
+    return {
+      debiteuren,
+      crediteuren,
+      debiteurenSom: rond(debiteuren.reduce((s, r) => s + r.open, 0)),
+      crediteurenSom: rond(crediteuren.reduce((s, r) => s + r.open, 0)),
+    };
+  }
+
+  /**
+   * Alle cijfers van één boekjaar voor het jaaroverzicht en de IB-aangifte.
+   * vorig: {vasteActiva, eigenVermogen} per 31-12 van het jaar ervoor (uit het
+   * jaaroverzicht; daar staat ook wat niet in de boeken zit, zoals inbreng uit privé).
+   * peildatum (optioneel, Date): stand tot en met die dag in plaats van 31-12.
+   */
+  function jaarCijfers(bankRows, inkoopRows, verkoopRows, jaar, vorig = {}, peildatum = null) {
+    const eind = peildatum || new Date(Date.UTC(jaar, 11, 31));
+    const inJ = (r) => !r.isEmpty && r.datum && r.datum.getUTCFullYear() === jaar && r.datum <= eind;
+
+    // W&V
+    const omzet = { NL: 0, EU: 0, BuitenEU: 0 };
+    const maanden = Array.from({ length: 12 }, (_, m) => ({ maand: m + 1, NL: 0, EU: 0, BuitenEU: 0, kosten: 0 }));
+    for (const r of verkoopRows) {
+      if (!inJ(r)) continue;
+      const land = normalizeLand(r.land);
+      const k = land === "EU" ? "EU" : land === "BuitenEU" ? "BuitenEU" : "NL";
+      omzet[k] += r.netto || 0;
+      maanden[r.datum.getUTCMonth()][k] += r.netto || 0;
+    }
+    const kosten = Object.fromEntries(WV_RUBRIEKEN.map((x) => [x.key, 0]));
+    let investeringen = 0;
+    for (const r of inkoopRows) {
+      if (!inJ(r)) continue;
+      if (r.afschrijving) {
+        investeringen += r.netto || 0; // geen kosten: komt via de afschrijvingsregels
+        continue;
+      }
+      kosten[wvRubriek(r.categorie)] += r.netto || 0;
+      maanden[r.datum.getUTCMonth()].kosten += r.netto || 0;
+    }
+    for (const k of Object.keys(kosten)) kosten[k] = rond(kosten[k]);
+    for (const k of Object.keys(omzet)) omzet[k] = rond(omzet[k]);
+    for (const m of maanden) for (const k of ["NL", "EU", "BuitenEU", "kosten"]) m[k] = rond(m[k]);
+    const omzetTotaal = rond(omzet.NL + omzet.EU + omzet.BuitenEU);
+    const kostenTotaal = rond(Object.values(kosten).reduce((s, v) => s + v, 0));
+    const winst = rond(omzetTotaal - kostenTotaal);
+
+    // Balans per einddatum
+    const totEind = bankRows.filter((r) => !r.isEmpty && r.datum && r.datum <= eind);
+    const lopend = saldiPerRekening(totEind);
+    const spaar = alleSaldi(totEind).spaarTotaal;
+    const liquide = rond((lopend.Rabo || 0) + (lopend.Knab || 0) + spaar);
+    const posten = openPosten(bankRows, inkoopRows, verkoopRows, eind);
+
+    // Btw: alle kwartaalsaldi t/m de einddatum min wat er aan de Belastingdienst betaald is.
+    let btwSaldo = 0;
+    const jaren = new Set(
+      [...inkoopRows, ...verkoopRows].filter((r) => !r.isEmpty && r.datum).map((r) => r.datum.getUTCFullYear())
+    );
+    for (const j of jaren) {
+      if (j > jaar) continue;
+      const rijen = (rows) => rows.filter((r) => !r.isEmpty && r.datum && r.datum <= eind);
+      for (const q of btwAangifte(rijen(inkoopRows), rijen(verkoopRows), j)) btwSaldo += q.saldo;
+    }
+    for (const r of totEind) {
+      if (!isBtwBetaling(r)) continue;
+      btwSaldo -= (r.uit || 0) - (r.in || 0);
+    }
+    btwSaldo = rond(btwSaldo);
+
+    const afschrijvingen = kosten.afschrijvingen;
+    const vasteActiva = rond((vorig.vasteActiva || 0) + investeringen - afschrijvingen);
+    const vorderingen = rond(posten.debiteurenSom + (btwSaldo < 0 ? -btwSaldo : 0));
+    const btwSchuld = btwSaldo > 0 ? btwSaldo : 0;
+    const activa = rond(vasteActiva + vorderingen + liquide);
+    const eigenVermogen = rond(activa - btwSchuld - posten.crediteurenSom);
+
+    // Privé
+    const prive = priveOverzicht(bankRows.filter((r) => r.datum && r.datum <= eind), jaar);
+    const pi = priveInkoop(inkoopRows.filter((r) => r.datum && r.datum <= eind), jaar);
+    // Alleen echte km-ritten (met de auto van privé): een treinkaartje is gewoon een uitgave.
+    const reis = rond(
+      inkoopRows.filter((r) => inJ(r) && parseReisOmschrijving(r.omschrijving)).reduce((s, r) => s + (r.bedrag || 0), 0)
+    );
+    // Privé-gebruik van iets zakelijks: alleen een genoemd €-deel, en apart (niet
+    // in geld, en niet in de sluitcontrole; die vergelijkt alleen geldstromen).
+    const onttrekkingNatura = rond(pi.onttrekkingen.reduce((s, r) => s + (r.deel != null ? r.deel : 0), 0));
+    // Privé-uitgaven via de zakelijke rekening ("Privé betaling …") en privé
+    // geld dat erop binnenkwam, die geen overboeking zijn.
+    let priveUit = 0;
+    let priveIn = 0;
+    for (const o of prive.overig) {
+      const r = bankRows.find((x) => x.excelRow === o.excelRow);
+      if (!r) continue;
+      // Hangt de bankregel aan een factuur, dan telt alleen een genoemd €-deel
+      // ("€247,67 niet ingeboekt"); anders loopt het privé-deel via die factuur.
+      const kop = String(r.koppelingRaw || "").split(",").map((s) => s.trim()).filter((s) => s && s !== "-");
+      if (kop.length && !/€\s*[\d.,]+/.test(r.opmerking || "")) continue;
+      if ((r.uit || 0) > 0) priveUit += o.bedrag;
+      else if ((r.in || 0) > 0) priveIn += o.bedrag;
+    }
+    const onttrekkingen = rond(prive.opgenomen + priveUit);
+    // Km-vergoeding en van privé betaalde kosten: de zaak krijgt iets van privé.
+    const stortingen = rond(prive.gestort + pi.betaaldSom + reis + priveIn);
+
+    const vermogensvergelijking = rond(eigenVermogen - (vorig.eigenVermogen || 0) + onttrekkingen - stortingen);
+    return {
+      jaar,
+      eind,
+      omzet,
+      omzetTotaal,
+      kosten,
+      kostenTotaal,
+      winst,
+      maanden,
+      investeringen: rond(investeringen),
+      balans: {
+        vasteActiva,
+        debiteuren: posten.debiteurenSom,
+        btwVordering: btwSaldo < 0 ? -btwSaldo : 0,
+        vorderingen,
+        lopend: { Rabo: lopend.Rabo || 0, Knab: lopend.Knab || 0 },
+        spaar,
+        liquide,
+        activa,
+        btwSchuld,
+        crediteuren: posten.crediteurenSom,
+        eigenVermogen,
+        passiva: rond(eigenVermogen + btwSchuld + posten.crediteurenSom),
+      },
+      openPosten: posten,
+      prive: {
+        opgenomen: prive.opgenomen,
+        gestort: prive.gestort,
+        vanPriveBetaald: pi.betaaldSom,
+        kmVergoeding: reis,
+        onttrekkingNatura,
+        priveUitgaven: rond(priveUit),
+        priveOntvangen: rond(priveIn),
+        onttrekkingen,
+        stortingen,
+      },
+      controle: {
+        winst,
+        vermogensvergelijking,
+        verschil: rond(vermogensvergelijking - winst),
+      },
+    };
+  }
+
   /** Top-N groepering, bijvoorbeeld omzet per klant of kosten per categorie. */
   function topGroepen(rows, jaar, keyFn, valFn, n = 8) {
     const map = new Map();
@@ -1902,6 +2229,8 @@
     voegKoppelingToe, bevatKoppeling, koppelingenZonderFactuur,
     rijIdentiteit, regelSleutel, telRegelSleutel, parseEnkeleRij,
     koppelKandidaten, vindCombinatie, bankKandidatenVoorFactuur, afschrijvingsRegels, factuurDekking,
+    bestaandeAfschrijvingen, afschrijvingsPlan, AFSCHRIJF_MIN_JAREN,
+    WV_RUBRIEKEN, wvRubriek, jaarCijfers, openPosten, isBtwBetaling,
     bankKoppelStatus, koppelStatusTekst, koppelStatusIcoon, factuurStatus, bankKoppelProblemen,
     factuurVerwachtBank,
     facturenTeveelGedekt,

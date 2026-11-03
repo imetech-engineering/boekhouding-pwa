@@ -27,6 +27,8 @@ window.BOEK_CONFIG = {
     urenTable: "Tabel13",
     urenSheet: "Urenadministratie",
     settingsPath: "02 Boekhouding/boekhouding_pwa_settings.json",
+    /** Jaaroverzicht (W&V, balans, privé, maandoverzicht) dat de app per jaar invult. */
+    jaaroverzichtPath: "02 Boekhouding/05 Jaaroverzichten/Jaaroverzichten_IMeTech_correct.xlsx",
     folders: {
       verkoopNieuw: "02 Boekhouding/01 Verkoop facturen/Facturen verkoop nog te verwerken",
       verkoopVerwerkt: "02 Boekhouding/01 Verkoop facturen/Facturen verkoop verwerkt",

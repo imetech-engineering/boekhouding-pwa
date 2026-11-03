@@ -20,7 +20,7 @@
     intel: { inkoop: { history: [], partijen: [], categorieen: [], projecten: [] },
              verkoop: { history: [], partijen: [], categorieen: [], projecten: [] } },
     files: { inkoop: [], verkoop: [] },
-    settings: { kmTarief: 0.25, thuisAdres: null, favorieten: [] },
+    settings: { kmTarief: 0.25, thuisAdres: null, favorieten: [], afgeslotenTot: "2026-09-30", ibAfgeslotenJaar: 2025 },
     settingsLoaded: false,
     webUrl: null,
     matchDagen: (() => {
@@ -1123,7 +1123,73 @@
    * alleenAls: promise van een eerdere persistMutation; is die mislukt, dan
    * wordt deze overgeslagen (bijv. bestand pas verplaatsen als het inboeken lukte).
    */
-  function persistMutation(descriptor, { successMsg, alleenAls } = {}) {
+  // === Periodeslot: na de btw-aangifte ligt een kwartaal vast ===
+
+  /** Datum (ISO) van een bestaande rij, of "". */
+  function rijDatumIso(soort, excelRow) {
+    const rows = soort === "bank" ? state.bankRows : soort === "inkoop" ? state.inkoopRows : state.verkoopRows;
+    const r = rows.find((x) => x.excelRow === excelRow);
+    return r?.datum ? M().dateToIso(r.datum) : "";
+  }
+
+  /**
+   * Raakt deze wijziging een afgesloten periode? Dan de melding, anders null.
+   * Koppelen en afvinken mogen altijd: die veranderen geen omzet, kosten of btw.
+   */
+  function periodeSlotMelding(d) {
+    const tot = state.settings.afgeslotenTot;
+    if (!tot) return null;
+    const dicht = (iso) => !!iso && iso <= tot;
+    const soort = d.kind.split("_")[0];
+    const actie = d.kind.split("_")[1];
+    let raakt = false;
+    if (soort === "inkoop" || soort === "verkoop") {
+      if (actie === "add") raakt = dicht(d.fields?.datumIso);
+      else if (actie === "update") raakt = dicht(d.fields?.datumIso) || dicht(rijDatumIso(soort, d.excelRow));
+      else if (actie === "delete") raakt = dicht(rijDatumIso(soort, d.excelRow));
+    } else if (soort === "bank") {
+      if (actie === "add") raakt = dicht(d.fields?.datumIso);
+      else if (actie === "delete") raakt = dicht(rijDatumIso("bank", d.excelRow));
+      else if (actie === "update" && d.fields?.updateAmounts) raakt = dicht(rijDatumIso("bank", d.excelRow));
+    }
+    if (!raakt) return null;
+    return (
+      `Deze regel valt in een afgesloten periode (t/m ${M().formatDateNl(M().isoToDate(tot))}): ` +
+      `de btw-aangifte daarvan is al gedaan. Wijzig je hem toch, dan moet het verschil in een ` +
+      `suppletie of in de volgende aangifte. Toch doorgaan?`
+    );
+  }
+
+  /**
+   * Voor de formulieren: vraag het periodeslot vóórdat het formulier leeg gaat.
+   * true = mag door (descriptor krijgt slotAkkoord), false = geannuleerd.
+   */
+  async function bevestigPeriodeSlot(descriptor) {
+    const melding = periodeSlotMelding(descriptor);
+    if (!melding) return true;
+    const ok = await showConfirm(melding, "Toch doorgaan", "Annuleren");
+    if (ok) descriptor.slotAkkoord = true;
+    return ok;
+  }
+
+  function persistMutation(descriptor, opties = {}) {
+    const melding = descriptor.slotAkkoord ? null : periodeSlotMelding(descriptor);
+    if (!melding) return persistMutationNu(descriptor, opties);
+    if (!descriptor.uid) descriptor.uid = nieuweUid();
+    const p = (async () => {
+      const ok = await showConfirm(melding, "Toch doorgaan", "Annuleren");
+      if (!ok) {
+        showToast("Niets gewijzigd: deze periode is afgesloten.");
+        return false;
+      }
+      descriptor.slotAkkoord = true;
+      return persistMutationNu(descriptor, opties);
+    })();
+    p.uid = descriptor.uid;
+    return p;
+  }
+
+  function persistMutationNu(descriptor, { successMsg, alleenAls } = {}) {
     bereidVoor(descriptor, alleenAls);
     const e = { id: ++journaalTeller, d: descriptor, status: "wacht", klaarOp: 0, res: null };
     journaal.push(e);
@@ -1131,11 +1197,25 @@
       state.intel = M().buildIntel(state.inkoopRows, state.verkoopRows);
       renderAll();
     }
-    const p = inRij(async () => {
-      if (alleenAls && !(await alleenAls.catch(() => false))) {
+    // Eerst (buiten de schrijfrij) wachten op de wijziging waar deze van afhangt.
+    // Binnen de rij wachten kan vastlopen: die andere wijziging kan zelf nog
+    // op een vraag wachten (periodeslot) en pas daarna achteraan aansluiten.
+    const vooraf = alleenAls ? alleenAls.catch(() => false) : Promise.resolve(true);
+    const p = vooraf.then((ok) => {
+      if (!ok) {
         herstelNaFout(e);
+        renderAll();
         return false;
       }
+      return inRij(() => schrijfNu(e, descriptor, successMsg));
+    });
+    // Zodat een volgende wijziging kan zeggen: "alleen als deze gelukt is".
+    p.uid = descriptor.uid;
+    return p;
+  }
+
+  async function schrijfNu(e, descriptor, successMsg) {
+    {
       // Staat er al iets offline klaar, dan hier ook achteraan aansluiten,
       // anders loopt de volgorde in het werkboek door elkaar.
       if (!global.BoekOfflineQueue.isOnline() || offlineAantal > 0) {
@@ -1176,10 +1256,7 @@
       renderAll();
       if (successMsg) showToast(successMsg);
       return true;
-    });
-    // Zodat een volgende wijziging kan zeggen: "alleen als deze gelukt is".
-    p.uid = descriptor.uid;
-    return p;
+    }
   }
 
   // === Offline-wachtrij wegwerken (ook via de schrijfrij) ===
@@ -1548,6 +1625,7 @@
     refreshFromCloud,
     refreshQuiet,
     persistMutation,
+    bevestigPeriodeSlot,
     executeMutation,
     saveSettings,
     applyDarkMode,

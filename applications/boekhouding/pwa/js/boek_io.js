@@ -549,6 +549,176 @@
     });
   }
 
+  // === Jaaroverzicht (Jaaroverzichten_IMeTech_correct.xlsx) ===
+  // Kolom per jaar (rij 4: 2025, 2026, …), rijen herkend aan het label in kolom A.
+  // De app schrijft alleen de rekenposten; uren en aftrekposten blijven met de hand.
+  // Een jaar waarvan de IB-aangifte gedaan is (t/m ibAfgeslotenJaar) blijft ongemoeid.
+
+  const JO_SHEET = "Jaaroverzichten";
+  const JO_MAAND_SHEET = "Maandoverzicht";
+  const JO_MAAND_TABEL = "Tabel1";
+  const MAANDEN = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];
+
+  /** Label (kolom A) → sleutel in de jaarcijfers. */
+  const JO_RIJEN = [
+    ["omzet (leveringen & diensten nl)", (c) => c.omzet.NL],
+    ["omzet (leveringen & diensten eu)", (c) => c.omzet.EU],
+    ["omzet (leveringen & diensten buiten eu)", (c) => c.omzet.BuitenEU],
+    ["inkoopkosten / uitbesteed werk", (c) => c.kosten.inkoop],
+    ["auto- en transportkosten", (c) => c.kosten.auto],
+    ["huisvestingskosten", (c) => c.kosten.huisvesting],
+    ["marketing & sales", (c) => c.kosten.marketing],
+    ["kantoorkosten / software / tools", (c) => c.kosten.kantoor],
+    ["afschrijvingen", (c) => c.kosten.afschrijvingen],
+    // Zonder eigen rij "Afschrijvingen" tellen ze mee bij de overige kosten.
+    ["overige bedrijfskosten", (c, heeftAfschr) => c.kosten.overig + (heeftAfschr ? 0 : c.kosten.afschrijvingen)],
+    ["materiële vaste activa", (c) => c.balans.vasteActiva],
+    ["vorderingen", (c) => c.balans.vorderingen],
+    ["liquide middelen", (c) => c.balans.liquide],
+    ["eigen vermogen", (c) => c.balans.eigenVermogen],
+    ["schuld omzetbelasting", (c) => c.balans.btwSchuld],
+    ["overige kortlopende schulden", (c) => c.balans.crediteuren],
+    ["privéonttrekkingen in geld", (c) => c.prive.onttrekkingen],
+    ["privéstortingen", (c) => c.prive.stortingen],
+  ];
+
+  const kolomLetter = (i) => String.fromCharCode(65 + i); // 0 → A (tot Z is genoeg)
+  const labelVan = (v) => String(v ?? "").trim().toLowerCase();
+
+  /** Formule van de vorige kolom naar deze kolom: B35 → C35 (niet in functienamen). */
+  function verschuifFormule(formule, van, naar) {
+    return String(formule).replace(new RegExp(`(^|[^A-Za-z_$])\\$?${van}(\\$?\\d+)`, "g"), `$1${naar}$2`);
+  }
+
+  async function leesJoBlad(path, token, sid) {
+    const W_ = W();
+    const vals = await W_.readValues(path, token, sid, JO_SHEET, "A1:H80");
+    const data = await W_.excelFetch(
+      path, token, W_.wsPath(JO_SHEET, `/range(address='A1:H80')?$select=formulas`), {}, sid
+    );
+    const formules = data?.formulas || [];
+    const kopRij = vals.findIndex((r) => r.some((v) => /^20\d\d$/.test(String(v))));
+    if (kopRij < 0) throw new Error("Jaaroverzicht: geen rij met jaartallen gevonden.");
+    const rijVan = new Map();
+    vals.forEach((r, i) => {
+      const l = labelVan(r[0]);
+      if (l && !rijVan.has(l)) rijVan.set(l, i);
+    });
+    return { vals, formules, kopRij, rijVan };
+  }
+
+  /** Waarden van het vorige jaar (openingsbalans) en wat er in het doeljaar al staat. */
+  async function leesJaaroverzicht(token, jaar) {
+    const path = global.BOEK_CONFIG.graph.jaaroverzichtPath;
+    return W().withSession(path, token, async (sid) => {
+      const b = await leesJoBlad(path, token, sid);
+      const kol = b.vals[b.kopRij].findIndex((v) => String(v) === String(jaar));
+      const vkol = b.vals[b.kopRij].findIndex((v) => String(v) === String(jaar - 1));
+      const waarde = (label, k) => {
+        const i = b.rijVan.get(label);
+        if (i == null || k < 0) return null;
+        const v = b.vals[i][k];
+        return typeof v === "number" ? v : null;
+      };
+      return {
+        kolom: kol,
+        vorig: {
+          vasteActiva: waarde("materiële vaste activa", vkol) ?? 0,
+          eigenVermogen: waarde("eigen vermogen", vkol) ?? 0,
+          gevonden: vkol >= 0,
+        },
+      };
+    });
+  }
+
+  /**
+   * Kolom van een jaar invullen met de berekende cijfers, plus het maandoverzicht.
+   * Geeft terug wat er geschreven is (aantal cellen) voor de melding.
+   */
+  async function schrijfJaaroverzicht(token, jaar, cijfers, { peildatum } = {}) {
+    const path = global.BOEK_CONFIG.graph.jaaroverzichtPath;
+    const W_ = W();
+    return W_.withSession(path, token, async (sid) => {
+      const b = await leesJoBlad(path, token, sid);
+      const kol = b.vals[b.kopRij].findIndex((v) => String(v) === String(jaar));
+      const vkol = b.vals[b.kopRij].findIndex((v) => String(v) === String(jaar - 1));
+      if (kol < 0) throw new Error(`Jaaroverzicht: geen kolom voor ${jaar}.`);
+      const K = kolomLetter(kol);
+      const V = vkol >= 0 ? kolomLetter(vkol) : null;
+      const heeftAfschr = b.rijVan.has("afschrijvingen");
+      let cellen = 0;
+      for (const [label, fn] of JO_RIJEN) {
+        const i = b.rijVan.get(label);
+        if (i == null) continue;
+        const v = Math.round((fn(cijfers, heeftAfschr) || 0) * 100) / 100;
+        await W_.patchValues(path, token, sid, JO_SHEET, `${K}${i + 1}`, [[v]]);
+        cellen++;
+      }
+      // Rekenregels (totalen, controle): de formule van de vorige kolom overnemen
+      // als de cel nog leeg is. De vermogensvergelijking krijgt het begin-EV erbij.
+      if (V) {
+        const rEv = b.rijVan.get("eigen vermogen");
+        const rEvB = b.rijVan.get("eigen vermogen (uit sectie b)");
+        const rOntt = b.rijVan.get("privéonttrekkingen in geld");
+        const rStort = b.rijVan.get("privéstortingen");
+        const rVv = b.rijVan.get("vermogenrekening (ev-saldo)");
+        const rW = b.rijVan.get("fiscale winst (w&v-saldo)");
+        const rC = b.rijVan.get("controle ev / w&v");
+        for (let i = 0; i < b.formules.length; i++) {
+          const f = b.formules[i]?.[vkol];
+          if (typeof f !== "string" || !f.startsWith("=")) continue;
+          const huidig = b.formules[i]?.[kol];
+          let nieuw = verschuifFormule(f, V, K);
+          if (i === rVv && rEvB != null && rEv != null && rOntt != null && rStort != null) {
+            // EV eind − EV begin + onttrekkingen − stortingen = fiscale winst
+            nieuw = `=${K}${rEvB + 1}-${V}${rEv + 1}+${K}${rOntt + 1}-${K}${rStort + 1}`;
+          } else if (i === rC && rVv != null && rW != null) {
+            // Totalen staan op hele euro's: een paar euro verschil is afronding.
+            const a = `${K}${rVv + 1}`, w = `${K}${rW + 1}`;
+            nieuw = `=IF(ABS(${a}-${w})<10,"✓ Klopt","⚠ Verschil: "&ROUND(${a}-${w},0))`;
+          } else if (typeof huidig === "string" && huidig.startsWith("=")) {
+            continue; // er staat al een formule
+          } else if (huidig !== "" && huidig != null) {
+            continue; // met de hand ingevuld: laten staan
+          }
+          await W_.patchFormulas(path, token, sid, JO_SHEET, `${K}${i + 1}`, [[nieuw]]);
+          cellen++;
+        }
+      }
+      // Kenmerk boven de kolom: waar komen de cijfers vandaan.
+      const stand = peildatum ? `t/m ${global.BoekModel.formatDateNl(peildatum)}` : "per 31-12";
+      if (b.kopRij >= 1) {
+        await W_.patchValues(path, token, sid, JO_SHEET, `${K}${b.kopRij}`, [[`Boekhouding-app ${stand}`]]);
+      }
+
+      // Maandoverzicht: Omzet NL/EU/BuitenEU en Totaal Kosten per maand.
+      const t = await W_.readTableRange(path, token, JO_MAAND_TABEL, sid);
+      const kop = (t.values[0] || []).map(labelVan);
+      const ci = (naam) => kop.indexOf(naam);
+      const cM = ci("maand"), cJ = ci("jaar"), cNL = ci("omzet nl"), cEU = ci("omzet eu"), cBU = ci("omzet buiteneu"), cK = ci("totaal kosten");
+      if ([cM, cJ, cNL, cEU, cBU, cK].every((x) => x >= 0)) {
+        const totMaand = peildatum ? peildatum.getUTCMonth() : 11;
+        for (let i = 1; i < t.values.length; i++) {
+          const rij = t.values[i];
+          if (String(rij[cJ]) !== String(jaar)) continue;
+          const m = MAANDEN.indexOf(labelVan(rij[cM]));
+          if (m < 0 || m > totMaand) continue;
+          const c = cijfers.maanden[m];
+          const excelRij = t.headerRow + i;
+          const zet = async (col, v) => {
+            await W_.patchValues(path, token, sid, JO_MAAND_SHEET, `${kolomLetter(col)}${excelRij}`, [[v || ""]]);
+            cellen++;
+          };
+          await zet(cNL, c.NL);
+          await zet(cEU, c.EU);
+          await zet(cBU, c.BuitenEU);
+          await zet(cK, c.kosten);
+        }
+      }
+      return { cellen, kolom: K };
+    });
+  }
+
   /** Locatie (kolom G) van urenregels corrigeren in het urenwerkboek. */
   async function updateUrenLocatie(token, excelRows, locatie) {
     const cfg = global.BOEK_CONFIG.graph;
@@ -578,5 +748,8 @@
     updateVerkoopRow,
     deleteVerkoopRow,
     updateUrenLocatie,
+    leesJaaroverzicht,
+    schrijfJaaroverzicht,
+    verschuifFormule,
   };
 })(window);

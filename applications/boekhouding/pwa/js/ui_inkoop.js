@@ -12,6 +12,7 @@
   let bankMatchRows = [];
   let prefillBankRows = [];
   let editRow = null; // Excel-rij die bewerkt wordt (null = nieuwe regel)
+  let editBasis = null; // velden zoals ze bij het openen van de bewerking waren
 
   const intel = () => App().state.intel.inkoop;
 
@@ -377,7 +378,7 @@
       btw: leesBtw(),
       verlegd: $("#inkoop-verlegd").checked,
       afschrijving: $("#inkoop-afschrijving").checked,
-      afschrijvingJaren: Math.min(10, Math.max(2, parseInt($("#inkoop-afschrijf-jaren").value, 10) || 5)),
+      afschrijvingJaren: Math.min(10, Math.max(M().AFSCHRIJF_MIN_JAREN, parseInt($("#inkoop-afschrijf-jaren").value, 10) || 5)),
       categorie: $("#inkoop-categorie").value.trim(),
       project: $("#inkoop-project").value.trim(),
       opmerking: $("#inkoop-opmerking").value.trim(),
@@ -472,6 +473,7 @@
     $("#inkoop-opmerking").value = h.opmerking || "";
     $("#inkoop-verlegd").checked = !!h.verlegd;
     $("#inkoop-afschrijving").checked = !!h.afschrijving;
+    $("#inkoop-afschrijf-jaren").value = String(jarenUitBestaand(h));
     if (h.valuta || h.wisselkoers || h.bedragOrig != null) {
       $("#inkoop-valuta-wrap").classList.remove("hidden");
       $("#inkoop-valuta").value = h.valuta || "";
@@ -479,6 +481,7 @@
       $("#inkoop-bedrag-orig").value = h.bedragOrig != null ? M().fmtAmountInput(h.bedragOrig) : "";
     }
     setEditRow(h.excelRow);
+    editBasis = JSON.stringify({ ...readFields(), afschrijvingJaren: 0 });
     updateBankCheck();
     App().haptic(15);
     $("#inkoop-form-title").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -504,6 +507,23 @@
     }
   }
 
+  /** Jaarregels bijwerken, toevoegen en weghalen (elk via de gewone schrijfrij). */
+  async function voerAfschrijfPlanUit(plan) {
+    const st = App().state;
+    for (const b of plan.bijwerken) {
+      await App().persistMutation({ kind: "inkoop_update", excelRow: b.excelRow, fields: b.fields });
+    }
+    for (const regel of plan.erbij) {
+      await App().persistMutation({ kind: "inkoop_add", fields: regel, bankRows: [] });
+    }
+    for (const excelRow of plan.weg) {
+      if (st.inkoopRows.some((r) => r.excelRow === excelRow && !r.isEmpty)) {
+        await App().persistMutation({ kind: "inkoop_delete", excelRow });
+      }
+    }
+    App().showToast(`Afschrijving bijgewerkt: ${planTekst(plan)}`);
+  }
+
   async function deleteRow(h) {
     const ok = await App().showConfirm(
       `Regel verwijderen?\n${h.datumStr} · ${h.partij} · ${M().fmtEur(h.bedrag)}`,
@@ -518,17 +538,55 @@
     );
   }
 
+  /** Afschrijftermijn van een bestaande investering, afgeleid uit zijn jaarregels. */
+  function jarenUitBestaand(h) {
+    const bestaand = M().bestaandeAfschrijvingen(App().state.inkoopRows, h.partij, h.omschrijving);
+    if (!bestaand.length) return 5;
+    const naarRato = /\/12 jaar\)/.test(bestaand[0].opmerking || "");
+    return Math.max(M().AFSCHRIJF_MIN_JAREN, bestaand.length - (naarRato ? 1 : 0));
+  }
+
+  /** Plan voor de jaarregels bij het bewerken van een (nieuwe of bestaande) investering. */
+  function afschrijfPlanVoorBewerken(f) {
+    const st = App().state;
+    const oud = st.inkoopRows.find((r) => r.excelRow === editRow);
+    if (!oud) return null;
+    // Alleen als het om een investering gaat (nu of eerst).
+    if (!f.afschrijving && !oud.afschrijving) return null;
+    return M().afschrijvingsPlan(st.inkoopRows, oud, f, f.afschrijvingJaren, st.settings.afgeslotenTot);
+  }
+
+  function planTekst(plan) {
+    const delen = [];
+    if (plan.bijwerken.length) delen.push(`${plan.bijwerken.length} jaarregel${plan.bijwerken.length === 1 ? "" : "s"} aanpassen`);
+    if (plan.erbij.length) delen.push(`${plan.erbij.length} erbij`);
+    if (plan.weg.length) delen.push(`${plan.weg.length} weg`);
+    return delen.join(", ");
+  }
+
   /**
    * Live schema onder het afschrijving-vinkje: hoeveel jaarregels er automatisch
-   * bijgeboekt worden. Alleen bij nieuw inboeken — bij bewerken bestaan ze al.
+   * bijgeboekt worden, of bij bewerken: wat er aan de jaarregels verandert.
    */
   function updateAfschrijfPreview() {
     const wrap = $("#inkoop-afschrijf-wrap");
-    const aan = $("#inkoop-afschrijving").checked && !editRow;
+    const aan = $("#inkoop-afschrijving").checked;
     wrap.classList.toggle("hidden", !aan);
     if (!aan) return;
     const f = readFields();
     const p = $("#inkoop-afschrijf-preview");
+    if (editRow) {
+      const plan = afschrijfPlanVoorBewerken(f);
+      const tekst = plan ? planTekst(plan) : "";
+      const regels = M().afschrijvingsRegels(f, f.afschrijvingJaren);
+      const eerste = regels[0];
+      p.textContent = !regels.length
+        ? "Vul bedrag en datum in om het schema te zien."
+        : tekst
+          ? `Bij bijwerken: ${tekst} (naar rato: ${M().fmtEur(eerste.bedrag)} in ${eerste.datumIso.slice(0, 4)}, ${regels.length} jaarregels).`
+          : "✓ Jaarregels kloppen al met het schema naar rato.";
+      return;
+    }
     const regels = M().afschrijvingsRegels(f, f.afschrijvingJaren);
     if (!regels.length) {
       p.textContent = "Vul bedrag en datum in om het schema te zien.";
@@ -565,23 +623,48 @@
 
     if (editRow) {
       const row = editRow;
+      // Investering: jaarregels meteen gelijktrekken met het schema naar rato.
+      const plan = afschrijfPlanVoorBewerken(f);
+      const tekst = plan ? planTekst(plan) : "";
+      let metPlan = false;
+      if (tekst) {
+        metPlan = await App().showConfirm(
+          `Afschrijving bijwerken naar rato (aanschafmaand telt mee): ${tekst}.` +
+            (plan.vast.length ? ` ${plan.vast.length} regel(s) in een afgesloten periode blijven staan.` : "") +
+            ` Doorvoeren?`,
+          "Doorvoeren",
+          "Alleen deze regel"
+        );
+      }
+      // Niets aan de regel zelf veranderd (alleen het schema herberekenen)? Dan
+      // de regel niet opnieuw schrijven: zo blijft een aankoop in een afgesloten
+      // periode onaangeroerd en worden alleen de jaarregels bijgewerkt.
+      const ongewijzigd = editBasis === JSON.stringify({ ...f, afschrijvingJaren: 0 });
+      if (ongewijzigd && metPlan) {
+        clearForm();
+        await voerAfschrijfPlanUit(plan);
+        return;
+      }
+      const d = { kind: "inkoop_update", excelRow: row, fields: f };
+      // Afgesloten periode? Eerst vragen, dan pas het formulier leegmaken.
+      if (!(await App().bevestigPeriodeSlot(d))) return;
       clearForm();
-      await App().persistMutation(
-        { kind: "inkoop_update", excelRow: row, fields: f },
-        { successMsg: "Regel bijgewerkt" }
-      );
+      const bijgewerkt = await App().persistMutation(d, { successMsg: "Regel bijgewerkt" });
+      if (bijgewerkt && metPlan) await voerAfschrijfPlanUit(plan);
       return;
     }
 
 
     const afvinken = $("#inkoop-bank-check").checked ? [...bankMatchRows] : [];
+    const nieuw = { kind: "inkoop_add", fields: f, bankRows: afvinken };
+    if (!(await App().bevestigPeriodeSlot(nieuw))) return;
     const fileToMove = move && selectedFile ? selectedFile : null;
     clearForm();
     if (fileToMove) deselectFile();
 
-    const nJaar = f.afschrijving ? f.afschrijvingJaren : 0;
+    const nJaar = f.afschrijving ? M().afschrijvingsRegels(f, f.afschrijvingJaren).length : 0;
     const ingeboekt = App().persistMutation(
-      { kind: "inkoop_add", fields: f, bankRows: afvinken },
+      nieuw,
       {
         successMsg: nJaar
           ? `Ingeboekt + ${nJaar} afschrijvingsregels${move ? " + verplaatst" : ""}`

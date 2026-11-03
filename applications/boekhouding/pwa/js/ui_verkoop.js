@@ -368,22 +368,23 @@
 
     if (editRow) {
       const row = editRow;
+      const d = { kind: "verkoop_update", excelRow: row, fields: f };
+      // Afgesloten periode? Eerst vragen, dan pas het formulier leegmaken.
+      if (!(await App().bevestigPeriodeSlot(d))) return;
       clearForm();
-      await App().persistMutation(
-        { kind: "verkoop_update", excelRow: row, fields: f },
-        { successMsg: "Regel bijgewerkt" }
-      );
+      await App().persistMutation(d, { successMsg: "Regel bijgewerkt" });
       return;
     }
 
-
     const afvinken = $("#verkoop-bank-check").checked ? [...bankMatchRows] : [];
+    const nieuw = { kind: "verkoop_add", fields: f, bankRows: afvinken };
+    if (!(await App().bevestigPeriodeSlot(nieuw))) return;
     const fileToMove = move && selectedFile ? selectedFile : null;
     clearForm();
     if (fileToMove) deselectFile();
 
     const ingeboekt = App().persistMutation(
-      { kind: "verkoop_add", fields: f, bankRows: afvinken },
+      nieuw,
       { successMsg: move ? "Ingeboekt + factuur verplaatst" : "Ingeboekt in verkoopboek" }
     );
     // Bestand direct uit de lijst; echt verplaatsen alleen als inboeken lukt.

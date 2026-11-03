@@ -2519,3 +2519,17 @@ body.cam-open {
   object-fit: cover;
   display: block;
 }
+
+/* === Bank-CSV import === */
+.csv-kop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.csv-kop h2 { margin: 0; }
+.csv-lijst { max-height: 52vh; overflow-y: auto; margin: 8px 0 12px; border-top: 1px solid var(--border); }
+.csv-rij { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--border); font-size: 0.8125rem; }
+.csv-rij input { width: 18px; height: 18px; margin: 0; }
+.csv-rij .csv-naam { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.csv-rij .csv-sub { color: var(--text-secondary); font-size: 0.75rem; }
+.csv-rij .num { text-align: right; white-space: nowrap; }
+.csv-rij .num.pos { color: var(--accent); }
+.csv-rij.csv-uit { opacity: 0.55; }
+.csv-rek { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; font-size: 0.8125rem; }
+.csv-rek select { max-width: 50%; }

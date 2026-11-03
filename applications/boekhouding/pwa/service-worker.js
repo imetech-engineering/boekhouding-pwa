@@ -2,7 +2,7 @@
  * Service worker — network-first voor same-origin (updates komen direct door),
  * cache als offline-fallback. Verbetering t.o.v. uren-PWA (cache-first + handmatige bump).
  */
-const CACHE = "imtech-boekhouding-pwa-v62";
+const CACHE = "imtech-boekhouding-pwa-v63";
 const ASSETS = [
   "./",
   "./index.html",
@@ -35,6 +35,8 @@ const ASSETS = [
   "./js/combobox.js",
   "./js/data_cache.js",
   "./js/offline_queue.js",
+  "./js/bank_csv.js",
+  "./js/ui_csv.js",
   "./js/install.js",
   "./js/icons.js",
   "./js/ui_koppel.js",

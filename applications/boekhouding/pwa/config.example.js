@@ -23,6 +23,7 @@ window.BOEK_CONFIG = {
     /** Paden relatief t.o.v. OneDrive-root (Graph /me/drive/root:/…). */
     workbookPath: "02 Boekhouding/Boekhouding_IMeTech.xlsx",
     settingsPath: "02 Boekhouding/boekhouding_pwa_settings.json",
+    jaaroverzichtPath: "02 Boekhouding/05 Jaaroverzichten/Jaaroverzichten_IMeTech_correct.xlsx",
     folders: {
       verkoopNieuw: "02 Boekhouding/01 Verkoop facturen/Facturen verkoop nog te verwerken",
       verkoopVerwerkt: "02 Boekhouding/01 Verkoop facturen/Facturen verkoop verwerkt",

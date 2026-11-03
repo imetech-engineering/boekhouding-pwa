@@ -56,7 +56,11 @@
         </div>
 
         <div class="card" id="bank-nieuw-card">
-          <h2>Nieuwe bankregel</h2>
+          <div class="csv-kop">
+            <h2>Nieuwe bankregel</h2>
+            <button type="button" id="btn-bank-csv" class="btn-secondary btn-compact">CSV importeren</button>
+            <input type="file" id="bank-csv-file" accept=".csv,text/csv,text/plain" hidden />
+          </div>
           <label>Rekening</label>
           <div id="bank-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
             <button type="button" data-rek="Rabo" class="rek-opt rek-rabo" role="radio">
@@ -466,6 +470,17 @@
           <div id="ovz-spaar-regels" class="hidden"></div>
         </details>
 
+        <!-- ---- Balans en sluitcontrole ---- -->
+        <details class="card card-fold" data-fold="balans">
+          <summary class="fold-head">Balans &amp; sluitcontrole <span id="balans-stand" class="preview-name"></span></summary>
+          <p id="balans-bron" class="sub">—</p>
+          <div class="loc-table-wrap"><table class="loc-table" id="balans-tabel"></table></div>
+          <p id="balans-controle" class="sub">—</p>
+          <div id="balans-open" class="hidden"></div>
+          <button type="button" id="btn-jaaroverzicht" class="btn-secondary btn-inline">Jaaroverzicht bijwerken (xlsx)</button>
+          <p class="sub">Vult de kolom van dit jaar in Jaaroverzichten_IMeTech_correct.xlsx: W&amp;V per rubriek, balans, privé en het maandoverzicht. Uren en aftrekposten blijven met de hand. Jaren waarvan de IB-aangifte gedaan is, blijven ongemoeid.</p>
+        </details>
+
         <details class="card card-fold" data-fold="prognose">
           <summary class="fold-head">Prognose <span id="prog-jaar" class="preview-name"></span></summary>
           <p id="prog-basis" class="sub">—</p>
@@ -601,6 +616,12 @@
           </div>
           <p class="inst-noot">Schrijven gaat per cel via de Excel API; formules en opmaak blijven heel. Niet tegelijk in Excel op de pc en hier schrijven.</p>
 
+          <h3 class="inst-kop">Boekhouding</h3>
+          <div class="inst-kaart">
+            <label class="inst-rij" for="set-afgesloten"><span class="inst-label">Btw aangegeven t/m</span><input id="set-afgesloten" type="date" class="inst-getal" /></label>
+          </div>
+          <p class="inst-noot">Regels tot en met deze datum liggen vast: wijzigen, toevoegen of verwijderen kan alleen na een extra bevestiging. Zet de datum na elke btw-aangifte een kwartaal verder.</p>
+
           <h3 class="inst-kop">Reiskosten</h3>
           <div class="inst-kaart">
             <label class="inst-rij" for="set-km-tarief"><span class="inst-label">Km-tarief (€/km)</span><input id="set-km-tarief" class="inst-getal" inputmode="decimal" autocomplete="off" /></label>
@@ -675,6 +696,20 @@
     </div>
 
     <!-- Koppelen: werkt vanuit een bankregel en vanuit een factuur -->
+    <div id="csv-modal" class="modal hidden" role="dialog" aria-labelledby="csv-modal-title">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-sheet">
+        <h2 id="csv-modal-title">Bankafschrift importeren</h2>
+        <p id="csv-samenvatting" class="sub">—</p>
+        <div id="csv-rekeningen"></div>
+        <div id="csv-lijst" class="csv-lijst"></div>
+        <div class="btn-row">
+          <button type="button" id="btn-csv-import" class="btn-primary">Importeren</button>
+          <button type="button" class="btn-secondary" data-close-modal>Annuleren</button>
+        </div>
+      </div>
+    </div>
+
     <div id="koppel-modal" class="modal hidden" role="dialog" aria-labelledby="koppel-modal-title">
       <div class="modal-backdrop"></div>
       <div class="modal-sheet">
@@ -860,6 +895,7 @@
     <script src="js/combobox.js"></script>
     <script src="js/data_cache.js"></script>
     <script src="js/offline_queue.js"></script>
+    <script src="js/bank_csv.js"></script>
     <script src="js/install.js"></script>
     <script src="js/app.js"></script>
     <script src="js/ui_koppel.js"></script>
@@ -869,6 +905,7 @@
     <script src="js/ui_verkoop.js"></script>
     <script src="js/ui_reis.js"></script>
     <script src="js/ui_overzicht.js"></script>
+    <script src="js/ui_csv.js"></script>
     <script>window.BoekBoot && window.BoekBoot();</script>
   </body>
 </html>

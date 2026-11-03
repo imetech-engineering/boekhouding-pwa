@@ -681,6 +681,7 @@
     const spaarEind = M().alleSaldi(totEind).spaarTotaal;
     const prive = M().priveOverzicht(st.bankRows, jaar);
     const pi = M().priveInkoop(st.inkoopRows, jaar);
+    const jc = jaarCijfersNu(jaar);
     const reis = M().reisTotaal(st.inkoopRows, jaar);
     const eur = (v) => M().fmtEur(v);
     const rij = (n, b, sterk) => `<tr${sterk ? ' class="sterk"' : ""}><td>${n}</td><td class="num">${eur(b)}</td></tr>`;
@@ -709,13 +710,25 @@ ${rij("Totaal kosten", kosten, true)}
 ${rij("Resultaat", omzet - kosten, true)}
 </table>
 <div class="twee"><div>
-<h2>Mini-balans per 31-12</h2>
+<h2>Balans ${jc.eind ? "per " + M().formatDateNl(jc.eind) : ""}</h2>
 <table>
-${rij("Bedrijfsmiddelen (boekwaarde)", activa)}
-${rij("Rabo", saldi.Rabo)}
-${rij("Knab", saldi.Knab)}
-${rij("Spaarrekening", spaarEind)}
-${rij("Totaal", activa + saldi.Rabo + saldi.Knab + spaarEind, true)}
+${rij("Vaste activa (boekwaarde)", jc.balans.vasteActiva)}
+${rij("Debiteuren", jc.balans.debiteuren)}
+${jc.balans.btwVordering ? rij("Btw terug te ontvangen", jc.balans.btwVordering) : ""}
+${rij("Rabo", jc.balans.lopend.Rabo)}
+${rij("Knab", jc.balans.lopend.Knab)}
+${rij("Spaarrekeningen", jc.balans.spaar)}
+${rij("Totaal activa", jc.balans.activa, true)}
+${rij("Eigen vermogen", jc.balans.eigenVermogen)}
+${rij("Btw te betalen", jc.balans.btwSchuld)}
+${rij("Crediteuren", jc.balans.crediteuren)}
+${rij("Totaal passiva", jc.balans.passiva, true)}
+</table>
+<h2>Sluitcontrole</h2>
+<table>
+${rij("Winst volgens W&amp;V", jc.controle.winst)}
+${rij("Volgens vermogensvergelijking", jc.controle.vermogensvergelijking)}
+${rij("Verschil", jc.controle.verschil, true)}
 </table>
 <h2>Privé (IB)</h2>
 <table>
@@ -772,14 +785,146 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
     if (document.activeElement !== tariefEl) {
       tariefEl.value = String(s.kmTarief ?? 0.25).replace(".", ",");
     }
+    const slotEl = $("#set-afgesloten");
+    if (slotEl && document.activeElement !== slotEl) slotEl.value = s.afgeslotenTot || "";
     $("#set-thuis-label").textContent = s.thuisAdres?.label
       ? `✓ ${s.thuisAdres.label}`
       : "Nog niet ingesteld — nodig voor automatische km-berekening.";
   }
 
+  // === Balans & sluitcontrole ===
+  // Beginbalans komt uit de kolom van het vorige jaar in het jaaroverzicht
+  // (daar staat ook wat niet in de boeken zit, zoals inbreng uit privé).
+  const joVorig = new Map(); // jaar → {vasteActiva, eigenVermogen, gevonden} | "laden" | "fout"
+
+  function peildatumVoor(j) {
+    const nu = new Date();
+    return j === nu.getFullYear() ? new Date(Date.UTC(j, nu.getMonth(), nu.getDate())) : null;
+  }
+
+  async function laadBeginbalans(j) {
+    if (joVorig.has(j)) return;
+    joVorig.set(j, "laden");
+    try {
+      const token = await App().ensureLoggedIn();
+      const r = await global.BoekIo.leesJaaroverzicht(token, j);
+      joVorig.set(j, r.vorig);
+    } catch (e) {
+      console.warn("jaaroverzicht lezen", e);
+      joVorig.set(j, "fout");
+    }
+    if (j === jaar) renderBalans();
+  }
+
+  function jaarCijfersNu(j) {
+    const st = App().state;
+    const v = joVorig.get(j);
+    const vorig = v && typeof v === "object" ? v : {};
+    return M().jaarCijfers(st.bankRows, st.inkoopRows, st.verkoopRows, j, vorig, peildatumVoor(j));
+  }
+
+  function renderBalans() {
+    const st = App().state;
+    const tabel = $("#balans-tabel");
+    if (!tabel) return;
+    if (!st.loaded) return;
+    if (!joVorig.has(jaar)) laadBeginbalans(jaar);
+    const v = joVorig.get(jaar);
+    const c = jaarCijfersNu(jaar);
+    const eur = (x) => M().fmtEur(x);
+    const pd = peildatumVoor(jaar);
+    $("#balans-stand").textContent = pd ? `stand ${M().formatDateNl(pd)}` : `per 31-12-${jaar}`;
+    $("#balans-bron").textContent =
+      v === "laden"
+        ? "Beginbalans laden uit het jaaroverzicht…"
+        : v && typeof v === "object" && v.gevonden
+          ? `Beginbalans uit het jaaroverzicht ${jaar - 1}: eigen vermogen ${eur(v.eigenVermogen)}, vaste activa ${eur(v.vasteActiva)}.`
+          : `Geen beginbalans ${jaar - 1} gevonden in het jaaroverzicht: gerekend vanaf € 0.`;
+    const b = c.balans;
+    const rij = (n, x, sterk) => `<tr${sterk ? ' style="font-weight:600"' : ""}><td>${n}</td><td class="num">${eur(x)}</td></tr>`;
+    tabel.innerHTML =
+      `<tr><th>Activa</th><th></th></tr>` +
+      rij("Vaste activa (boekwaarde)", b.vasteActiva) +
+      rij("Debiteuren", b.debiteuren) +
+      (b.btwVordering ? rij("Btw terug te ontvangen", b.btwVordering) : "") +
+      rij(`Bank (Rabo ${eur(b.lopend.Rabo)}, Knab ${eur(b.lopend.Knab)})`, b.lopend.Rabo + b.lopend.Knab) +
+      rij("Spaarrekeningen", b.spaar) +
+      rij("Totaal activa", b.activa, true) +
+      `<tr><th>Passiva</th><th></th></tr>` +
+      rij("Eigen vermogen", b.eigenVermogen) +
+      rij("Btw te betalen", b.btwSchuld) +
+      rij("Crediteuren", b.crediteuren) +
+      rij("Totaal passiva", b.passiva, true) +
+      `<tr><th>Privé</th><th></th></tr>` +
+      rij("Onttrekkingen", c.prive.onttrekkingen) +
+      rij(`Stortingen (waarvan km ${eur(c.prive.kmVergoeding)})`, c.prive.stortingen);
+    const vs = c.controle.verschil;
+    const klein = Math.abs(vs) < 25;
+    $("#balans-controle").innerHTML =
+      `Sluitcontrole: winst volgens W&amp;V <strong>${eur(c.controle.winst)}</strong>, volgens de vermogensvergelijking ` +
+      `<strong>${eur(c.controle.vermogensvergelijking)}</strong>. ` +
+      (klein
+        ? `✓ Sluit (verschil ${eur(vs)}, afronding).`
+        : `<strong>⚠ Verschil ${eur(vs)}.</strong> Meestal een bankregel zonder boeking of een factuur zonder betaling; zie hieronder en "Nog te doen".`);
+    // Open posten die het verschil vaak verklaren
+    const open = $("#balans-open");
+    const nietGeboekt = st.bankRows.filter(
+      (r) => !r.isEmpty && r.datum && r.datum.getUTCFullYear() === jaar && (!r.ingeboekt || !r.koppelingRaw) && (r.in || r.uit)
+    );
+    const regels = [
+      ...c.openPosten.debiteuren.map((r) => [`Debiteur: ${r.datumStr} · ${r.partij} ${r.factuurnummer}`, r.open]),
+      ...c.openPosten.crediteuren.map((r) => [`Crediteur: ${r.datumStr} · ${r.partij} ${r.factuurnummer}`, -r.open]),
+      ...nietGeboekt.map((r) => [`Bank zonder boeking: ${r.datumStr} · ${r.omschrijving}`, (r.in || 0) - (r.uit || 0)]),
+    ];
+    open.classList.toggle("hidden", !regels.length);
+    open.innerHTML = regels
+      .slice(0, 40)
+      .map(
+        ([t, x]) =>
+          `<div class="ovz-lijst-rij"><span>${escapeHtml(t)}</span><span class="num ${x >= 0 ? "pos" : "neg"}">${eur(x)}</span></div>`
+      )
+      .join("");
+    const ibDicht = jaar <= (st.settings.ibAfgeslotenJaar ?? 2025);
+    $("#btn-jaaroverzicht").disabled = ibDicht;
+    $("#btn-jaaroverzicht").title = ibDicht ? `IB-aangifte ${jaar} is gedaan: dit jaar blijft ongemoeid.` : "";
+  }
+
+  async function schrijfJaaroverzicht() {
+    const st = App().state;
+    if (!st.loaded) return App().showToast("Eerst verversen.", true);
+    if (jaar <= (st.settings.ibAfgeslotenJaar ?? 2025)) {
+      return App().showToast(`IB-aangifte ${jaar} is gedaan: dit jaar blijft ongemoeid.`, true);
+    }
+    joVorig.delete(jaar);
+    await laadBeginbalans(jaar);
+    if (joVorig.get(jaar) === "fout") return App().showToast("Jaaroverzicht niet te openen (staat het bestand in 05 Jaaroverzichten?).", true);
+    const c = jaarCijfersNu(jaar);
+    const pd = peildatumVoor(jaar);
+    const eur = (x) => M().fmtEur(x);
+    const ok = await App().showConfirm(
+      `Kolom ${jaar} in het jaaroverzicht bijwerken ${pd ? `(stand t/m ${M().formatDateNl(pd)})` : "(per 31-12)"}?\n` +
+        `Winst ${eur(c.winst)} · eigen vermogen ${eur(c.balans.eigenVermogen)} · sluitverschil ${eur(c.controle.verschil)}.\n` +
+        `Ook het maandoverzicht van ${jaar} wordt overschreven met de cijfers uit de boeken.`,
+      "Bijwerken",
+      "Annuleren"
+    );
+    if (!ok) return;
+    try {
+      App().setStatus("Jaaroverzicht bijwerken…");
+      const token = await App().ensureLoggedIn();
+      const r = await global.BoekIo.schrijfJaaroverzicht(token, jaar, c, { peildatum: pd });
+      App().setStatus(`Jaaroverzicht ${jaar} bijgewerkt (${r.cellen} cellen).`);
+      App().showToast(`Jaaroverzicht ${jaar} bijgewerkt`);
+    } catch (e) {
+      App().showToast(`Jaaroverzicht bijwerken mislukt: ${e.message || e}`, true);
+      App().setStatus("Jaaroverzicht bijwerken mislukt", true);
+    }
+  }
+
   function render() {
     $("#ovz-year").value = String(jaar);
     renderKerncijfers();
+    renderBalans();
     renderSaldi();
     renderPrognose();
     renderKwartalen();
@@ -826,6 +971,7 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
   function init() {
     initFolds();
     $("#btn-jaarrapport").addEventListener("click", openJaarrapport);
+    $("#btn-jaaroverzicht")?.addEventListener("click", schrijfJaaroverzicht);
     $("#btn-ovz-year-prev").addEventListener("click", () => {
       jaar -= 1;
       gekozenMaand = null;
@@ -895,6 +1041,11 @@ ${rij(`Reiskosten (${reis.km.toFixed(0)} km)`, reis.bedrag)}
         App().showToast("Ongeldig km-tarief", true);
         renderSettings();
       }
+    });
+    $("#set-afgesloten")?.addEventListener("change", () => {
+      const v = $("#set-afgesloten").value || "";
+      App().saveSettings({ afgeslotenTot: v });
+      App().showToast(v ? `Afgesloten t/m ${M().formatDateNl(M().isoToDate(v))}` : "Periodeslot uit");
     });
     $("#set-thuis-adres").addEventListener("input", zoekThuis);
   }

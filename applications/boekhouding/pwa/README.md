@@ -42,6 +42,27 @@ Standalone Progressive Web App: leest en schrijft **Boekhouding_IMeTech.xlsx** d
   in het boek komt. Bij een verlopen inlog blijven wijzigingen in de wachtrij staan, een
   bestand gaat alleen naar "verwerkt" als de boeking ervoor gelukt is, en bij het verwijderen
   van een factuur gaan de koppelingen ernaar in het bankboek mee weg.
+- **Periodeslot** — in Instellingen staat "Btw aangegeven t/m" (nu 30-09-2026). Regels t/m die
+  datum toevoegen, wijzigen of verwijderen kan alleen na een extra bevestiging; koppelen en afvinken
+  mag altijd. Zet de datum na elke btw-aangifte een kwartaal verder.
+- **Afschrijving naar rato** — het aanschafjaar krijgt alleen de maanden in gebruik (aanschafmaand
+  telt mee), de rest komt in een extra laatste jaar; minimaal 5 jaar (max 20% per jaar). Bewerk je een
+  investering, dan stelt de app voor de jaarregels gelijk te trekken (aanpassen, erbij, weg). Is aan de
+  aankoop zelf niets veranderd, dan blijft die regel onaangeroerd (ook in een afgesloten periode).
+  Vink je bij een bestaande regel "Afschrijving" aan, dan komen de jaarregels er alsnog bij.
+- **Balans & sluitcontrole** (Overzicht) — balans per datum, afgeleid uit de drie boeken: vaste activa,
+  debiteuren, bank + spaar, eigen vermogen, btw te betalen, crediteuren, privé. De beginbalans komt uit
+  de kolom van het vorige jaar in het jaaroverzicht. Controle: eigen vermogen eind − begin +
+  onttrekkingen − stortingen = winst uit de W&V; bij een verschil toont de app de open posten en de
+  bankregels zonder boeking die het meestal verklaren.
+- **Jaaroverzicht bijwerken** — vult in `05 Jaaroverzichten/Jaaroverzichten_IMeTech_correct.xlsx` de
+  kolom van het jaar (W&V per IB-rubriek, balans, privé, formules van de vorige kolom, met begin-EV in
+  de vermogensvergelijking) en het maandoverzicht. Uren en aftrekposten blijven met de hand; jaren t/m
+  `ibAfgeslotenJaar` (2025) blijven ongemoeid.
+- **Bank-CSV importeren** (Bank → CSV importeren) — CSV van Rabo of Knab (kolommen op naam herkend).
+  De app toont eerst wat er nieuw is; wat al in het bankboek staat (zelfde rekening en bedrag, datum tot
+  3 dagen ernaast) of in een afgesloten periode valt, staat standaard uit. Staat er een factuurnummer met
+  hetzelfde bedrag in de omschrijving, dan wordt meteen gekoppeld. Handmatig invoeren blijft gewoon kunnen.
 - **Bedragen** — "1.250" is € 1.250 (punt met drie cijfers = duizendtal), "1,25" en "12.50" blijven € 1,25 en € 12,50.
 
 ## Wat de app in Excel schrijft

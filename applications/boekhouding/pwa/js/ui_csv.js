@@ -1,5 +1,5 @@
 /**
- * Bank-tab: bankafschrift (CSV van Rabo of Knab) inlezen. Toont eerst wat er
+ * Bank-tab: bankafschrift (CSV of CAMT.053 van Rabo of Knab) inlezen. Toont eerst wat er
  * nieuw is; regels die al in het bankboek staan of in een afgesloten periode
  * vallen, staan standaard uit. Daarna gaat alles via de gewone schrijfrij,
  * en kun je de nieuwe regels koppelen zoals altijd.
@@ -11,10 +11,11 @@
   const $ = (sel) => document.querySelector(sel);
 
   // Bekende eigen rekeningen (IBAN → rekening in het bankboek).
-  const STANDAARD_IBANS = { NL78RABO0133719553: "Rabo" };
+  const STANDAARD_IBANS = { NL78RABO0133719553: "Rabo", NL78KNAB0800445023: "Knab" };
   const KEUZES = ["Rabo", "Knab", "Rabo spaar", "Knab spaar"];
 
   let regels = []; // [{t, rekening, status, match, aan}]
+  let afschriften = []; // alleen bij CAMT.053: [{iban, van, tot, begin, eind, netto, klopt}]
 
   function escapeHtml(s) {
     return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -40,7 +41,7 @@
     if (!st.loaded) return App().showToast("Eerst verversen, dan importeren.", true);
     let transacties;
     try {
-      transacties = C().leesTransacties(await leesTekst(file));
+      ({ transacties, afschriften } = C().leesBestand(await leesTekst(file)));
     } catch (e) {
       return App().showToast(e.message || String(e), true);
     }
@@ -105,8 +106,45 @@
       })
       .join("");
     const n = regels.filter((r) => r.aan).length;
+    renderSaldo();
     $("#btn-csv-import").textContent = n ? `${n} regel${n === 1 ? "" : "s"} importeren` : "Niets aangevinkt";
     $("#btn-csv-import").disabled = !n;
+  }
+
+  /**
+   * CAMT.053 heeft begin- en eindsaldo. Twee controles per afschrift:
+   * klopt het bestand zelf (begin + mutaties = eind), en komt het bankboek
+   * van die rekening na deze import op hetzelfde eindsaldo uit.
+   */
+  function renderSaldo() {
+    const el = $("#csv-saldo");
+    if (!afschriften.length) {
+      el.classList.add("hidden");
+      el.innerHTML = "";
+      return;
+    }
+    const st = App().state;
+    const eur = (v) => M().fmtEur(v);
+    const dt = (iso) => (iso ? M().formatDateNl(M().isoToDate(iso)) : "?");
+    el.innerHTML = afschriften
+      .map((a) => {
+        const rek = regels.find((r) => r.t.iban === a.iban)?.rekening || "";
+        const kop = `<strong>${escapeHtml(rek || a.iban || "Rekening")}</strong> ${dt(a.van)} t/m ${dt(a.tot)}`;
+        if (a.klopt === false) {
+          return `<div class="fout">${kop}: bestand klopt niet (begin ${eur(a.begin)} + mutaties ${eur(a.netto)} ≠ eind ${eur(a.eind)}). Download het opnieuw.</div>`;
+        }
+        if (a.eind == null) return `<div>${kop}: geen eindsaldo in het bestand.</div>`;
+        // Spaarrekeningen staan maar deels in het bankboek (alleen rente), daar valt niets te vergelijken.
+        if (!rek || /spaar/i.test(rek)) return `<div>${kop}: eindsaldo bank ${eur(a.eind)}.</div>`;
+        const extra = regels.filter((r) => r.aan && r.rekening === rek).map((r) => r.t);
+        const boek = C().bankboekSaldoTot(st.bankRows, rek, a.tot, extra);
+        const verschil = Math.round((a.eind - boek) * 100) / 100;
+        return verschil === 0
+          ? `<div class="ok">${kop}: bankboek na import ${eur(boek)}, gelijk aan de bank ✓</div>`
+          : `<div class="fout">${kop}: bank ${eur(a.eind)}, bankboek na import ${eur(boek)} (verschil ${eur(verschil)}).</div>`;
+      })
+      .join("");
+    el.classList.remove("hidden");
   }
 
   /**

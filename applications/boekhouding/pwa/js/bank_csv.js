@@ -1,7 +1,9 @@
 /**
- * Bankafschrift als CSV inlezen (Rabobank, Knab, en ook ING-achtige exports).
- * Pure functies, geen DOM en geen I/O: de kolommen worden herkend aan hun
- * kopnaam, zodat een andere volgorde of een extra kolom niets uitmaakt.
+ * Bankafschrift inlezen: CSV (Rabobank, Knab, ING-achtig) of CAMT.053 (XML,
+ * de standaard "boekhoudexport" van Rabo en Knab). Pure functies, geen I/O.
+ * CSV-kolommen worden herkend aan hun kopnaam, zodat een andere volgorde of
+ * een extra kolom niets uitmaakt. CAMT.053 heeft vaste velden plus begin- en
+ * eindsaldo, waarmee het bestand zichzelf controleert.
  */
 (function (global) {
   const M = () => global.BoekModel;
@@ -143,6 +145,121 @@
     return uit;
   }
 
+  // === CAMT.053 (XML) ===
+  // Namespace-onafhankelijk (camt.053.001.02 t/m .08): alleen op localName.
+  const kids = (el, naam) => (el ? Array.from(el.childNodes || []).filter((n) => n.nodeType === 1 && (!naam || n.localName === naam)) : []);
+  const kind = (el, naam) => kids(el, naam)[0] || null;
+  const pad = (el, p) => p.split("/").reduce((e, n) => (e ? kind(e, n) : null), el);
+  const tekstVan = (el) => (el ? String(el.textContent || "").replace(/\s+/g, " ").trim() : "");
+  const alles = (el, naam, uit = []) => {
+    for (const k of kids(el)) {
+      if (k.localName === naam) uit.push(k);
+      alles(k, naam, uit);
+    }
+    return uit;
+  };
+
+  function isCamt(tekst) {
+    const t = String(tekst || "").replace(/^\uFEFF/, "").trimStart().slice(0, 600);
+    return t.startsWith("<") && /camt\.05[23]|BkToCstmrStmt/i.test(t);
+  }
+
+  /** Bedrag uit <Amt> met <CdtDbtInd> ernaast: + = bij (CRDT), - = af (DBIT). */
+  function camtBedrag(el) {
+    const f = parseFloat(tekstVan(kind(el, "Amt")));
+    if (!Number.isFinite(f)) return null;
+    const teken = tekstVan(kind(el, "CdtDbtInd")) === "DBIT" ? -1 : 1;
+    return Math.round(teken * f * 100) / 100;
+  }
+
+  const camtDatum = (el) => datumIso(tekstVan(kind(el, "Dt")) || tekstVan(kind(el, "DtTm")).slice(0, 10));
+
+  /**
+   * CAMT.053-tekst → {transacties, afschriften}. Eén transactie per boeking
+   * (<Ntry>, alleen status BOOK), met het bedrag zoals de bank het boekte.
+   * Per afschrift: IBAN, periode, begin- en eindsaldo en of die kloppen.
+   */
+  function leesCamt(tekst) {
+    if (typeof DOMParser === "undefined") throw new Error("XML lezen wordt hier niet ondersteund.");
+    const doc = new DOMParser().parseFromString(String(tekst).replace(/^\uFEFF/, ""), "application/xml");
+    if (!doc || doc.getElementsByTagName("parsererror").length) throw new Error("Dit XML-bestand is beschadigd of geen CAMT.053.");
+    const stmts = alles(doc.documentElement ? { childNodes: [doc.documentElement] } : doc, "Stmt");
+    if (!stmts.length) throw new Error("Geen afschrift (Stmt) gevonden. Is dit een CAMT.053-bestand?");
+    const transacties = [];
+    const afschriften = [];
+    for (const st of stmts) {
+      const iban = ibanNorm(tekstVan(pad(st, "Acct/Id/IBAN")));
+      const saldo = {};
+      for (const b of kids(st, "Bal")) {
+        const tp = tekstVan(pad(b, "Tp/CdOrPrtry/Cd"));
+        if (tp === "OPBD" || tp === "CLBD") saldo[tp] = { bedrag: camtBedrag(b), datumIso: camtDatum(kind(b, "Dt")) };
+      }
+      let netto = 0;
+      let aantal = 0;
+      for (const n of kids(st, "Ntry")) {
+        const sts = tekstVan(kind(n, "Sts")) || tekstVan(pad(n, "Sts/Cd"));
+        if (sts && sts !== "BOOK") continue; // nog niet geboekt (PDNG) of informatief
+        const bedrag = camtBedrag(n);
+        const datum = camtDatum(kind(n, "BookgDt")) || camtDatum(kind(n, "ValDt"));
+        if (bedrag == null || !datum) continue;
+        const txs = alles(n, "TxDtls");
+        const een = txs.length === 1 ? txs[0] : null;
+        // Tegenpartij: bij een bijschrijving de betaler, bij een afschrijving de ontvanger.
+        const rol = bedrag >= 0 ? "Dbtr" : "Cdtr";
+        const rp = een ? kind(een, "RltdPties") : null;
+        const naamVan = (r) => tekstVan(pad(rp, `${r}/Nm`)) || tekstVan(pad(rp, `${r}/Pty/Nm`));
+        const tegenpartij = rp ? naamVan(rol) || naamVan(rol === "Dbtr" ? "UltmtDbtr" : "UltmtCdtr") : "";
+        const tegenrekening = rp ? ibanNorm(tekstVan(pad(rp, `${rol}Acct/Id/IBAN`))) : "";
+        const ri = een ? kind(een, "RmtInf") : null;
+        const delen = ri ? kids(ri, "Ustrd").map(tekstVan) : [];
+        if (ri) for (const ref of alles(ri, "Ref")) delen.push(tekstVan(ref));
+        let omschrijving = delen.filter(Boolean).join(" ").trim();
+        if (!omschrijving) omschrijving = tekstVan(kind(n, "AddtlNtryInf")) || (een ? tekstVan(kind(een, "AddtlTxInf")) : "");
+        if (txs.length > 1 && !tegenpartij) omschrijving = `${omschrijving || "Verzamelboeking"} (${txs.length} posten)`.trim();
+        transacties.push({
+          datumIso: datum,
+          bedrag,
+          tegenpartij,
+          tegenrekening,
+          omschrijving: omschrijving.replace(/\s+/g, " ").trim(),
+          iban,
+          volgnr: tekstVan(kind(n, "AcctSvcrRef")) || tekstVan(kind(n, "NtryRef")),
+        });
+        netto = Math.round((netto + bedrag) * 100) / 100;
+        aantal++;
+      }
+      const ft = pad(st, "FrToDt");
+      const van = datumIso(tekstVan(kind(ft, "FrDtTm")).slice(0, 10)) || saldo.OPBD?.datumIso || "";
+      const tot = datumIso(tekstVan(kind(ft, "ToDtTm")).slice(0, 10)) || saldo.CLBD?.datumIso || "";
+      const begin = saldo.OPBD?.bedrag;
+      const eind = saldo.CLBD?.bedrag;
+      const klopt = begin != null && eind != null ? Math.round((begin + netto) * 100) === Math.round(eind * 100) : null;
+      afschriften.push({ iban, van, tot, begin: begin ?? null, eind: eind ?? null, netto, aantal, klopt });
+    }
+    return { transacties, afschriften };
+  }
+
+  /** Elk bankbestand → {transacties, afschriften} (afschriften alleen bij CAMT). */
+  function leesBestand(tekst) {
+    if (isCamt(tekst)) return leesCamt(tekst);
+    return { transacties: leesTransacties(tekst), afschriften: [] };
+  }
+
+  /**
+   * Saldo van een lopende rekening in het bankboek t/m een datum, plus de
+   * regels die je nu gaat toevoegen. Om naast het eindsaldo van de bank te leggen.
+   */
+  function bankboekSaldoTot(bankRows, rekening, totIso, extra = []) {
+    let cent = 0;
+    for (const r of bankRows || []) {
+      if (r.isEmpty || r.rekening !== rekening || !r.datum) continue;
+      if (M().dateToIso(r.datum) > totIso) continue;
+      cent += Math.round(((r.in || 0) - (r.uit || 0)) * 100);
+    }
+    for (const t of extra) if (t.datumIso <= totIso) cent += Math.round(t.bedrag * 100);
+    return cent / 100;
+  }
+
   /**
    * Rekening in het bankboek bij een IBAN: alleen wat bekend is (eerder gekozen
    * of vooraf ingesteld). Een onbekend Rabo- of Knab-nummer kan ook een
@@ -232,5 +349,5 @@
     return true;
   }
 
-  global.BoekBankCsv = { parseCsv, herkenKoppen, datumIso, bedragGetal, leesTransacties, rekeningVoorIban, bankVanIban, standaardAan, vergelijk, naarBankregel };
+  global.BoekBankCsv = { parseCsv, herkenKoppen, datumIso, bedragGetal, leesTransacties, isCamt, leesCamt, leesBestand, bankboekSaldoTot, rekeningVoorIban, bankVanIban, standaardAan, vergelijk, naarBankregel };
 })(window);

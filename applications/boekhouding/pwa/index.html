@@ -58,8 +58,8 @@
         <div class="card" id="bank-nieuw-card">
           <div class="csv-kop">
             <h2>Nieuwe bankregel</h2>
-            <button type="button" id="btn-bank-csv" class="btn-secondary btn-compact">CSV importeren</button>
-            <input type="file" id="bank-csv-file" accept=".csv,text/csv,text/plain" hidden />
+            <button type="button" id="btn-bank-csv" class="btn-secondary btn-compact">Afschrift importeren</button>
+            <input type="file" id="bank-csv-file" accept=".csv,.xml,text/csv,text/plain,text/xml,application/xml" hidden />
           </div>
           <label>Rekening</label>
           <div id="bank-rek-switch" class="rek-switch" role="radiogroup" aria-label="Rekening">
@@ -701,6 +701,7 @@
       <div class="modal-sheet">
         <h2 id="csv-modal-title">Bankafschrift importeren</h2>
         <p id="csv-samenvatting" class="sub">—</p>
+        <div id="csv-saldo" class="csv-saldo hidden"></div>
         <div id="csv-rekeningen"></div>
         <div id="csv-lijst" class="csv-lijst"></div>
         <div class="btn-row">

@@ -2531,5 +2531,8 @@ body.cam-open {
 .csv-rij .num { text-align: right; white-space: nowrap; }
 .csv-rij .num.pos { color: var(--accent); }
 .csv-rij.csv-uit { opacity: 0.55; }
+.csv-saldo { font-size: 0.8125rem; margin: 6px 0 10px; display: grid; gap: 4px; }
+.csv-saldo .ok { color: var(--accent); }
+.csv-saldo .fout { color: var(--danger, #c0392b); }
 .csv-rek { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; font-size: 0.8125rem; }
 .csv-rek select { max-width: 50%; }

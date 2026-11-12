@@ -18,7 +18,16 @@
     vak_aan: '<rect x="4.5" y="4.5" width="15" height="15" rx="3"/><path d="M8 12.5l3 3 5-6"/>',
     prullenbak: '<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12h10l1-12"/><path d="M9 7V4h6v3"/>',
     hart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
-    info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5"/><path d="M12 8v.01"/>'
+    info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5"/><path d="M12 8v.01"/>',
+    links: '<path d="M15 5l-7 7 7 7"/>',
+    rechts: '<path d="M9 5l7 7-7 7"/>',
+    omlaag: '<path d="M5 9l7 7 7-7"/>',
+    omhoog: '<path d="M5 15l7-7 7 7"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    min: '<path d="M5 12h14"/>',
+    terug: '<path d="M8 7L4 11l4 4"/><path d="M4 11h10a5 5 0 0 1 0 10h-3"/>',
+    draai: '<path d="M19 12a7 7 0 1 1-2.1-5"/><path d="M19 4v4h-4"/>',
+    meer: '<circle cx="12" cy="5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="19" r="1.3" fill="currentColor"/>'
   };
   function ic(naam, extra) {
     return '<svg class="ui-ic' + (extra ? " " + extra : "") + '" viewBox="0 0 24 24" aria-hidden="true">' + (PADEN[naam] || "") + "</svg>";
@@ -117,8 +126,10 @@
   /* Losse tekens (vinkje, waarschuwing, kruisje, ster, potlood) in de tekst van de app automatisch als eigen SVG-icoon tonen.
      Werkt op alles wat de app nu en later op het scherm zet; invoervelden, keuzelijsten en bewerkbare tekst blijven ongemoeid. */
   var TEKENS = { "\u2713": "vink", "\u2714": "vink", "\u2705": "vink", "\u26A0": "let_op", "\u2715": "kruis", "\u2716": "kruis", "\u270E": "pen",
-    "\u2605": "ster_vol", "\u2606": "ster", "\u2611": "vak_aan", "\u2610": "vak", "\uD83D\uDD17": "link" };
-  var TEKEN_RE = /(\u2713|\u2714|\u2705|\u26A0\uFE0F?|\u2715|\u2716|\u270E|\u2605|\u2606|\u2611|\u2610|\uD83D\uDD17)/;
+    "\u2605": "ster_vol", "\u2606": "ster", "\u2611": "vak_aan", "\u2610": "vak", "\uD83D\uDD17": "link",
+    "\u25C0": "links", "\u25B6": "rechts", "\u25B8": "rechts", "\u25BE": "omlaag", "\u25BC": "omlaag", "\u25B4": "omhoog", "\u25B2": "omhoog",
+    "\uFF0B": "plus", "\uFF0D": "min", "\u21A9": "terug", "\u27F3": "draai", "\u22EE": "meer" };
+  var TEKEN_RE = /(\u2713|\u2714|\u2705|\u26A0\uFE0F?|\u2715|\u2716|\u270E|\u2605|\u2606|\u2611|\u2610|\uD83D\uDD17|\u25C0|\u25B6|\u25B8|\u25BE|\u25BC|\u25B4|\u25B2|\uFF0B|\uFF0D|\u21A9|\u27F3|\u22EE)/;
   var TEKEN_SPLIT = new RegExp(TEKEN_RE.source, "g");
   var SLA_OVER = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, INPUT: 1, OPTION: 1, SELECT: 1, TITLE: 1, svg: 1, SVG: 1 };
   function tekstNaarIconen(n) {
@@ -164,5 +175,5 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 
   window.IMeTechUI = { bevestig: bevestig, vraag: vraag, melding: melding, ongedaan: ongedaan, animeer: animeer, meldUpdates: meldUpdates,
-    skelet: skelet, ic: ic, iconen: iconen, versie: "1.2" };
+    skelet: skelet, ic: ic, iconen: iconen, versie: "1.3" };
 })();

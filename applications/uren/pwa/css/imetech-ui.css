@@ -81,8 +81,11 @@
 .ui-skelet.kort { width: 60%; }
 .ui-skelet.kaart { height: 64px; border-radius: 12px; }
 
+/* --- één lijnstijl voor alle iconen in alle apps: 24-raster, lijndikte 1,9, ronde uiteinden en hoeken --- */
+svg[viewBox="0 0 24 24"], svg:has(> use[href^="#"]) { stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
 /* --- iconen (vervangt losse tekens zoals het vinkje en het waarschuwingsteken) --- */
-.ui-ic { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -0.18em; fill: none; stroke: currentColor; stroke-width: 2;
+.ui-ic { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -0.18em; fill: none; stroke: currentColor; stroke-width: 1.9;
   stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 @media (prefers-reduced-motion: reduce) {

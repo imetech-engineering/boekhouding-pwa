@@ -33,5 +33,12 @@
     return data?.text || "";
   }
 
-  global.BoekOcr = { laadTesseract, tekstUit };
+  /** Zoals tekstUit, maar geeft alles terug: tekst plus per regel de woorden met hun plek in het beeld (bbox in pixels). */
+  async function lees(bron, taal = "nld") {
+    const T = await laadTesseract();
+    const { data } = await T.recognize(bron, taal);
+    return data || {};
+  }
+
+  global.BoekOcr = { laadTesseract, tekstUit, lees };
 })(window);

@@ -1573,6 +1573,15 @@
     }
 
     bindServiceWorker();
+
+    // Snelkoppeling op het app-icoon (lang drukken > Bon scannen): meteen de keuze camera / galerij / bestand tonen.
+    try {
+      if (new URLSearchParams(location.search).get("actie") === "scan") {
+        history.replaceState(null, "", location.pathname);
+        switchTab("inkoop");
+        setTimeout(() => document.getElementById("btn-scan-toggle")?.click(), 150);
+      }
+    } catch (_) {}
   }
 
   /**

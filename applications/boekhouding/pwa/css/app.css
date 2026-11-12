@@ -922,6 +922,21 @@ html[data-theme="dark"] .kpi-knab .kpi-value {
   transform-origin: 0% 0%;
 }
 
+/* Foto: herkende woorden liggen als aantikbare laag over het beeld (tik = kopiëren, vasthouden = selecteren) */
+.pdf-text-layer .dv-woord {
+  cursor: pointer;
+  border-radius: 3px;
+  background: rgba(14, 138, 91, 0.1);
+  line-height: 1;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pdf-text-layer .dv-woord.gekozen {
+  background: rgba(14, 138, 91, 0.35);
+  outline: 1.5px solid var(--accent);
+}
+
 .pdf-text-layer ::selection {
   background: rgba(14, 138, 91, 0.35);
 }

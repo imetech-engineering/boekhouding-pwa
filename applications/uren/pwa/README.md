@@ -114,10 +114,10 @@ In deze workspace staat een workflow: `.github/workflows/deploy-uren-pwa.yml`. D
 2. **Nieuwe repository** (aanbevolen naam: `uren-pwa` of je bestaande monorepo-naam):
    - Public of **Private** (private Pages: zie [GitHub Pages docs](https://docs.github.com/en/pages)).
    - Geen README verplicht als je lokaal al code hebt.
-3. **Lokaal git initialiseren** (PowerShell, in de workspace-root `07 Automatisatie`):
+3. **Lokaal git initialiseren** (PowerShell, in de workspace-root `00 Systeem` (vroeger `01 Administratie\07 Automatisatie`)):
 
    ```powershell
-   cd "c:\Users\ivome\OneDrive - IMeTech Engineering\01 Administratie\07 Automatisatie"
+   cd "c:\Users\ivome\OneDrive - IMeTech Engineering\00 Systeem"
    git init
    git add .github/workflows/deploy-uren-pwa.yml applications/uren/pwa
    git commit --trailer "Co-authored-by: Cursor <cursoragent@cursor.com>" -m "Add uren PWA and GitHub Pages deploy workflow"

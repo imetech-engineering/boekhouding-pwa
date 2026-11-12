@@ -1,0 +1,92 @@
+/* IMeTech UI-basis (gedeeld): animaties, tik-feedback, eigen dialoog, ongedaan-melding, laad-skelet.
+   Bron: assistant-repo gedeeld/ui/. Niet per app aanpassen: wijzig hier en draai gedeeld/sync.sh (kopieert naar alle apps).
+   Kleuren komen uit de tokens van de app; een app met andere tokennamen zet de --ui-* variabelen zelf. */
+:root {
+  --ui-vlak: var(--bg-primary, #ffffff);
+  --ui-vlak-2: var(--bg-tertiary, rgba(127, 127, 127, 0.14));
+  --ui-tekst: var(--text-primary, #1c1c1a);
+  --ui-tekst-2: var(--text-secondary, #6b6a65);
+  --ui-rand: var(--border, rgba(127, 127, 127, 0.3));
+  --ui-accent: var(--accent, #2563eb);
+  --ui-accent-tekst: #ffffff;
+  --ui-gevaar: var(--danger, #dc2626);
+  --ui-snel: 120ms;
+  --ui-normaal: 200ms;
+  --ui-curve: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* --- scherm- en lijstovergangen --- */
+@keyframes ui-vervaag-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ui-schuif-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes ui-blad-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes ui-blad-uit { from { transform: none; } to { transform: translateY(100%); } }
+@keyframes ui-pop-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes ui-vervaag-uit { from { opacity: 1; } to { opacity: 0; } }
+@keyframes ui-glans { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+.ui-in { animation: ui-vervaag-in var(--ui-normaal) ease-out both; }          /* alleen dekking: breekt geen position:fixed binnen het scherm */
+.ui-in-lijst > * { animation: ui-schuif-in var(--ui-normaal) var(--ui-curve) both; }
+.ui-in-lijst > *:nth-child(2) { animation-delay: 25ms; }
+.ui-in-lijst > *:nth-child(3) { animation-delay: 50ms; }
+.ui-in-lijst > *:nth-child(4) { animation-delay: 75ms; }
+.ui-in-lijst > *:nth-child(5) { animation-delay: 100ms; }
+.ui-in-lijst > *:nth-child(6) { animation-delay: 125ms; }
+.ui-in-lijst > *:nth-child(n + 7) { animation-delay: 150ms; }
+.ui-weg { animation: ui-vervaag-uit var(--ui-snel) ease-in both; }
+
+/* --- tik-feedback (:where = geen specificiteit, eigen regels van de app winnen altijd) --- */
+:where(button, [role="button"], summary, .btn) { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+:where(button, [role="button"], .btn):where(:not(:disabled)) { transition: transform var(--ui-snel) ease-out, opacity var(--ui-snel) ease-out; }
+:where(button, [role="button"], .btn):where(:not(:disabled)):active { transform: scale(0.97); opacity: 0.9; }
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
+
+/* --- dialoog (vervangt confirm() en prompt() van de browser) --- */
+.ui-doek { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(0, 0, 0, 0.5); animation: ui-vervaag-in var(--ui-normaal) ease-out both; }
+.ui-blad { width: 100%; max-width: 520px; box-sizing: border-box; background: var(--ui-vlak); color: var(--ui-tekst);
+  border-radius: 16px 16px 0 0; padding: 20px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25); animation: ui-blad-in 260ms var(--ui-curve) both; }
+.ui-doek.ui-sluit { animation: ui-vervaag-uit 160ms ease-in both; }
+.ui-doek.ui-sluit .ui-blad { animation: ui-blad-uit 160ms ease-in both; }
+.ui-blad { outline: none; font-size: 1rem; text-align: left; }
+.ui-titel { margin: 0 0 6px; font-size: 1.0625rem; font-weight: 600; line-height: 1.3; color: var(--ui-tekst); text-transform: none; letter-spacing: normal; }
+.ui-tekst { margin: 0 0 14px; color: var(--ui-tekst-2); font-size: 0.9375rem; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
+.ui-titel + .ui-knoppen, .ui-titel + input { margin-top: 10px; }
+.ui-blad input { width: 100%; box-sizing: border-box; min-height: 46px; margin: 4px 0 14px; padding: 0 12px; font: inherit; font-size: 1rem;
+  color: var(--ui-tekst); background: var(--ui-vlak-2); border: 1px solid var(--ui-rand); border-radius: 10px; }
+.ui-knoppen { display: flex; gap: 8px; }
+.ui-knoppen button { flex: 1; width: auto; margin: 0; min-height: 46px; padding: 0 12px; font: inherit; text-transform: none; letter-spacing: normal; font-weight: 600; font-size: 0.9375rem; cursor: pointer;
+  color: var(--ui-tekst); background: transparent; border: 1px solid var(--ui-rand); border-radius: 10px; }
+.ui-knoppen .ui-ok { color: var(--ui-accent-tekst); background: var(--ui-accent); border-color: transparent; }
+.ui-knoppen .ui-ok.ui-gevaar { color: #fff; }
+.ui-knoppen .ui-ok.ui-gevaar { background: var(--ui-gevaar); }
+@media (min-width: 640px) {
+  .ui-doek { align-items: center; }
+  .ui-blad { border-radius: 16px; padding-bottom: 16px; animation-name: ui-pop-in; }
+  .ui-doek.ui-sluit .ui-blad { animation-name: ui-vervaag-uit; }
+}
+
+/* --- melding met "Ongedaan maken" (voor apps zonder eigen toast-met-knop) --- */
+.ui-melding { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 9999; margin: 0 auto; max-width: 480px;
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; font-size: 0.9375rem;
+  color: #fff; background: #26262b; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3); animation: ui-schuif-in var(--ui-normaal) var(--ui-curve) both; }
+.ui-melding span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ui-melding button { flex: none; min-height: 36px; padding: 0 10px; font: inherit; font-weight: 600; color: #9cc2ff; background: transparent; border: 0; cursor: pointer; }
+
+/* --- laad-skelet --- */
+.ui-skelet { display: block; height: 14px; margin: 10px 0; border-radius: 6px;
+  background: linear-gradient(90deg, var(--ui-vlak-2) 25%, rgba(127, 127, 127, 0.28) 50%, var(--ui-vlak-2) 75%); background-size: 200% 100%;
+  animation: ui-glans 1.4s linear infinite; }
+.ui-skelet.kop { height: 20px; width: 45%; }
+.ui-skelet.kort { width: 60%; }
+.ui-skelet.kaart { height: 64px; border-radius: 12px; }
+
+/* --- iconen (vervangt losse tekens zoals het vinkje en het waarschuwingsteken) --- */
+.ui-ic { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -0.18em; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-in, .ui-in-lijst > *, .ui-weg, .ui-doek, .ui-blad, .ui-melding, .ui-doek.ui-sluit, .ui-doek.ui-sluit .ui-blad { animation-duration: 1ms !important; animation-delay: 0ms !important; }
+  .ui-skelet { animation: none; }
+  :where(button, [role="button"], .btn):where(:not(:disabled)):active { transform: none; }
+}

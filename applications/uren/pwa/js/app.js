@@ -913,7 +913,7 @@
 
   async function onEstimateDelete() {
     if (!state.estimateEditRow) return;
-    if (!confirm("Projectrij verwijderen uit Excel?")) return;
+    if (!(await IMeTechUI.bevestig("Projectrij verwijderen?", { tekst: "De rij verdwijnt uit het Excel-bestand.", ok: "Verwijderen", gevaar: true }))) return;
     const rij = state.estimateEditRow;
     closeProjectModal();
     try {
@@ -1097,7 +1097,7 @@
         ? `${regels.length} urenregel${regels.length === 1 ? "" : "s"} krijgen ${fmtEur(vp.tarief)}/u (÷ ${fmtUur(vp.gemaakt)}).\nNu: ${nu}.\n\n`
         : `Alle urenregels hebben al ${fmtEur(vp.tarief)}/u.\n\n`) +
       "Klopt dit? Timetick wordt niet aangepast.";
-    if (!confirm(vraag)) return;
+    if (!(await IMeTechUI.bevestig("Uurtarief vastleggen?", { tekst: vraag, ok: "Vastleggen" }))) return;
     try {
       if (vastleggen) {
         const fields = {
@@ -1780,7 +1780,6 @@
           $("#btn-save").textContent = "Bijwerken";
           switchTab("invoer");
         } else if (btn.dataset.act === "del") {
-          if (!confirm("Regel verwijderen uit Excel?")) return;
           // Bewerkte je net die regel? Dan het formulier meteen vrijgeven.
           if (state.editRow === row) {
             state.editRow = null;
@@ -1842,7 +1841,6 @@
       if (dx > threshold) {
         applyHistoryToForm(entry, true);
       } else if (dx < -threshold) {
-        if (!confirm("Regel verwijderen uit Excel?")) return;
         await verwijderRegel(entry);
         resetFormAfterSave();
       }
@@ -2652,14 +2650,14 @@
     }
     if (!state.editRow) {
       const similar = UrenInvoer.findSimilarEntries(state.entries, fields);
-      if (similar.length && !confirm(UrenInvoer.formatSimilarWarning(similar))) return;
+      if (similar.length && !(await IMeTechUI.bevestig("Lijkt op een bestaande regel", { tekst: UrenInvoer.formatSimilarWarning(similar), ok: "Toch opslaan" }))) return;
     }
     const prevEntry = state.editRow
       ? state.entries.find((x) => x.row_index === state.editRow)
       : null;
     const budgetFields = { ...fields, _prevHours: prevEntry?.uren };
     const budgetMsg = UrenInvoer.budgetWarning(state.estimates, budgetFields, state.editRow);
-    if (budgetMsg && !confirm(budgetMsg)) return;
+    if (budgetMsg && !(await IMeTechUI.bevestig("Over het urenbudget", { tekst: budgetMsg, ok: "Toch opslaan" }))) return;
 
     // Alles wat je ziet gebeurt nú: regel in de lijst, formulier klaar voor de
     // volgende. Het opslaan in OneDrive loopt daarna; als je ondertussen alweer
@@ -2713,6 +2711,20 @@
         () => optimisticDelete(row)
       );
       if (gelukt && entry.datumStr) volgTimetick(entry, null);
+      if (gelukt) IMeTechUI.ongedaan("Regel verwijderd", () => zetRegelTerug(entry), 8000);
+    } catch (_) {}
+  }
+
+  /** Ongedaan maken van verwijderen: dezelfde regel opnieuw toevoegen (komt onderaan in Excel te staan). */
+  async function zetRegelTerug(entry) {
+    const fields = {
+      datumStr: entry.datumStr, opdrachtgever: entry.opdrachtgever, project: entry.project, werkzaamheden: entry.werkzaamheden,
+      locatie: entry.locatie, uren: entry.uren, tarief: entry.tarief,
+    };
+    try {
+      const tempRow = -Date.now();
+      const gelukt = await persistMutation({ kind: "hours_add", fields, rowIndex: null, tempRow }, () => optimisticAdd(fields, tempRow));
+      if (gelukt) biedTimetickAan(fields);
     } catch (_) {}
   }
 

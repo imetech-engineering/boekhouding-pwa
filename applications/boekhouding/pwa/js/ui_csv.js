@@ -213,6 +213,102 @@
     App().showToast(`${gelukt} bankregel${gelukt === 1 ? "" : "s"} geïmporteerd. Koppel ze via Open.`);
   }
 
+  // === Automatisch: afschriften die de Pi elke nacht klaarzet (Enable Banking) ===
+  // De Pi zet per rekening een CAMT.053 in AUTO_MAP. Bij openen lezen we die in:
+  // nieuwe regels gaan er meteen in (met koppelen op factuurnummer), twijfelgevallen
+  // (zelfde bedrag, datum wijkt af) laten we zien, en daarna gaan de bestanden naar verwerkt.
+  const AUTO_MAP = "02 Boekhouding/06 Rekeningoverzichten/auto";
+  const AUTO_VERWERKT = `${AUTO_MAP}/verwerkt`;
+  let autoBezig = false;
+  let autoLaatst = 0;
+
+  async function autoImport() {
+    const st = App().state;
+    if (autoBezig || !st.loaded || Date.now() - autoLaatst < 10 * 60000) return;
+    if (!$("#csv-modal")?.classList.contains("hidden")) return; // je bent al met de hand aan het importeren
+    autoBezig = true;
+    autoLaatst = Date.now();
+    try {
+      // Slot over tabbladen heen: niet twee keer tegelijk importeren.
+      let slot = 0;
+      try { slot = +localStorage.getItem("boekAutoBankSlot") || 0; } catch (_) { /* privé-modus */ }
+      if (Date.now() - slot < 5 * 60000) return;
+      try { localStorage.setItem("boekAutoBankSlot", String(Date.now())); } catch (_) { /* privé-modus */ }
+      const G = global.BoekGraph;
+      const token = await App().ensureLoggedIn();
+      let items;
+      try {
+        items = await G.listFolder(AUTO_MAP, token);
+      } catch (_) {
+        return; // map bestaat (nog) niet
+      }
+      const bestanden = items
+        .filter((i) => i.file && /\.xml$/i.test(i.name))
+        .sort((a, b) => String(a.lastModifiedDateTime).localeCompare(String(b.lastModifiedDateTime)));
+      if (!bestanden.length) return;
+      const alle = [];
+      const gezien = new Set();
+      for (const b of bestanden) {
+        const tekst = new TextDecoder("utf-8").decode(await G.downloadBytes(b.id, token));
+        const { transacties } = C().leesBestand(tekst);
+        for (const t of transacties) {
+          // Opeenvolgende nachten overlappen een week: zelfde boeking maar één keer.
+          const k = `${t.iban}|${t.datumIso}|${Math.round(t.bedrag * 100)}|${t.volgnr || t.omschrijving}`;
+          if (gezien.has(k)) continue;
+          gezien.add(k);
+          alle.push(t);
+        }
+      }
+      const ibans = bekendeIbans();
+      const lijst = C().vergelijk(alle, App().state.bankRows, (t) => C().rekeningVoorIban(t.iban, ibans) || "", st.settings.afgeslotenTot);
+      const nieuw = lijst.filter((x) => C().standaardAan(x)).sort((a, b) => a.t.datumIso.localeCompare(b.t.datumIso));
+      const twijfel = lijst.filter((x) => x.status === "misschien");
+      let gelukt = 0;
+      let gekoppeld = 0;
+      for (const x of nieuw) {
+        const fields = C().naarBankregel(x.t, x.rekening);
+        const koppeling = zoekFactuur(x.t);
+        if (koppeling) {
+          fields.koppeling = koppeling;
+          fields.ingeboekt = true;
+        }
+        const ok = await App().persistMutation({ kind: "bank_add", fields });
+        if (ok) {
+          gelukt++;
+          if (koppeling) gekoppeld++;
+        }
+      }
+      // Alleen opruimen als alles gelukt is; anders volgende keer opnieuw (dubbele regels worden herkend).
+      if (gelukt === nieuw.length) {
+        await G.ensureFolder(AUTO_VERWERKT, token);
+        for (const b of bestanden) {
+          try {
+            await G.moveItem(b.id, AUTO_VERWERKT, token);
+          } catch (_) {
+            try { await G.moveItem(b.id, AUTO_VERWERKT, token, `${Date.now()} ${b.name}`); } catch (_) { /* volgende keer */ }
+          }
+        }
+      }
+      if (gelukt) {
+        App().showToast(
+          `${gelukt} nieuwe bankregel${gelukt === 1 ? "" : "s"} van de bank opgehaald` +
+            (gekoppeld ? `, ${gekoppeld} meteen gekoppeld.` : ".")
+        );
+      }
+      if (twijfel.length) {
+        // Zelfde bedrag maar een paar dagen verschil: laat jou kiezen (staan standaard uit).
+        regels = twijfel.map((x) => ({ ...x, aan: false }));
+        afschriften = [];
+        render();
+        $("#csv-modal").classList.remove("hidden");
+      }
+    } catch (e) {
+      console.warn("Automatisch bankimport mislukt", e);
+    } finally {
+      autoBezig = false;
+    }
+  }
+
   function init() {
     $("#btn-bank-csv")?.addEventListener("click", () => $("#bank-csv-file").click());
     $("#bank-csv-file")?.addEventListener("change", async (e) => {
@@ -239,5 +335,5 @@
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
-  global.BoekCsvImport = { kiesBestand };
+  global.BoekCsvImport = { kiesBestand, autoImport };
 })(window);

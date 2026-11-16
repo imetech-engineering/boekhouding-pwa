@@ -347,6 +347,8 @@
       else if (open.aantal) setStatus(`Bijwerken… (${open.aantal} wijziging${open.aantal === 1 ? "" : "en"} nog niet zichtbaar in OneDrive)`);
       else setStatus(`Gesynchroniseerd${t ? " · werkboek gewijzigd " + t : ""}${onveranderd ? " (ongewijzigd)" : ""}`);
       renderAll();
+      // Bankafschriften die de Pi 's nachts klaarzette meteen inlezen (niet wachten).
+      if (!open.aantal && !inDeRij) setTimeout(() => global.BoekCsvImport?.autoImport?.(), 500);
       // Nog niet bevestigd: zo nog eens kijken, steeds iets later.
       if (open.aantal) {
         herhaalPogingen++;

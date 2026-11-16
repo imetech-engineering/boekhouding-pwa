@@ -380,7 +380,10 @@
     const n = excelRow;
     return (
       `=IF(AND(ISBLANK($C${n}),ISBLANK($D${n})),"",` +
-      `ROUND(SUMIF($H$6:$H${n},$H${n},$C$6:$C${n})-SUMIF($H$6:$H${n},$H${n},$D$6:$D${n}),2))`
+      // Bereik tot de eigen rij via INDEX(…,ROW()): Excel rekt een vast "$H480" mee op als er
+      // onderaan een tabelrij bijkomt, en dan toont elke regel het eindsaldo (nov 2026).
+      `ROUND(SUMIF($H$6:INDEX($H:$H,ROW()),$H${n},$C$6:INDEX($C:$C,ROW()))` +
+      `-SUMIF($H$6:INDEX($H:$H,ROW()),$H${n},$D$6:INDEX($D:$D,ROW())),2))`
     );
   }
 

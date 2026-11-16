@@ -288,10 +288,12 @@
     body.innerHTML = "";
     let verlegd = 0;
     let omzetNul = 0;
+    let buitenBtw = 0;
     let totSaldo = 0;
     for (const s of data) {
       verlegd += s.verlegdBedrag;
       omzetNul += s.omzetNul;
+      buitenBtw += s.buitenBtw;
       totSaldo += s.saldo;
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -308,7 +310,8 @@
     $("#ovz-btw-detail").textContent =
       `Te betalen = BTW op omzet − voorbelasting. Verlegde EU-inkopen dit jaar: ` +
       `${M().fmtEur(verlegd)} (staat in 5a én 5b, dus per saldo nul). ` +
-      `Omzet 0%/vrijgesteld: ${M().fmtEur(omzetNul)}.`;
+      `Omzet 0%/vrijgesteld (rubriek 1e): ${M().fmtEur(omzetNul)}.` +
+      (buitenBtw ? ` Buiten de btw (subsidie, bonus, rente; niet in de aangifte): ${M().fmtEur(buitenBtw)}.` : "");
   }
 
   function renderRank(elId, items, kleur) {

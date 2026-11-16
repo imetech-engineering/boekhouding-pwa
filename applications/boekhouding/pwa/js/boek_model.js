@@ -1902,11 +1902,20 @@
    * Verlegde BTW (EU) staat zowel bij het verschuldigde als bij de voorbelasting,
    * precies zoals de toelichting in het werkboek beschrijft — per saldo nul.
    */
+  // Opbrengsten zonder tegenprestatie (subsidie, bonus, rente): geen omzet voor
+  // de btw, dus ook niet in rubriek 1e. Wel gewoon winst in de W&V.
+  const BUITEN_BTW_CATEGORIEEN = new Set(["vergoedingen/terugbetalingen", "overige baten", "subsidie"]);
+  function isBuitenBtw(r) {
+    if ((r.btw || 0) > 0) return false;
+    return BUITEN_BTW_CATEGORIEEN.has(String(r.categorie || "").trim().toLowerCase());
+  }
+
   function btwAangifte(inkoopRows, verkoopRows, jaar) {
     const q = Array.from({ length: 4 }, () => ({
       omzetBelast: 0,
       btwOmzet: 0,
       omzetNul: 0,
+      buitenBtw: 0,
       verlegdBedrag: 0,
       btwVerlegd: 0,
       voorbelasting: 0,
@@ -1914,7 +1923,9 @@
     for (const r of verkoopRows) {
       if (!inJaar(r, jaar)) continue;
       const s = q[Math.floor(r.datum.getUTCMonth() / 3)];
-      if ((r.btw || 0) > 0) {
+      if (isBuitenBtw(r)) {
+        s.buitenBtw += r.netto != null ? r.netto : r.bedrag || 0;
+      } else if ((r.btw || 0) > 0) {
         s.omzetBelast += r.netto || 0;
         s.btwOmzet += r.btwBedrag || 0;
       } else {
@@ -2242,7 +2253,7 @@
     formatKm, buildReisOmschrijving, reisBedrag, reisFavorietenUitHistorie, parseReisOmschrijving,
     parseUrenRows, reisVoorstellen,
     kwartaalOverzicht,
-    beschikbareJaren, maandCijfers, btwAangifte, topGroepen, reisTotaal,
+    beschikbareJaren, maandCijfers, btwAangifte, isBuitenBtw, topGroepen, reisTotaal,
     kiaTotaal, boekwaardeActiva,
     alleSaldi, isSpaarTransfer, jaarPrognose, nettoWinst, ibTarieven, IB_TARIEVEN,
   };

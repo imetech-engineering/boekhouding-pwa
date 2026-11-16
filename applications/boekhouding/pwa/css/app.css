@@ -2537,7 +2537,7 @@ body.cam-open {
 
 /* === Bank-CSV import === */
 .csv-kop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.csv-kop h2 { margin: 0; }
+.csv-kop h2 { margin: 0 auto 0 0; }
 .csv-lijst { max-height: 52vh; overflow-y: auto; margin: 8px 0 12px; border-top: 1px solid var(--border); }
 .csv-rij { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--border); font-size: 0.8125rem; }
 .csv-rij input { width: 18px; height: 18px; margin: 0; }

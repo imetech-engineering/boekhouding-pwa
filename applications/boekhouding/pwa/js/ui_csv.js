@@ -222,30 +222,34 @@
   let autoBezig = false;
   let autoLaatst = 0;
 
-  async function autoImport() {
+  async function autoImport({ handmatig = false } = {}) {
     const st = App().state;
-    if (autoBezig || !st.loaded || Date.now() - autoLaatst < 10 * 60000) return;
+    const meld = (m, fout = false) => { if (handmatig || fout) App().showToast(m, fout); };
+    if (autoBezig) return meld("Bank ophalen loopt al…");
+    if (!st.loaded) return meld("Eerst verversen, dan ophalen.", handmatig);
+    if (!handmatig && Date.now() - autoLaatst < 10 * 60000) return;
     if (!$("#csv-modal")?.classList.contains("hidden")) return; // je bent al met de hand aan het importeren
     autoBezig = true;
     autoLaatst = Date.now();
+    let slotGezet = false;
     try {
       // Slot over tabbladen heen: niet twee keer tegelijk importeren.
       let slot = 0;
       try { slot = +localStorage.getItem("boekAutoBankSlot") || 0; } catch (_) { /* privé-modus */ }
-      if (Date.now() - slot < 5 * 60000) return;
-      try { localStorage.setItem("boekAutoBankSlot", String(Date.now())); } catch (_) { /* privé-modus */ }
+      if (!handmatig && Date.now() - slot < 2 * 60000) return;
+      try { localStorage.setItem("boekAutoBankSlot", String(Date.now())); slotGezet = true; } catch (_) { /* privé-modus */ }
       const G = global.BoekGraph;
       const token = await App().ensureLoggedIn();
       let items;
       try {
         items = await G.listFolder(AUTO_MAP, token);
-      } catch (_) {
-        return; // map bestaat (nog) niet
+      } catch (e) {
+        return meld(`Bankmap niet gevonden (${e.message || e}).`, handmatig);
       }
       const bestanden = items
         .filter((i) => i.file && /\.xml$/i.test(i.name))
         .sort((a, b) => String(a.lastModifiedDateTime).localeCompare(String(b.lastModifiedDateTime)));
-      if (!bestanden.length) return;
+      if (!bestanden.length) return meld("Niets nieuws van de bank.");
       const alle = [];
       const gezien = new Set();
       for (const b of bestanden) {
@@ -289,6 +293,7 @@
           }
         }
       }
+      if (!gelukt && !twijfel.length) meld(`Niets nieuws van de bank (${alle.length} regels stonden er al in).`);
       if (gelukt) {
         App().showToast(
           `${gelukt} nieuwe bankregel${gelukt === 1 ? "" : "s"} van de bank opgehaald` +
@@ -304,6 +309,8 @@
       }
     } catch (e) {
       console.warn("Automatisch bankimport mislukt", e);
+      App().showToast(`Bank ophalen mislukt: ${e?.message || e}`, true);
+      if (slotGezet) try { localStorage.removeItem("boekAutoBankSlot"); } catch (_) { /* privé-modus */ }
     } finally {
       autoBezig = false;
     }
@@ -311,6 +318,7 @@
 
   function init() {
     $("#btn-bank-csv")?.addEventListener("click", () => $("#bank-csv-file").click());
+    $("#btn-bank-ophalen")?.addEventListener("click", () => autoImport({ handmatig: true }));
     $("#bank-csv-file")?.addEventListener("change", async (e) => {
       const f = e.target.files?.[0];
       e.target.value = "";
